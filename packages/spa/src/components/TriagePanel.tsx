@@ -170,17 +170,43 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
       )}
 
       {/* â”€â”€ SNOW data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── SNOW data ────────────────────────────────────────────────────────── */}
       {snowTask && (
         <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium text-gray-400">
-              ServiceNow â€” {snowVal(snowTask.number)}
+              ServiceNow — {snowVal(snowTask.number)}
               <span className="text-gray-600 ml-1">({snowVal(snowTask.state)})</span>
             </p>
             <a href={snowTaskUrl(snowVal(snowTask.number))} target="_blank" rel="noreferrer"
                className="text-altera-teal hover:text-white"><ExternalLink size={12} /></a>
           </div>
           <p className="text-sm text-gray-200">{snowVal(snowTask.short_description)}</p>
+          <div className="flex flex-wrap gap-2 text-xs pt-1">
+            {snowVal(snowTask.priority)    && <Badge label="Priority" value={snowVal(snowTask.priority)} />}
+            {snowVal(snowTask.assigned_to) && <Badge label="Assigned" value={snowVal(snowTask.assigned_to)} />}
+            {snowVal(snowTask.opened_at)   && <Badge label="Opened"   value={snowVal(snowTask.opened_at).slice(0,10)} />}
+            {snowVal(snowTask.company)     && <Badge label="Company"  value={snowVal(snowTask.company)} />}
+            {snowVal((snowTask as any).u_task_type) && <Badge label="Task type" value={snowVal((snowTask as any).u_task_type)} />}
+            {snowVal((snowTask as any).u_devid)     && <Badge label="Dev ID"    value={snowVal((snowTask as any).u_devid)} />}
+          </div>
+          {snowVal((snowTask as any).description) && (
+            <Collapsible label="SNOW Description">
+              <p className="text-xs text-gray-400 whitespace-pre-wrap leading-relaxed">
+                {snowVal((snowTask as any).description).slice(0, 800)}
+              </p>
+            </Collapsible>
+          )}
+          {snowVal((snowTask as any).u_steps_to_reproduce) && (
+            <Collapsible label="Steps to reproduce">
+              <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal((snowTask as any).u_steps_to_reproduce)}</p>
+            </Collapsible>
+          )}
+          {snowVal((snowTask as any).u_dev_assist_detail) && (
+            <Collapsible label="Dev assist detail">
+              <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal((snowTask as any).u_dev_assist_detail)}</p>
+            </Collapsible>
+          )}
           {!!snowTask['_workNotes'] && (
             <Collapsible label="Work notes">
               <pre className="text-xs font-mono text-gray-400 whitespace-pre-wrap leading-relaxed max-h-64 overflow-auto">
@@ -191,6 +217,16 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
           {snowVal(snowTask.close_notes) && (
             <Collapsible label="Close notes">
               <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal(snowTask.close_notes)}</p>
+            </Collapsible>
+          )}
+          {session.snowIncident && (
+            <Collapsible label={`Incident — ${snowVal((session.snowIncident as any).number)}`}>
+              <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal((session.snowIncident as any).short_description)}</p>
+            </Collapsible>
+          )}
+          {session.snowCase && (
+            <Collapsible label={`Case — ${snowVal((session.snowCase as any).number)}`}>
+              <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal((session.snowCase as any).short_description)}</p>
             </Collapsible>
           )}
         </div>
@@ -277,4 +313,5 @@ function Collapsible({ label, children }: { label: string; children: React.React
     </details>
   );
 }
+
 

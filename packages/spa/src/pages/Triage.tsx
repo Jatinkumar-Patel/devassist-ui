@@ -4,7 +4,7 @@ import TriagePanel from '../components/TriagePanel';
 import { detectInput } from '../lib/input-detector';
 import { loadRegistry, routeByAreaPath } from '../lib/product-registry';
 import { fetchWorkItem } from '../lib/ado-client';
-import { fetchSnowTask, fetchSnowWorkNotes, fetchSnowAttachments, snowVal } from '../lib/snow-client';
+import { fetchSnowTask, fetchSnowWorkNotes, fetchSnowAttachments, fetchSnowCase, fetchSnowIncident, snowVal } from '../lib/snow-client';
 import { matchPattern, runCodeSearch, buildAssessment } from '../lib/analysis';
 import { useSettingsStore } from '../store/settings';
 import { useTriageStore } from '../store/triage';
@@ -76,13 +76,11 @@ export default function TriagePage() {
 
           const sysId = snowVal(taskRecord?.sys_id);
           if (sysId) {
-            // Fetch work notes separately (richer than embedded work_notes field)
             const [notesResp, attachResp] = await Promise.allSettled([
               fetchSnowWorkNotes(sysId),
               fetchSnowAttachments(sysId),
             ]);
             if (notesResp.status === 'fulfilled' && notesResp.value?.result) {
-              // Merge work notes back into the task record for display
               s = { ...s, snowTask: { ...s.snowTask!, _workNotes: notesResp.value.result } };
             }
             if (attachResp.status === 'fulfilled' && attachResp.value?.result) {
@@ -90,6 +88,27 @@ export default function TriagePage() {
                 ? attachResp.value.result
                 : [attachResp.value.result];
               s = { ...s, attachments };
+            }
+
+            // ── Escalation: Task → Incident → Case (per snow-viewer-api.md) ───
+            // Escalate if the task has a linked incident field
+            const incidentSysId = snowVal(taskRecord?.['incident']);
+            if (incidentSysId && incidentSysId !== '0') {
+              try {
+                const incResp = await fetchSnowIncident(incidentSysId);
+                const incRecord = Array.isArray(incResp?.result) ? incResp.result[0] : incResp?.result;
+                if (incRecord) s = { ...s, snowIncident: incRecord };
+              } catch { /* non-fatal */ }
+            }
+
+            // Also fetch the Case directly from DA's CaseId field
+            const caseId = s.adoItem?.fields['Allscripts.Field.CaseId'] as string | undefined;
+            if (caseId) {
+              try {
+                const caseResp = await fetchSnowCase(caseId);
+                const caseRecord = Array.isArray(caseResp?.result) ? caseResp.result[0] : caseResp?.result;
+                if (caseRecord) s = { ...s, snowCase: caseRecord };
+              } catch { /* non-fatal */ }
             }
           }
         } catch {
