@@ -87,7 +87,8 @@ export function matchPattern(adoItem: AdoWorkItem): Pattern | null {
     if (score > bestScore) { bestScore = score; best = p; }
   }
 
-  return bestScore > 0 ? best : null;
+  // Require at least 2 keyword hits to avoid false-positives from product-name-only matches
+  return bestScore >= 2 ? best : null;
 }
 
 // ── Phase 3: Code search ──────────────────────────────────────────────────────
@@ -104,11 +105,29 @@ const SHM_PATTERNS: Pattern[] = [
   {
     id: 'shm-1',
     name: 'SHM Send button disabled / grayed out',
-    keywords: ['send button', 'send is disabled', 'grayed out', 'grey', 'disabled', 'compose', 'SHM', 'secure health message', 'recipient'],
+    keywords: ['send button', 'send is disabled', 'grayed out', 'grey', 'disabled', 'compose', 'secure health message', 'recipient'],
     verdict: 'CODE BUG',
     searchSeeds: ['SendButton', 'isDisabled', 'SHM', 'ComposeMessage', 'recipient'],
     fixDirection: 'Check the Send button enabled/disabled state logic. The button should enable after a valid recipient is selected. Look for the condition that evaluates recipient validity.',
     confidence: 'Medium',
+  },
+  {
+    id: 'shm-2',
+    name: 'SHM reply thread formatting lost (line breaks / spacing)',
+    keywords: ['formatting', 'line break', 'line breaks', 'spacing', 'single block', 'loses formatting', 'reply thread', 'message content', 'whitespace', 'newline'],
+    verdict: 'CODE BUG',
+    searchSeeds: ['replyThread', 'formatMessage', 'whitespace', 'innerHTML', 'innerText', 'nl2br', 'sanitize', 'DOMParser', 'quill', 'rich text'],
+    fixDirection: 'HTML/text serialisation strips whitespace on reply-thread read-back. Check the message rendering component for how newlines/\\n are converted to <br> or preserved in the text model. Look for innerHTML vs innerText usage and any sanitizer that collapses whitespace.',
+    confidence: 'Medium',
+  },
+  {
+    id: 'shm-3',
+    name: 'SHM message not delivered / stuck in outbox',
+    keywords: ['not delivered', 'stuck', 'outbox', 'pending', 'failed to send', 'delivery failed', 'message missing'],
+    verdict: 'CODE BUG',
+    searchSeeds: ['SHMDelivery', 'MessageQueue', 'sendMessage', 'outbox', 'retry'],
+    fixDirection: 'Check the SHM delivery queue and retry logic. Look for stuck messages in the outbox and the error state that prevents re-delivery.',
+    confidence: 'Low',
   },
 ];
 
@@ -127,7 +146,8 @@ export function matchPatternAny(adoItem: AdoWorkItem): Pattern | null {
     const score = p.keywords.filter((k) => text.includes(k.toLowerCase())).length;
     if (score > bestScore) { bestScore = score; best = p; }
   }
-  return bestScore > 0 ? best : null;
+  // Require 2+ keyword hits — single product-name match is not enough
+  return bestScore >= 2 ? best : null;
 }
 const BRIDGE = (): string => (window as any).__BRIDGE_URL__ ?? 'http://localhost:7447';
 
@@ -299,6 +319,279 @@ export function buildAssessment(
     verdict,
     confidence: confidence as TriageAnalysis['confidence'],
     clientReported: `${customer} reports (${version}): ${title}`,
+    snowEvidence: [...snowEvidence, ...logEvidence],
+    codeAnalysis,
+    gap,
+    blindSpots,
+    l2Draft,
+  };
+}
+
+// ── Skill-driven analysis (reads actual skill files from bridge) ──────────────
+
+interface PlaybookPattern {
+  num: number;
+  name: string;
+  signature: string;
+  confirm: string;
+  fixDirection: string;
+}
+
+function parsePlaybook(content: string): PlaybookPattern[] {
+  const out: PlaybookPattern[] = [];
+  // Each pattern starts with "## N) Name"
+  const blocks = content.split(/(?=^## \d+\))/m);
+  for (const block of blocks) {
+    const header = block.match(/^## (\d+)\)\s+(.+)/m);
+    if (!header) continue;
+    const sig = block.match(/\*\*Signature:\*\*\s*([\s\S]+?)(?=\n\*\*Confirm|\n##|$)/)?.[1]?.trim() ?? '';
+    const confirm = block.match(/\*\*Confirm:\*\*\s*([\s\S]+?)(?=\n\*\*Fix direction|\n##|$)/)?.[1]?.trim() ?? '';
+    const fix = block.match(/\*\*Fix direction[^*]*\*\*\s*([\s\S]+?)(?=\n##|$)/)?.[1]?.trim() ?? '';
+    out.push({ num: parseInt(header[1], 10), name: header[2].trim(), signature: sig, confirm, fixDirection: fix });
+  }
+  return out;
+}
+
+function scorePattern(p: PlaybookPattern, evidenceText: string, logSeeds: Record<string, number>): number {
+  let score = 0;
+  const text = evidenceText.toLowerCase();
+  // Extract backtick and quoted terms from signature
+  const terms = [...p.signature.matchAll(/`([^`]+)`|"([^"]+)"/g)].map(m => (m[1] ?? m[2]).toLowerCase());
+  for (const t of terms) {
+    if (text.includes(t)) score += 3;
+    if (Object.keys(logSeeds).some(s => s.toLowerCase().includes(t))) score += 4;
+  }
+  // Also match on plain words from the pattern name
+  for (const word of p.name.toLowerCase().split(/\W+/).filter(w => w.length > 4)) {
+    if (text.includes(word)) score += 1;
+  }
+  return score;
+}
+
+// ── SNOW-evidence verdict derivation (used when no skills/pattern match) ─────
+
+function deriveVerdictFromSnowEvidence(allSnowText: string): TriageAnalysis['verdict'] | null {
+  const t = allSnowText.toLowerCase();
+  if (/domain account|active directory|\bad\b|cannot be changed|resets.*login|resets.*sunrise|group policy|no.*parameter to (configure|override|set)|does not expose|mlm.*only sets|no.*way to configure|admin.*setting|cannot.*override/i.test(allSnowText))
+    return 'CONFIG / INSTALL';
+  if (/by design|as designed|working as designed|\bwad\b|expected behavior|intended behavior|this is how|always (worked|behaved)|working correctly/i.test(allSnowText))
+    return 'INTENDED BEHAVIOR';
+  if (/feature request|enhancement request|not (yet )?supported|not implemented|future (release|version)|product management|backlog|roadmap/i.test(allSnowText))
+    return 'ENHANCEMENT';
+  if (/null pointer|exception|stack trace|unhandled|crash|object reference|index out|ArgumentNull|NullRef/i.test(allSnowText))
+    return 'CODE BUG';
+  void t; // suppress unused warning
+  return null;
+}
+
+/** Extract technical identifiers from SNOW notes (table names, field names, components) */
+function extractTechTerms(snowText: string): string[] {
+  return [...snowText.matchAll(/\b([A-Z][a-zA-Z]{2,}(?:\.[A-Z][a-zA-Z]+)+|CV3\w+|SXA\w+|SHM\w+|MLM\w+|HWS\w+|SCM\w+|eMAR\w*|KBMA\w*)\b/g)]
+    .map(m => m[1])
+    .filter((v, i, arr) => arr.indexOf(v) === i)
+    .slice(0, 8);
+}
+
+export async function buildSkillDrivenAssessment(
+  adoItem: AdoWorkItem,
+  product: Product,
+  snowWorkNotes: string | undefined,
+  logHits: Array<{ seed: string; text: string; file: string }> | undefined,
+  topSeeds: Record<string, number> | undefined,
+  codeHits: CodeHit[]
+): Promise<TriageAnalysis> {
+  const BRIDGE = (window as any).__BRIDGE_URL__ ?? 'http://localhost:7447';
+  const f = adoItem.fields;
+  const areaPath = String(f['System.AreaPath'] ?? '').toLowerCase();
+  const areaId = areaPath.includes('mobilex') ? 'sunrise-mobile'
+    : areaPath.includes('compass') ? 'compass-scm'
+    : areaPath.includes('clindoc') ? 'clindoc-scm'
+    : null;
+
+  // Collect all evidence text for pattern scoring
+  const allText = [
+    f['System.Title'] ?? '',
+    String(f['System.Description'] ?? '').replace(/<[^>]+>/g, ' '),
+    String(f['Allscripts.Field.DevAssistDetail'] ?? ''),
+    snowWorkNotes ?? '',
+    (logHits ?? []).map(h => h.text).join(' '),
+  ].join(' ').toLowerCase();
+
+  const seeds = topSeeds ?? {};
+  const title = f['System.Title'] ?? '';
+  const customer = String(f['Allscripts.Field.CustomerName'] ?? 'the client');
+  const version = String(f['Allscripts.Field.SupportVersion'] ?? 'unknown');
+
+  // ── Step 1: fetch skill files ─────────────────────────────────────────────
+  let playbook: PlaybookPattern[] = [];
+  let reposMd = '';
+  let profileMd = '';
+
+  if (areaId) {
+    try {
+      const r = await fetch(`${BRIDGE}/api/skills/area/${areaId}`, { signal: AbortSignal.timeout(4000) });
+      if (r.ok) {
+        const data = await r.json() as { files: Record<string, string> };
+        if (data.files['analysis-playbook.md']) playbook = parsePlaybook(data.files['analysis-playbook.md']);
+        reposMd   = data.files['repositories.md'] ?? '';
+        profileMd = data.files['profile.md'] ?? '';
+      }
+    } catch { /* non-fatal — fall through to keyword-only */ }
+  }
+
+  // ── Step 2: score playbook patterns ──────────────────────────────────────
+  let best: PlaybookPattern | null = null;
+  let bestScore = 0;
+  for (const p of playbook) {
+    const s = scorePattern(p, allText, seeds);
+    if (s > bestScore) { bestScore = s; best = p; }
+  }
+
+  // Fall back to keyword-pattern if skill files have no match
+  const keywordPattern = matchPatternAny(adoItem);
+  const matchedPlaybookPattern = bestScore >= 3 ? best : null;
+
+  // ── Step 3: client reported ───────────────────────────────────────────────
+  const desc = String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '')
+    .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const clientReported = `${customer} (${version}): ${title}${desc ? ' — ' + desc.slice(0, 200) : ''}`;
+
+  // ── Step 4: SNOW evidence ─────────────────────────────────────────────────
+  const snowEvidence: string[] = [];
+  if (snowWorkNotes) {
+    const lines = snowWorkNotes.split(/\n|\\n/)
+      .map(l => l.replace(/\[.*?\]/g, '').trim())
+      .filter(l => l.length > 15 && /error|exception|fail|cannot|unable|version|repro|confirm|observed|occur|steps|workaround|found|tested|timed out|timeout|format|spacing|line break|missing|broken|incorrect|wrong|reproduc|screen|attach|upload|check|verify|investigat|customer|report|ticket|impact/i.test(l))
+      .slice(0, 6);
+    snowEvidence.push(...lines);
+    const vers = snowWorkNotes.match(/\b\d+\.\d+(\.\d+)+\b/g)?.slice(0, 3) ?? [];
+    if (vers.length) snowEvidence.push(`Versions in SNOW: ${vers.join(', ')}`);
+  }
+  // Log evidence
+  const logEvidence: string[] = [];
+  if (Object.keys(seeds).length) {
+    const top = Object.entries(seeds).sort(([,a],[,b]) => b-a).slice(0, 5);
+    logEvidence.push(`Log signals: ${top.map(([s,c]) => `${s} (${c}×)`).join(', ')}`);
+    const timeouts = seeds['progress indicator has timed out'] ?? 0;
+    const locks    = seeds['LockWithTimeout'] ?? 0;
+    if (timeouts > 0) logEvidence.push(`CLIENT timeout confirmed: "progress indicator has timed out" ×${timeouts}`);
+    if (locks > 100)  logEvidence.push(`LOCK CONTENTION: LockWithTimeout ×${locks} — IIS worker queue backing up`);
+    if (timeouts > 0 && locks > 0) logEvidence.push('Server side shows lock pressure; client gave up waiting → server-side fix needed');
+  }
+  const keyLogLine = (logHits ?? []).find(h =>
+    /timed out|exception|FATAL|error/i.test(h.seed) || /timed out|exception|FATAL/i.test(h.text)
+  );
+  if (keyLogLine) logEvidence.push(`Key log line: "${keyLogLine.text.slice(0, 160)}"`);
+
+  // ── Step 5: code analysis ─────────────────────────────────────────────────
+  const snowTechTerms = extractTechTerms(snowWorkNotes ?? '');
+  let codeAnalysis: string;
+  if (matchedPlaybookPattern) {
+    const repoRow = reposMd.match(/\|\s*(HWS|SunriseMobile)[^\|]*\|[^\|]*\|[^\|]*\|([^\|]+)\|/)?.[2]?.trim() ?? '';
+    codeAnalysis = [
+      `Playbook match: Pattern ${matchedPlaybookPattern.num} — "${matchedPlaybookPattern.name}"`,
+      `Signature: ${matchedPlaybookPattern.signature.slice(0, 300)}`,
+      matchedPlaybookPattern.confirm ? `How to confirm: ${matchedPlaybookPattern.confirm.slice(0, 300)}` : '',
+      repoRow ? `Key code areas (from repositories.md): ${repoRow}` : '',
+      codeHits.length ? `Code search hits: ${codeHits.map(h => h.path).slice(0,4).join(', ')}` : '',
+    ].filter(Boolean).join('\n');
+  } else if (keywordPattern) {
+    codeAnalysis = [
+      `Keyword pattern: "${keywordPattern.name}"`,
+      `Search seeds: ${keywordPattern.searchSeeds.join(', ')}`,
+      `Repos: ${product.repos.filter(r => r.required).map(r => `${r.owner}/${r.repo}`).join(', ')}`,
+      snowTechTerms.length ? `Technical terms from SNOW: ${snowTechTerms.join(', ')}` : '',
+      codeHits.length ? `Code search hits: ${codeHits.map(h => h.path).slice(0,4).join(', ')}` : 'No code hits — clone repos locally for direct inspection',
+    ].filter(Boolean).join('\n');
+  } else {
+    // Derive from SNOW evidence — most reliable when no pattern matches
+    codeAnalysis = [
+      `No pre-defined pattern matched for: "${title.slice(0, 100)}"`,
+      snowTechTerms.length ? `Technical identifiers in SNOW notes: ${snowTechTerms.join(', ')}` : '',
+      `Repos: ${product.repos.map(r => `${r.owner}/${r.repo}`).join(', ')}`,
+      areaId
+        ? `Skill area: ${areaId} (${playbook.length} patterns loaded — none scored high enough)`
+        : `No skills pack for this product yet — SHM/Ambulatory analysis is pattern-free`,
+      codeHits.length ? `Code search hits: ${codeHits.map(h => h.path).slice(0,4).join(', ')}` : '',
+    ].filter(Boolean).join('\n');
+  }
+
+  // ── Step 6: gap — prefer SNOW-derived over pattern fallback ──────────────
+  let gap: string;
+  if (matchedPlaybookPattern) {
+    gap = matchedPlaybookPattern.fixDirection;
+  } else if (snowEvidence.length >= 2) {
+    // Synthesise a gap statement from what SNOW support actually found
+    gap = `SNOW diagnosis: ${snowEvidence.slice(0, 3).join(' | ')}.${
+      snowTechTerms.length ? ` Key components: ${snowTechTerms.slice(0, 4).join(', ')}.` : ''
+    } ${keywordPattern ? `Related pattern direction: ${keywordPattern.fixDirection}` : 'No matching code pattern — inspect the components identified above.'}`;
+  } else if (keywordPattern) {
+    gap = keywordPattern.fixDirection;
+  } else {
+    gap = `Symptom: ${title.slice(0, 150)}. No matching analysis pattern. Inspect ${product.repos.map(r=>r.repo).join(', ')} for the relevant component.`;
+  }
+
+  // ── Step 7: verdict — SNOW evidence overrides keyword pattern ────────────
+  const snowDerivedVerdict = deriveVerdictFromSnowEvidence([...snowEvidence, title, desc].join(' '));
+  const keywordVerdict: TriageAnalysis['verdict'] = matchedPlaybookPattern
+    ? (keywordPattern?.verdict ?? 'CODE BUG')
+    : (keywordPattern?.verdict ?? 'NEED MORE INFO');
+  // SNOW evidence is more reliable than keyword pattern matching
+  const rawVerdict: TriageAnalysis['verdict'] = snowDerivedVerdict ?? keywordVerdict;
+
+  let confidence: TriageAnalysis['confidence'] = matchedPlaybookPattern
+    ? (bestScore >= 8 ? 'High' : 'Medium')
+    : snowDerivedVerdict ? 'Medium' : (keywordPattern ? 'Low' : null);
+
+  // Raise/lower based on evidence quality
+  if (logEvidence.some(l => l.includes('CLIENT timeout confirmed')) && confidence === 'Medium') confidence = 'High';
+  if (!snowWorkNotes && !logHits?.length) confidence = confidence === 'High' ? 'Medium' : 'Low';
+
+  // ── Step 8: blind spots (from profile.md clarity checklist) ──────────────
+  const blindSpots: string[] = [];
+  if (!logHits?.length) blindSpots.push('HWS logs not attached or not yet scanned — attach logs for the incident window to raise confidence');
+  if (!codeHits.length) blindSpots.push('Code search found no hits — clone SunriseMobile + HWS repos locally for direct inspection');
+  if (!snowWorkNotes)   blindSpots.push('SNOW work notes empty — review SNOW task for additional context from support engineer');
+  if (!matchedPlaybookPattern && playbook.length > 0) {
+    blindSpots.push(`None of the ${playbook.length} playbook patterns matched with high confidence — this may be a new/unknown pattern`);
+  }
+  if (areaId === 'sunrise-mobile') {
+    blindSpots.push('Device-side logs unavailable — client traces in HWS are anonymous (Spike 9375402)');
+    blindSpots.push('Cannot tie HWS log entries to specific users without session IDs');
+  }
+  // Extract "Blind spots" section from profile.md
+  const profileBlind = profileMd.match(/## Blind spots[\s\S]+?(?=##|$)/)?.[0]
+    ?.split('\n').filter(l => l.startsWith('- ')).map(l => l.slice(2).trim()).slice(0, 2) ?? [];
+  blindSpots.push(...profileBlind.filter(b => !blindSpots.some(e => e.includes(b.slice(0, 20)))));
+
+  // ── Step 9: L2 draft — derived from actual verdict + SNOW evidence ────────
+  let l2Draft: string | undefined;
+  const clarityItems = profileMd.match(/- \[ \] \*\*([^*]+)\*\*/g)?.map(l => l.replace(/- \[ \] \*\*|\*\*/g, '').trim()) ?? [];
+  if (rawVerdict === 'CONFIG / INSTALL') {
+    l2Draft = `Thank you for contacting Altera support.\n\nWe have reviewed DA ${adoItem.id} — ${title}\n\nBased on the information provided${snowEvidence.length ? ' and our SNOW review' : ''}:\n\nThis appears to be a configuration issue rather than a code defect. ${gap.slice(0, 400)}\n\nPlease work with your system administrator to review the domain/AD account configuration. If this does not resolve the issue, please provide additional details on the environment setup.`;
+  } else if (rawVerdict === 'INTENDED BEHAVIOR') {
+    l2Draft = `Thank you for contacting Altera support.\n\nWe have reviewed DA ${adoItem.id} — ${title}\n\nBased on our analysis, this appears to be working as designed. ${gap.slice(0, 400)}\n\nIf this is a business requirement to change the current behavior, please submit an enhancement request.`;
+  } else if (rawVerdict === 'ENHANCEMENT') {
+    l2Draft = `Thank you for contacting Altera support.\n\nWe have reviewed DA ${adoItem.id} — ${title}\n\nThis functionality is not currently supported. ${gap.slice(0, 400)}\n\nThis has been noted as a potential enhancement request for future consideration.`;
+  } else if (rawVerdict === 'NEED MORE INFO' || confidence === 'Low') {
+    l2Draft = `Thank you for contacting Altera support.\n\nWe have reviewed the information provided for DA ${adoItem.id}.\n\nTo proceed with root cause analysis, please provide:\n${
+      clarityItems.length
+        ? clarityItems.slice(0, 5).map((c, i) => `${i+1}. ${c}`).join('\n')
+        : `1. Log files covering the exact incident window\n2. Exact version (SCM / HWS / app build)\n3. Steps to reproduce on test/dev\n4. Whether this affects all users or specific users`
+    }`;
+  } else if (rawVerdict === 'CODE BUG') {
+    const confText = confidence === 'High' ? 'High confidence' : `${confidence} confidence${blindSpots.length ? ` — ${blindSpots[0]}` : ''}`;
+    l2Draft = `Thank you for contacting Altera support.\n\nWe have completed initial root cause analysis for DA ${adoItem.id}.\n\nFindings:\n${
+      matchedPlaybookPattern
+        ? `Pattern: ${matchedPlaybookPattern.name}\nFix direction: ${matchedPlaybookPattern.fixDirection.slice(0, 300)}`
+        : gap.slice(0, 300)
+    }\n\n${confText}.`;
+  }
+
+  return {
+    verdict: rawVerdict,
+    confidence,
+    clientReported,
     snowEvidence: [...snowEvidence, ...logEvidence],
     codeAnalysis,
     gap,

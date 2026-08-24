@@ -8,6 +8,7 @@ import { mcpRouter } from './routes/mcp-config';
 import { ghSearchRouter } from './routes/gh-search';
 import { logAnalysisRouter } from './routes/log-analysis';
 import { aiAnalysisRouter } from './routes/ai-analysis';
+import { registryRouter } from './routes/registry';
 import { skillsRouter } from './routes/skills';
 
 interface ServerOptions {
@@ -38,6 +39,7 @@ export function createServer({ spaOrigin }: ServerOptions) {
   app.use('/api/log-analysis', logAnalysisRouter);
   app.use('/api/ai-analyze', aiAnalysisRouter);
   app.use('/api/skills', skillsRouter);
+  app.use('/api/registry', registryRouter);
 
   // Serve the built SPA if it exists alongside the bridge dist
   const spaPath = path.resolve(__dirname, '../../spa/dist');

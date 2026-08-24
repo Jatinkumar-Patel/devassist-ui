@@ -1,32 +1,48 @@
-// ── Product Registry ─────────────────────────────────────────────────────────
+﻿// ── Product Registry ──────────────────────────────────────────────────────────
 
 export interface RepoRef {
   key: string;
   owner: string;
   repo: string;
   required?: boolean;
+  versionFile?: string;
+  githubUrl?: string;
+  localPaths?: string[];
 }
 
 export interface MtmPlan {
   id: number;
   name: string;
   adoProject: string;
+  url?: string;
+}
+
+export interface ProductGroup {
+  id: string;
+  name: string;           // e.g. "AMB Group"
+  productIds: string[];
 }
 
 export interface Product {
   id: string;
   displayName: string;
-  areaPathPrefix: string;      // e.g. "SR\\MobileX"
-  snowProduct: string;         // matches SNOW u_product field
+  areaPathPrefix: string;
+  areaPathPrefixes?: string[];  // additional area path prefixes
+  snowProduct: string;
   snowTaskTable: 'incident_task' | 'sc_task';
   repos: RepoRef[];
   mtmPlans: MtmPlan[];
-  skillPath?: string;          // e.g. "skills/devassist-triage/areas/sunrise-mobile"
+  skillPath?: string;           // legacy
+  skillPaths?: string[];        // multiple local skill/MD file paths
+  docUrl?: string;
+  localFolder?: string;         // local DA folder, e.g. C:\temp\DA#
+  notes?: string;
 }
 
 export interface ProductRegistry {
   version: number;
   products: Product[];
+  groups?: ProductGroup[];
 }
 
 // ── ADO Work Item ─────────────────────────────────────────────────────────────
@@ -160,6 +176,9 @@ export interface TriageSession {
   analysis?: TriageAnalysis;
   artifactLedger?: ArtifactLedger;
   clarityGaps?: string[];
+  relatedItems?: import('../lib/ado-client').RelatedItem[];  // open bugs same area
+  testCases?: import('../lib/ado-client').RelatedItem[];    // test cases same area
+  recentCommits?: Array<{ sha: string; message: string; date: string; url: string }>;
   status: 'idle' | 'loading' | 'ready' | 'error';
   error?: string;
   startedAt: string;

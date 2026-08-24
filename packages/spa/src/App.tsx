@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import NavBar from './components/NavBar';
 import SetupWizard from './components/SetupWizard';
@@ -8,9 +9,25 @@ import { useSettingsStore } from './store/settings';
 
 export default function App() {
   const navigate = useNavigate();
-  const adoPat = useSettingsStore((s) => s.adoPat);
-  // Show wizard if no PAT has ever been set
-  const [wizardDone, setWizardDone] = useWizardDone(!!adoPat);
+  const { adoPat, setAdoPat, setGithubPat } = useSettingsStore();
+  const [wizardDone, setWizardDone] = useState(!!adoPat || localStorage.getItem('devassist-setup-done') === '1');
+
+  // On every startup, silently refresh PATs from mcp.json via bridge.
+  // This means users never have to paste a PAT — it's always read from mcp.json.
+  useEffect(() => {
+    fetch('http://localhost:7447/api/mcp-config', { signal: AbortSignal.timeout(3000) })
+      .then(r => r.ok ? r.json() : null)
+      .then(cfg => {
+        if (!cfg?.found) return;
+        if (cfg.adoPat)    { setAdoPat(cfg.adoPat); }
+        if (cfg.githubPat) { setGithubPat(cfg.githubPat); }
+        if (cfg.adoPat || cfg.githubPat) {
+          localStorage.setItem('devassist-setup-done', '1');
+          setWizardDone(true);
+        }
+      })
+      .catch(() => { /* bridge not running — fall through to wizard */ });
+  }, [setAdoPat, setGithubPat]);
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-950">
@@ -28,14 +45,4 @@ export default function App() {
       </main>
     </div>
   );
-}
-
-/** Persist wizard-done state so it only shows once per browser */
-function useWizardDone(alreadyHasPat: boolean): [boolean, (v: boolean) => void] {
-  const key = 'devassist-setup-done';
-  const [done, setDoneState] = [
-    alreadyHasPat || localStorage.getItem(key) === '1',
-    (v: boolean) => { if (v) localStorage.setItem(key, '1'); },
-  ];
-  return [done, setDoneState];
 }

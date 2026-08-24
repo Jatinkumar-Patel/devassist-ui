@@ -3,7 +3,7 @@ import { Eye, EyeOff, Check, AlertCircle, Terminal, RefreshCw } from 'lucide-rea
 import { useSettingsStore, ORG_DEFAULTS } from '../store/settings';
 
 export default function SettingsPage() {
-  const { adoPat, githubPat, bridgeUrl, setAdoPat, setGithubPat, setBridgeUrl, clearPats } = useSettingsStore();
+  const { adoPat, githubPat, openaiKey, bridgeUrl, setAdoPat, setGithubPat, setOpenaiKey, setBridgeUrl, clearPats } = useSettingsStore();
 
   const reRunWizard = () => {
     localStorage.removeItem('devassist-setup-done');
@@ -40,6 +40,14 @@ export default function SettingsPage() {
           value={githubPat}
           onChange={setGithubPat}
           testUrl="https://api.github.com/user"
+          testAuth={(v) => `Bearer ${v}`}
+        />
+        <PatField
+          label="OpenAI API Key"
+          hint="sk-… — enables inline AI analysis in the app (optional). Get one at platform.openai.com"
+          value={openaiKey}
+          onChange={setOpenaiKey}
+          testUrl="https://api.openai.com/v1/models"
           testAuth={(v) => `Bearer ${v}`}
         />
         <button onClick={clearPats}

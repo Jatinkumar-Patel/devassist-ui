@@ -5,7 +5,9 @@ import { detectInput } from '../lib/input-detector';
 import { loadRegistry, routeByAreaPath } from '../lib/product-registry';
 import { fetchWorkItem } from '../lib/ado-client';
 import { fetchSnowTask, fetchSnowWorkNotes, fetchSnowAttachments, fetchSnowCase, fetchSnowIncident, snowVal } from '../lib/snow-client';
-import { matchPattern, runCodeSearch, buildAssessment } from '../lib/analysis';
+import { matchPattern, runCodeSearch, buildSkillDrivenAssessment } from '../lib/analysis';
+import { fetchRelatedBugs, fetchTestCases } from '../lib/ado-client';
+import { searchCommits } from '../lib/github-client';
 import { useSettingsStore } from '../store/settings';
 import { useTriageStore } from '../store/triage';
 import type { TriageSession, SessionPhase } from '../types';
@@ -55,7 +57,7 @@ export default function TriagePage() {
         upsert(s);
         const adoItem = await fetchWorkItem(s.workItemId!, adoPat);
         const areaPath = adoItem.fields['System.AreaPath'] ?? '';
-        const product = routeByAreaPath(areaPath, registry);
+        const product = routeByAreaPath(areaPath, registry, adoItem.fields['System.Title']);
         s = { ...s, adoItem, product };
 
         // ── Phase 0d: Route + derive SNOW task number from DA field ───────────
@@ -63,6 +65,30 @@ export default function TriagePage() {
         upsert(s);
         const taskNum = adoItem.fields['Allscripts.Field.IncidentTaskID'] as string | undefined;
         if (taskNum) s = { ...s, snowTaskNumber: taskNum };
+
+        // ── Fetch repo/MTM comparison data in parallel with SNOW ──────────────
+        const routedProduct = s.product;
+        if (routedProduct) {
+          const [relatedBugs, testCases] = await Promise.allSettled([
+            fetchRelatedBugs(areaPath, adoPat),
+            fetchTestCases(areaPath, adoPat),
+          ]);
+          if (relatedBugs.status === 'fulfilled') s = { ...s, relatedItems: relatedBugs.value };
+          if (testCases.status === 'fulfilled')   s = { ...s, testCases: testCases.value };
+          // GitHub recent commits for primary repos
+          if (githubPat && routedProduct.repos.length) {
+            const repo = routedProduct.repos.find(r => r.required);
+            if (repo) {
+              const keywords = [
+                adoItem.fields['System.Title']?.split(' ').slice(0, 4).join(' ') ?? '',
+                routedProduct.displayName,
+              ].filter(Boolean);
+              const commits = await searchCommits(githubPat, `${repo.owner}/${repo.repo}`, keywords).catch(() => []);
+              if (commits.length) s = { ...s, recentCommits: commits };
+            }
+          }
+          upsert(s);
+        }
       }
 
       // ── Phase 0e: Pull SNOW task + work notes + attachments ──────────────────
@@ -184,12 +210,13 @@ export default function TriagePage() {
             : [];
           const workNotes = s.snowTask
             ? String((s.snowTask as any)._workNotes
-                ? JSON.stringify((s.snowTask as any)._workNotes).slice(0, 500)
+                ? JSON.stringify((s.snowTask as any)._workNotes)
                 : snowVal(s.snowTask.work_notes))
             : undefined;
           const logHits = (s.snowTask as any)?._logHits ?? [];
           const topSeeds = (s.snowTask as any)?._topSeeds ?? {};
-          const analysis = buildAssessment(s.adoItem, pattern, codeHits, workNotes, logHits, topSeeds);
+          // Use skill-driven analysis — reads skill files, derives verdict from SNOW evidence
+          const analysis = await buildSkillDrivenAssessment(s.adoItem, s.product, workNotes, logHits, topSeeds, codeHits);
           s = { ...s, analysis };
         } catch { /* non-fatal */ }
       }

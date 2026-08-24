@@ -1,14 +1,20 @@
 import { Router, Request, Response } from 'express';
+import https from 'https';
+import http from 'http';
 import { execPowerShell } from '../utils/powershell';
 
 export const aiAnalysisRouter = Router();
 
-// GitHub Models API via PowerShell — Node.js DNS can't resolve it on corp network, PS can
 const MODELS_API_URL = 'https://models.inference.ai.azure.com/chat/completions';
-const MODEL = 'gpt-4o-mini';
+const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+const OLLAMA_API_URL = 'http://localhost:11434/api/chat';  // local, no auth needed
+const MODEL_GH    = 'gpt-4o-mini';
+const MODEL_OAPI  = 'gpt-4o-mini';
+const MODEL_OLLAMA = 'llama3.2';  // change to any model you have pulled
 
 interface AnalysisRequest {
-  githubPat: string;
+  githubPat?: string;
+  openaiKey?: string;   // user's personal OpenAI API key
   da: {
     id: number;
     title: string;
@@ -153,18 +159,127 @@ $r.Content
   });
 }
 
-// POST /api/ai-analyze — call GitHub Models API with full triage context
+/** Call Ollama local LLM — no auth, no internet, runs at localhost:11434 */
+function callOllama(messages: object[], model = MODEL_OLLAMA): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const body = Buffer.from(JSON.stringify({ model, messages, stream: false }));
+    const req = http.request(
+      OLLAMA_API_URL,
+      { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': body.length }, timeout: 120_000 },
+      (res) => {
+        let data = '';
+        res.on('data', (c: Buffer) => { data += c.toString(); });
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(data);
+            if (json.error) return reject(new Error(json.error));
+            resolve(json.message?.content ?? json.response ?? '(no response)');
+          } catch {
+            reject(new Error(`Ollama parse error: ${data.slice(0, 200)}`));
+          }
+        });
+      }
+    );
+    req.on('error', (e) => reject(new Error(`Ollama not running — install from ollama.com: ${e.message}`)));
+    req.on('timeout', () => { req.destroy(); reject(new Error('Ollama timed out (model may be loading, try again)')); });
+    req.write(body);
+    req.end();
+  });
+}
+
+/** Probe whether Ollama is running locally */
+async function isOllamaRunning(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.get('http://localhost:11434/', { timeout: 1000 }, () => resolve(true));
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+  });
+}
+
+/** Call OpenAI directly from Node.js — no PowerShell needed */
+function callOpenAI(apiKey: string, messages: object[], model = MODEL_OAPI): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const body = Buffer.from(JSON.stringify({ model, messages, temperature: 0.1, max_tokens: 1500 }));
+    const req = https.request(
+      OPENAI_API_URL,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'Content-Length': body.length,
+        },
+        timeout: 60_000,
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (c: Buffer) => { data += c.toString(); });
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(data);
+            if (json.error) return reject(new Error(json.error.message ?? JSON.stringify(json.error)));
+            resolve(json.choices?.[0]?.message?.content ?? '(no response)');
+          } catch {
+            reject(new Error(`OpenAI response parse error: ${data.slice(0, 200)}`));
+          }
+        });
+      }
+    );
+    req.on('error', (e) => reject(new Error(`OpenAI request failed: ${e.message}`)));
+    req.on('timeout', () => { req.destroy(); reject(new Error('OpenAI request timed out')); });
+    req.write(body);
+    req.end();
+  });
+}
+
+// GET /api/ai-status — tells the SPA which AI backends are reachable
+aiAnalysisRouter.get('/status', async (_req: Request, res: Response) => {
+  const ollama = await isOllamaRunning();
+  const models = ollama
+    ? await new Promise<string[]>((resolve) => {
+        const r = http.get('http://localhost:11434/api/tags', { timeout: 2000 }, (resp) => {
+          let d = ''; resp.on('data', (c: Buffer) => { d += c; }); resp.on('end', () => {
+            try { resolve((JSON.parse(d).models ?? []).map((m: {name:string}) => m.name)); }
+            catch { resolve([]); }
+          });
+        });
+        r.on('error', () => resolve([]));
+      })
+    : [];
+  res.json({ ollama, ollamaModels: models });
+});
+
+// POST /api/ai-analyze — auto-selects: Ollama (local) → OpenAI → GitHub Models
 aiAnalysisRouter.post('/', async (req: Request, res: Response) => {
   const body = req.body as AnalysisRequest;
-  if (!body.githubPat) return res.status(401).json({ error: 'Missing githubPat in request body' });
+
+  const messages = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'user',   content: buildUserPrompt(body) },
+  ];
 
   try {
-    const messages = [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: buildUserPrompt(body) },
-    ];
-    const assessment = await callGitHubModels(body.githubPat, messages);
-    return res.json({ assessment });
+    let assessment: string;
+    let source: string;
+
+    const ollamaUp = await isOllamaRunning();
+    if (ollamaUp) {
+      // Prefer local Ollama — no internet, no auth, no firewall
+      assessment = await callOllama(messages);
+      source = 'ollama';
+    } else if (body.openaiKey) {
+      assessment = await callOpenAI(body.openaiKey, messages);
+      source = 'openai';
+    } else if (body.githubPat) {
+      assessment = await callGitHubModels(body.githubPat, messages);
+      source = 'github-models';
+    } else {
+      return res.status(503).json({
+        error: 'No AI available. Options:\n1. Install Ollama (free, local): ollama.com → run "ollama pull llama3.2"\n2. Add OpenAI API key in Settings\n3. Ensure GitHub PAT has Models access',
+      });
+    }
+
+    return res.json({ assessment, source });
   } catch (err: any) {
     return res.status(502).json({ error: err.message });
   }

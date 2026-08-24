@@ -1,125 +1,9 @@
 ﻿import { useState } from 'react';
-import { ClipboardCopy, Code2, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Wrench, Lightbulb, Sparkles } from 'lucide-react';
+import { ClipboardCopy, Code2, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Wrench, Lightbulb, Sparkles, GitCommit, Bug, TestTube } from 'lucide-react';
 import type { TriageAnalysis, TriageSession } from '../types';
-import { matchPattern, runCodeSearch, buildAssessment } from '../lib/analysis';
+import { matchPattern, runCodeSearch, buildSkillDrivenAssessment } from '../lib/analysis';
 import { useSettingsStore } from '../store/settings';
 import { snowVal } from '../lib/snow-client';
-
-/** Build structured prompt â€” fetches actual skill files from bridge for the area */
-async function buildAiPromptWithSkills(session: TriageSession): Promise<string> {
-  const { adoItem, snowTask, product, analysis } = session;
-  if (!adoItem) return '';
-
-  const BRIDGE = (window as any).__BRIDGE_URL__ ?? 'http://localhost:7447';
-  const f = adoItem.fields;
-  const logHits: Array<{ seed: string; text: string }> = (snowTask as any)?._logHits ?? [];
-  const topSeeds: Record<string, number> = (snowTask as any)?._topSeeds ?? {};
-  const areaPath = String(f['System.AreaPath'] ?? '').toLowerCase();
-
-  // Map area path to skill area ID
-  const areaId = areaPath.includes('mobilex') ? 'sunrise-mobile'
-    : areaPath.includes('shm') ? null   // SHM not in skills yet
-    : areaPath.includes('compass') ? 'compass-scm'
-    : areaPath.includes('clindoc') ? 'clindoc-scm'
-    : null;
-
-  // Load skill files from bridge
-  let skillContext = '';
-  if (areaId) {
-    try {
-      const r = await fetch(`${BRIDGE}/api/skills/area/${areaId}`, { signal: AbortSignal.timeout(3000) });
-      if (r.ok) {
-        const data = await r.json() as { files: Record<string, string> };
-        // Include the most analysis-relevant files
-        const relevant = ['analysis-playbook.md', 'logs.md', 'profile.md', 'references/reasoning-framework.md'];
-        for (const key of relevant) {
-          if (data.files[key]) {
-            skillContext += `\n\n### Skill: ${key}\n${data.files[key].slice(0, 1500)}`;
-          }
-        }
-      }
-    } catch { /* non-fatal */ }
-  }
-
-  const evidence = `## DA ${adoItem.id} â€” ${f['System.Title']}
-Area: ${f['System.AreaPath']} | Customer: ${f['Allscripts.Field.CustomerName'] ?? 'â€”'} | Release: ${f['Allscripts.Field.SupportVersion'] ?? 'â€”'} | Severity: ${f['Microsoft.VSTS.Common.Severity'] ?? 'â€”'}
-${product ? `Product: ${product.displayName}` : ''}
-${analysis?.verdict ? `Rule-based pre-analysis: ${analysis.verdict} (${analysis.confidence}) â€” ${analysis.gap}` : ''}
-
-## Description
-${String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '').replace(/<[^>]+>/g, ' ').slice(0, 600)}
-
-## SNOW: ${snowTask ? snowVal(snowTask.number) + ' (' + snowVal(snowTask.state) + ')' : 'not fetched'}
-${snowTask ? snowVal(snowTask.short_description) : ''}
-
-## Log signals (from HWS logs)
-${Object.entries(topSeeds).map(([s, c]) => `${s}: ${c}Ã—`).join(' | ') || '(none â€” no log files attached or logs not yet scanned)'}
-
-## Key log lines
-${logHits.slice(0, 15).map(h => `[${h.seed}] ${h.text}`).join('\n') || '(none)'}`;
-
-  return `You are a Sunrise product support engineer doing Level-2 DevAssist triage.
-${skillContext ? 'Use the skill files below as your domain reference.' : ''}
-
-Produce this structured output:
-Assessment: <CODE BUG | CONFIG / INSTALL | INTENDED BEHAVIOR | ENHANCEMENT | NEED MORE INFO>
-Client reported: <1-2 sentences restating the problem â€” confirm understanding>
-SNOW evidence: <quote the most diagnostic log lines / work notes>
-Code analysis: <file + method + the code path + observed vs expected>
-Gap: <exactly what differs between what the code does and what it should>
-Confidence: <High|Medium|Low> â€” <rationale â€” if Medium/Low, name what specific evidence would raise it>
-Blind spots: <what artifacts are missing that limit certainty>
-Recommended next step: <single most important action>
-
-Rules: No PHI. Facts + lines of investigation only â€” no confirmed fixes. Human review before L2 post.
-${skillContext}
----
-
-${evidence}`;
-}
-
-/** Sync fallback prompt — used when skill load fails */
-function buildAiPromptSync(session: TriageSession): string {
-  const { adoItem, snowTask, product, analysis } = session;
-  if (!adoItem) return '';
-  const f = adoItem.fields;
-  const logHits: Array<{ seed: string; text: string }> = (snowTask as any)?._logHits ?? [];
-  const topSeeds: Record<string, number> = (snowTask as any)?._topSeeds ?? {};
-  const pattern = product ? matchPattern(adoItem) : null;
-  const systemPrompt = `You are a Sunrise product support engineer doing Level-2 triage.
-Produce a structured assessment:
-Assessment: <CODE BUG | CONFIG / INSTALL | INTENDED BEHAVIOR | ENHANCEMENT | NEED MORE INFO>
-Client reported: <1-2 sentences>
-SNOW evidence: <key log lines>
-Code analysis: <file + method + logic>
-Gap: <one paragraph>
-Confidence: <High|Medium|Low> â€” <rationale>
-Blind spots: <what would confirm>
-Next step: <single action>
-Rules: No PHI. Facts only. Human review before any L2 post.`;
-
-  const userContent = `## DA ${adoItem.id} â€” ${f['System.Title']}
-Area: ${f['System.AreaPath']} | Customer: ${f['Allscripts.Field.CustomerName'] ?? 'â€”'} | Release: ${f['Allscripts.Field.SupportVersion'] ?? 'â€”'} | Severity: ${f['Microsoft.VSTS.Common.Severity'] ?? 'â€”'}
-${product ? `Product: ${product.displayName}` : ''}
-${analysis?.verdict ? `Pre-analysis verdict: ${analysis.verdict} (${analysis.confidence}) â€” ${analysis.gap}` : ''}
-
-## Description
-${String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '').replace(/<[^>]+>/g, ' ').slice(0, 600)}
-
-## SNOW: ${snowTask ? snowVal(snowTask.number) + ' (' + snowVal(snowTask.state) + ')' : 'not fetched'}
-${snowTask ? snowVal(snowTask.short_description) : ''}
-
-## Log signals
-${Object.entries(topSeeds).map(([s, c]) => `${s}: ${c}Ã—`).join(' | ') || '(none)'}
-
-## Key log lines
-${logHits.slice(0, 12).map(h => `[${h.seed}] ${h.text}`).join('\n') || '(none)'}
-
-## Pattern: ${pattern ? `"${pattern.name}" â€” ${pattern.fixDirection}` : 'none matched'}
-## Repos: ${product?.repos.map(r => `${r.owner}/${r.repo}`).join(', ') ?? '(none)'}`;
-
-  return `${systemPrompt}\n\n---\n\n${userContent}`;
-}
 
 interface Props {
   session: TriageSession;
@@ -150,9 +34,12 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
         ? await runCodeSearch(githubPat ?? '', product, pattern)
         : [];
       const workNotes = snowTask?.['_workNotes']
-        ? JSON.stringify(snowTask['_workNotes']).slice(0, 500)
+        ? JSON.stringify(snowTask['_workNotes'])
         : snowVal(snowTask?.work_notes);
-      const result = buildAssessment(adoItem, pattern, codeHits, workNotes || undefined);
+      const logHits: Array<{ seed: string; text: string; file: string }> = (snowTask as any)?._logHits ?? [];
+      const topSeeds: Record<string, number> = (snowTask as any)?._topSeeds ?? {};
+      // Use skill-driven analysis (reads analysis-playbook.md, reasoning-framework.md etc. from bridge)
+      const result = await buildSkillDrivenAssessment(adoItem, product, workNotes || undefined, logHits, topSeeds, codeHits);
       onAnalysisComplete(result);
     } finally {
       setRunning(false);
@@ -248,21 +135,96 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
         )}
       </div>
 
-      {/* AI Assessment â€” one-click opens VS Code Copilot Chat with full prompt */}
-      <div className="rounded-lg border border-purple-800/40 bg-purple-950/20 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-medium text-purple-300 flex items-center gap-1.5">
-            <Sparkles size={13} /> AI Assessment
-          </p>
-          <AiLaunchButton session={session} />
-        </div>
-        <p className="text-xs text-gray-500">
-          Opens VS Code Copilot Chat with the full skill prompt pre-loaded â€” just press Enter.
-          Uses the actual <code className="text-gray-400">devassist-triage</code> skill files from your workspace.
-        </p>
-      </div>
+      {/* Repo / MTM Comparison */}
+      {(session.relatedItems?.length || session.testCases?.length || session.recentCommits?.length) && (
+        <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-4">
+          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Repo / MTM Comparison</p>
 
-      {/* L2 draft â€” human-gated, never auto-posted */}      {analysis.l2Draft && (
+          {/* Related open bugs */}
+          {(session.relatedItems?.length ?? 0) > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+                <Bug size={11} className="text-red-400" />
+                Open bugs — same area (last 90 days) · {session.relatedItems!.length} found
+              </p>
+              {session.relatedItems!.slice(0, 8).map(item => (
+                <div key={item.id} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-800 last:border-0">
+                  <a href={item.url} target="_blank" rel="noreferrer"
+                     className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{item.id}</a>
+                  <span className="text-gray-300 truncate flex-1">{item.title}</span>
+                  <span className={`shrink-0 ml-2 px-1.5 py-0.5 rounded text-xs ${
+                    item.state === 'Active'     ? 'bg-blue-950 text-blue-400' :
+                    item.state === 'New'        ? 'bg-green-950 text-green-400' :
+                    item.state === 'In Progress'? 'bg-yellow-950 text-yellow-400' :
+                                                  'bg-gray-800 text-gray-500'
+                  }`}>{item.state}</span>
+                </div>
+              ))}
+              {session.relatedItems!.length === 0 && (
+                <p className="text-xs text-gray-600">No open bugs found in this area — this may be a new/unreported issue</p>
+              )}
+            </div>
+          )}
+          {(session.relatedItems?.length ?? 0) === 0 && session.relatedItems !== undefined && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+                <Bug size={11} className="text-red-400" /> Open bugs — same area (last 90 days)
+              </p>
+              <p className="text-xs text-emerald-600">✓ No open bugs found — this may be a new/unreported issue</p>
+            </div>
+          )}
+
+          {/* Test cases */}
+          {(session.testCases?.length ?? 0) > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+                <TestTube size={11} className="text-purple-400" />
+                MTM Test cases — same area · {session.testCases!.length} found
+              </p>
+              {session.testCases!.slice(0, 6).map(tc => (
+                <div key={tc.id} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-800 last:border-0">
+                  <a href={tc.url} target="_blank" rel="noreferrer"
+                     className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{tc.id}</a>
+                  <span className="text-gray-300 truncate flex-1">{tc.title}</span>
+                  <span className="shrink-0 ml-2 px-1.5 py-0.5 rounded text-xs bg-purple-950 text-purple-400">{tc.state}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {(session.testCases?.length ?? 0) === 0 && session.testCases !== undefined && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+                <TestTube size={11} className="text-purple-400" /> MTM Test cases — same area
+              </p>
+              <p className="text-xs text-yellow-600">⚠ No test cases found — coverage gap for this area</p>
+            </div>
+          )}
+
+          {/* Recent commits */}
+          {(session.recentCommits?.length ?? 0) > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+                <GitCommit size={11} className="text-altera-teal" />
+                Recent commits — {session.product?.repos.find(r=>r.required)?.repo ?? 'primary repo'}
+              </p>
+              {session.recentCommits!.slice(0, 5).map(c => (
+                <div key={c.sha} className="flex items-center gap-2 text-xs py-0.5 border-b border-gray-800 last:border-0">
+                  <a href={c.url} target="_blank" rel="noreferrer"
+                     className="text-altera-teal font-mono shrink-0">{c.sha}</a>
+                  <span className="text-gray-400 shrink-0">{c.date}</span>
+                  <span className="text-gray-300 truncate">{c.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* AI Assessment — calls OpenAI via bridge, shows response inline */}
+      <AiAssessmentPanel session={session} />
+
+      {/* L2 draft — human-gated, never auto-posted */}
+      {analysis.l2Draft && (
         <div className="rounded-lg border border-altera-blue/40 bg-altera-blue/10 p-4 space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium text-altera-teal">L2 Commentary Draft (review before posting)</p>
@@ -288,49 +250,134 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
   );
 }
 
-function AiLaunchButton({ session }: { session: TriageSession }) {
-  const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<'idle' | 'opened' | 'copied'>('idle');
+function AiAssessmentPanel({ session }: { session: TriageSession }) {
+  const { openaiKey, githubPat } = useSettingsStore();
+  const [running, setRunning]   = useState(false);
+  const [result, setResult]     = useState<string | null>(null);
+  const [error, setError]       = useState<string | null>(null);
+  const [copied, setCopied]     = useState(false);
+  const [aiSource, setAiSource] = useState<string | null>(null);
+  const [ollamaOk, setOllamaOk] = useState<boolean | null>(null);
 
-  const launch = async () => {
-    setLoading(true);
+  const BRIDGE = (window as any).__BRIDGE_URL__ ?? 'http://localhost:7447';
+
+  // Check which AI backend is available on mount
+  useState(() => {
+    fetch(`${BRIDGE}/api/ai-analyze/status`, { signal: AbortSignal.timeout(2000) })
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { ollama?: boolean; ollamaModels?: string[] } | null) => setOllamaOk(d?.ollama ?? false))
+      .catch(() => setOllamaOk(false));
+  });
+
+  const canRun = ollamaOk || !!(openaiKey || githubPat);
+
+  const runAi = async () => {
+    if (!session.adoItem) return;
+    setRunning(true); setError(null); setResult(null); setAiSource(null);
     try {
-      const prompt = await buildAiPromptWithSkills(session);
-
-      // Write prompt to clipboard first (fallback)
-      await navigator.clipboard.writeText(prompt);
-
-      // Try to open VS Code Copilot Chat via vscode:// URI with the prompt
-      // The GitHub Copilot Chat extension registers this command handler
-      const encoded = encodeURIComponent(prompt);
-      const vscodeUri = `vscode://GitHub.copilot-chat/openChat?query=${encoded}`;
-
-      // Open the URI â€” if VS Code is running it will handle it
-      window.open(vscodeUri, '_blank');
-      setStatus('opened');
-      setTimeout(() => setStatus('idle'), 4000);
-    } catch {
-      // fallback to sync prompt if skill load fails
-      const p = buildAiPromptSync(session);
-      await navigator.clipboard.writeText(p);
-      window.open(`vscode://GitHub.copilot-chat/openChat?query=${encodeURIComponent(p)}`, '_blank');
-      setStatus('opened');
-      setTimeout(() => setStatus('idle'), 4000);
+      const f = session.adoItem.fields;
+      const logHits: Array<{file:string;line:number;seed:string;text:string}> = (session.snowTask as any)?._logHits ?? [];
+      const topSeeds: Record<string, number> = (session.snowTask as any)?._topSeeds ?? {};
+      const body = {
+        openaiKey: openaiKey || undefined,
+        githubPat: githubPat || undefined,
+        da: {
+          id: session.adoItem.id,
+          title: f['System.Title'],
+          areaPath: f['System.AreaPath'],
+          customer: String(f['Allscripts.Field.CustomerName'] ?? ''),
+          release: String(f['Allscripts.Field.SupportVersion'] ?? ''),
+          severity: String(f['Microsoft.VSTS.Common.Severity'] ?? ''),
+          description: String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '').replace(/<[^>]+>/g,' ').slice(0, 800),
+        },
+        snowTask: session.snowTask ? {
+          number: String((session.snowTask as any).number?.display_value ?? (session.snowTask as any).number ?? ''),
+          shortDescription: String((session.snowTask as any).short_description?.display_value ?? ''),
+          state: String((session.snowTask as any).state?.display_value ?? ''),
+          workNotes: JSON.stringify((session.snowTask as any)._workNotes ?? '').slice(0, 1200),
+        } : null,
+        logHits,
+        topSeeds,
+        repos: session.product?.repos.map(r => `${r.owner}/${r.repo}`) ?? [],
+        patternName: session.analysis?.codeAnalysis?.match(/Keyword pattern: "([^"]+)"/)?.[1],
+        patternFixDirection: session.analysis?.gap?.slice(0, 200),
+      };
+      const res = await fetch(`${BRIDGE}/api/ai-analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(120_000),
+      });
+      const data = await res.json() as { assessment?: string; error?: string; source?: string };
+      if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setResult(data.assessment ?? '');
+      setAiSource(data.source ?? null);
+    } catch (e: any) {
+      setError(e.message);
     } finally {
-      setLoading(false);
+      setRunning(false);
     }
   };
 
+  const copyResult = () => {
+    if (result) { navigator.clipboard.writeText(result); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+  };
+
+  const sourceLabel: Record<string, string> = {
+    'ollama': '🦙 Ollama (local)',
+    'openai': '🤖 OpenAI',
+    'github-models': '⚡ GitHub Models',
+  };
+
   return (
-    <button onClick={launch} disabled={loading}
-      className="flex items-center gap-1.5 text-xs bg-purple-900/60 hover:bg-purple-900/90
-                 disabled:opacity-40 border border-purple-600 text-purple-100 px-3 py-1.5 rounded font-medium">
-      {loading ? <><Loader2 size={11} className="animate-spin" /> Loading skills...</>
-      : status === 'opened' ? <><CheckCircle2 size={11} className="text-emerald-400" /> Opened in VS Code</>
-      : status === 'copied' ? <><CheckCircle2 size={11} className="text-emerald-400" /> Copied (paste in Copilot Chat)</>
-      : <><Sparkles size={11} /> Ask AI in VS Code</>
-      }
-    </button>
+    <div className="rounded-lg border border-purple-800/40 bg-purple-950/20 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <p className="text-xs font-medium text-purple-300 flex items-center gap-1.5">
+            <Sparkles size={13} /> AI Assessment
+          </p>
+          {ollamaOk === true && (
+            <span className="text-xs text-emerald-400 border border-emerald-800 rounded px-1.5 py-0.5">🦙 Ollama ready</span>
+          )}
+          {ollamaOk === false && !openaiKey && (
+            <span className="text-xs text-yellow-600 border border-yellow-900 rounded px-1.5 py-0.5">No local AI</span>
+          )}
+          {aiSource && <span className="text-xs text-gray-500">{sourceLabel[aiSource] ?? aiSource}</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          {result && (
+            <button onClick={copyResult}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-white border border-gray-700 px-2 py-1 rounded">
+              {copied ? <><CheckCircle2 size={11} className="text-emerald-400"/> Copied</> : <><ClipboardCopy size={11}/> Copy</>}
+            </button>
+          )}
+          <button onClick={runAi} disabled={running || !canRun}
+            className="flex items-center gap-1.5 text-xs bg-purple-900/60 hover:bg-purple-900/90 disabled:opacity-40 border border-purple-600 text-purple-100 px-3 py-1.5 rounded font-medium">
+            {running ? <><Loader2 size={11} className="animate-spin"/> Asking AI...</>
+            : result  ? <><Sparkles size={11}/> Re-run</>
+            : <><Sparkles size={11}/> Ask AI</>}
+          </button>
+        </div>
+      </div>
+
+      {!canRun && (
+        <div className="text-xs text-yellow-600 space-y-1">
+          <p>No AI available. Options:</p>
+          <p>• <strong className="text-yellow-400">Free & local</strong>: Install <a href="https://ollama.com" target="_blank" rel="noreferrer" className="underline">Ollama</a>, then run: <code className="bg-gray-800 px-1 rounded">ollama pull llama3.2</code></p>
+          <p>• <strong className="text-yellow-400">OpenAI key</strong>: Add in <a href="/settings" className="underline text-yellow-400">Settings</a></p>
+        </div>
+      )}
+      {error && <p className="text-xs text-red-400 font-mono whitespace-pre-wrap">Error: {error}</p>}
+      {result && (
+        <pre className="text-xs text-gray-200 whitespace-pre-wrap font-mono leading-relaxed bg-gray-900/60 rounded p-3 max-h-96 overflow-auto border border-gray-700">
+          {result}
+        </pre>
+      )}
+      {!result && !error && canRun && !running && (
+        <p className="text-xs text-gray-600">
+          {ollamaOk ? 'Ollama detected — click "Ask AI" to run locally.' : 'Click "Ask AI" to analyze with OpenAI.'}
+        </p>
+      )}
+    </div>
   );
 }
-

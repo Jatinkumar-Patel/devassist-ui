@@ -1,4 +1,31 @@
+const BRIDGE = (): string => (window as any).__BRIDGE_URL__ ?? 'http://localhost:7447';
 const GH_API = 'https://api.github.com';
+export interface CommitHit {
+  sha: string;
+  message: string;
+  date: string;
+  url: string;
+}
+
+/** Search recent commits in a repo via the bridge (avoids CORS) */
+export async function searchCommits(githubPat: string, repo: string, keywords: string[]): Promise<CommitHit[]> {
+  const q = encodeURIComponent(`repo:${repo} ${keywords.slice(0, 3).join(' ')}`);
+  const res = await fetch(
+    `${BRIDGE()}/api/gh-search/commits?q=${q}&per_page=10`,
+    { headers: { 'X-GitHub-Token': githubPat }, signal: AbortSignal.timeout(5000) }
+  );
+  if (!res.ok) return [];
+  const data = await res.json() as {
+    items?: Array<{ sha: string; commit: { message: string; author: { date: string } }; html_url: string }>
+  };
+  return (data.items ?? []).map(c => ({
+    sha: c.sha.slice(0, 7),
+    message: c.commit.message.split('\n')[0].slice(0, 100),
+    date: c.commit.author.date.slice(0, 10),
+    url: c.html_url,
+  }));
+}
+
 
 function ghHeaders(pat: string): HeadersInit {
   return {

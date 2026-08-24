@@ -10,13 +10,13 @@ export const ORG_DEFAULTS = {
 } as const;
 
 interface SettingsState {
-  // Personal — each user fills these in once via the wizard
   adoPat: string;
   githubPat: string;
-  // Org-level — pre-set, overridable only from Settings page
+  openaiKey: string;      // personal OpenAI API key — optional, enables inline AI analysis
   bridgeUrl: string;
   setAdoPat: (pat: string) => void;
   setGithubPat: (pat: string) => void;
+  setOpenaiKey: (key: string) => void;
   setBridgeUrl: (url: string) => void;
   clearPats: () => void;
 }
@@ -26,16 +26,17 @@ export const useSettingsStore = create<SettingsState>()(
     (set) => ({
       adoPat: '',
       githubPat: '',
+      openaiKey: '',
       bridgeUrl: ORG_DEFAULTS.bridgeUrl,
-      setAdoPat: (adoPat) => set({ adoPat }),
-      setGithubPat: (githubPat) => set({ githubPat }),
-      setBridgeUrl: (bridgeUrl) => set({ bridgeUrl }),
-      clearPats: () => set({ adoPat: '', githubPat: '' }),
+      setAdoPat:     (adoPat) => set({ adoPat }),
+      setGithubPat:  (githubPat) => set({ githubPat }),
+      setOpenaiKey:  (openaiKey) => set({ openaiKey }),
+      setBridgeUrl:  (bridgeUrl) => set({ bridgeUrl }),
+      clearPats: () => set({ adoPat: '', githubPat: '', openaiKey: '' }),
     }),
     {
       name: 'devassist-settings',
-      // Never log PAT values
-      partialize: (s) => ({ adoPat: s.adoPat, githubPat: s.githubPat, bridgeUrl: s.bridgeUrl }),
+      partialize: (s) => ({ adoPat: s.adoPat, githubPat: s.githubPat, openaiKey: s.openaiKey, bridgeUrl: s.bridgeUrl }),
     }
   )
 );

@@ -53,3 +53,56 @@ export async function fetchMtmTestPlan(planId: number, pat: string) {
 export function workItemUrl(id: number): string {
   return `${ADO_ORG}/SR/_workitems/edit/${id}`;
 }
+
+export interface RelatedItem {
+  id: number;
+  title: string;
+  state: string;
+  type: string;
+  url: string;
+}
+
+async function runWiql(pat: string, query: string): Promise<number[]> {
+  const url = `${BRIDGE()}/api/ado/SR/_apis/wit/wiql?api-version=7.0`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: adoHeaders(pat),
+    body: JSON.stringify({ query }),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) return [];
+  const data = await res.json() as { workItems?: Array<{ id: number }> };
+  return (data.workItems ?? []).map(w => w.id).slice(0, 15);
+}
+
+async function fetchItemsBatch(ids: number[], pat: string): Promise<RelatedItem[]> {
+  if (!ids.length) return [];
+  const fields = 'System.Id,System.Title,System.State,System.WorkItemType';
+  const url = `${BRIDGE()}/api/ado/SR/_apis/wit/workItems?ids=${ids.join(',')}&fields=${fields}&api-version=7.0`;
+  const res = await fetch(url, { headers: adoHeaders(pat), signal: AbortSignal.timeout(6000) });
+  if (!res.ok) return [];
+  const data = await res.json() as { value?: Array<{ id: number; fields: Record<string, string> }> };
+  return (data.value ?? []).map(w => ({
+    id: w.id,
+    title: w.fields['System.Title'] ?? '',
+    state: w.fields['System.State'] ?? '',
+    type: w.fields['System.WorkItemType'] ?? '',
+    url: workItemUrl(w.id),
+  }));
+}
+
+/** Open bugs in the same area path created in the last 90 days */
+export async function fetchRelatedBugs(areaPath: string, pat: string): Promise<RelatedItem[]> {
+  const escaped = areaPath.replace(/\\/g, '\\\\');
+  const query = `SELECT [System.Id] FROM WorkItems WHERE [System.AreaPath] UNDER '${escaped}' AND [System.WorkItemType] IN ('Bug','Task') AND [System.State] NOT IN ('Closed','Resolved','Done') AND [System.CreatedDate] > @today - 90 ORDER BY [System.ChangedDate] DESC`;
+  const ids = await runWiql(pat, query);
+  return fetchItemsBatch(ids, pat);
+}
+
+/** Test cases for the area path */
+export async function fetchTestCases(areaPath: string, pat: string): Promise<RelatedItem[]> {
+  const escaped = areaPath.replace(/\\/g, '\\\\');
+  const query = `SELECT [System.Id] FROM WorkItems WHERE [System.AreaPath] UNDER '${escaped}' AND [System.WorkItemType] = 'Test Case' ORDER BY [System.ChangedDate] DESC`;
+  const ids = await runWiql(pat, query);
+  return fetchItemsBatch(ids.slice(0, 10), pat);
+}

@@ -1,4 +1,4 @@
-﻿import { ExternalLink, GitBranch, Package, AlertTriangle, CheckCircle2, Paperclip, ChevronDown } from 'lucide-react';
+﻿import { ExternalLink, GitBranch, Package, AlertTriangle, Paperclip, ChevronDown } from 'lucide-react';
 import type { TriageSession, TriageAnalysis } from '../types';
 import { workItemUrl } from '../lib/ado-client';
 import { snowTaskUrl, snowVal } from '../lib/snow-client';
@@ -56,46 +56,48 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* â”€â”€ Run header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-2">
+      {/* Compact header */}
+      <div className="rounded-lg border border-gray-700 bg-gray-900 p-3">
         <div className="flex items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <span className="text-xs text-gray-500 font-mono">
               {fields['System.WorkItemType']} #{adoItem.id}
+              {snowNum && (
+                <>
+                  {' · '}
+                  <a href={snowTaskUrl(String(snowNum))} target="_blank" rel="noreferrer"
+                     className="text-altera-teal hover:text-white">{String(snowNum)}</a>
+                  {session.snowTaskTable && <span className="text-gray-600 ml-1">({session.snowTaskTable})</span>}
+                </>
+              )}
             </span>
-            <h2 className="text-gray-100 font-semibold mt-0.5 leading-snug">
+            <h2 className="text-gray-100 font-semibold mt-0.5 leading-snug text-sm">
               {fields['System.Title']}
             </h2>
           </div>
-          <a href={workItemUrl(adoItem.id)} target="_blank" rel="noreferrer" className="text-altera-teal hover:text-white shrink-0">
-            <ExternalLink size={14} />
+          <a href={workItemUrl(adoItem.id)} target="_blank" rel="noreferrer"
+             className="text-altera-teal hover:text-white shrink-0 mt-1">
+            <ExternalLink size={13} />
           </a>
         </div>
-        <div className="flex flex-wrap gap-2 text-xs">
-          <Badge label="Area"     value={fields['System.AreaPath']} />
-          <Badge label="State"    value={fields['System.State']} />
-          {fields['Allscripts.Field.SupportVersion'] && <Badge label="Release"  value={String(fields['Allscripts.Field.SupportVersion'])} />}
+        <div className="flex flex-wrap gap-1.5 text-xs mt-2">
+          <Badge label="State" value={fields['System.State']} />
+          {fields['Allscripts.Field.SupportVersion'] && <Badge label="Release" value={String(fields['Allscripts.Field.SupportVersion'])} />}
           {fields['Allscripts.Field.CustomerName']   && <Badge label="Customer" value={String(fields['Allscripts.Field.CustomerName'])} />}
-          {fields['Microsoft.VSTS.Common.Severity']  && <Badge label="Severity" value={String(fields['Microsoft.VSTS.Common.Severity'])} />}
-          {fields['Allscripts.Field.SupportPriority']&& <Badge label="Priority" value={String(fields['Allscripts.Field.SupportPriority'])} />}
+          {fields['Microsoft.VSTS.Common.Severity']  && <Badge label="Sev" value={String(fields['Microsoft.VSTS.Common.Severity'])} />}
+          {product && <Badge label="Product" value={product.displayName} />}
+          {clarityGaps !== undefined && (
+            clarityGaps.length === 0
+              ? <span className="bg-emerald-950 border border-emerald-800 rounded px-2 py-0.5 text-emerald-300">Clarity OK</span>
+              : <span className="bg-yellow-950 border border-yellow-800 rounded px-2 py-0.5 text-yellow-300">Gaps: {clarityGaps.length}</span>
+          )}
         </div>
-        {/* SNOW link */}
-        {snowNum && (
-          <div className="text-xs">
-            <span className="text-gray-500">SNOW task: </span>
-            <a href={snowTaskUrl(String(snowNum))} target="_blank" rel="noreferrer"
-               className="text-altera-teal hover:text-white font-mono">{String(snowNum)}</a>
-            {session.snowTaskTable && <span className="text-gray-600 ml-1">({session.snowTaskTable})</span>}
-          </div>
-        )}
-        {/* Linked IDs parsed from title (CS / KB / PRB / INC / DA) */}
         {(() => {
           const title = fields['System.Title'] ?? '';
-          const ids = [...title.matchAll(/\b(CS\d{5,}|KB\d{4,}|PRB\d{5,}|INC\d{6,}|DA[-\s]?\d{6,})\b/gi)]
-            .map(m => m[1]);
+          const ids = [...title.matchAll(/\b(CS\d{5,}|KB\d{4,}|PRB\d{5,}|INC\d{6,}|DA[-\s]?\d{6,})\b/gi)].map(m => m[1]);
           if (!ids.length) return null;
           return (
-            <div className="flex flex-wrap gap-1 text-xs">
+            <div className="flex flex-wrap gap-1 text-xs mt-1.5">
               <span className="text-gray-500">Linked:</span>
               {ids.map(id => (
                 <span key={id} className="bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 font-mono text-altera-teal">{id}</span>
@@ -103,174 +105,14 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
             </div>
           );
         })()}
-        {/* DA description (first 400 chars) */}
-        {fields['System.Description'] && (
-          <Collapsible label="Description">
-            <p className="text-xs text-gray-400 whitespace-pre-wrap leading-relaxed">
-              {String(fields['System.Description']).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 600)}
-            </p>
-          </Collapsible>
-        )}
-        {fields['Allscripts.Field.DevAssistDetail'] && (
-          <Collapsible label="DevAssist Detail">
-            <p className="text-xs text-gray-400 whitespace-pre-wrap leading-relaxed">
-              {String(fields['Allscripts.Field.DevAssistDetail']).slice(0, 600)}
-            </p>
-          </Collapsible>
-        )}
       </div>
 
-      {/* â”€â”€ Phase 1: Clarity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      {clarityGaps !== undefined && (
-        <div className={`rounded-lg border p-3 text-sm ${
-          clarityGaps.length === 0
-            ? 'border-emerald-800 bg-emerald-950/20'
-            : 'border-yellow-800/60 bg-yellow-950/20'
-        }`}>
-          <div className="flex items-center gap-1.5 font-medium mb-1.5">
-            {clarityGaps.length === 0
-              ? <><CheckCircle2 size={13} className="text-emerald-400" /> <span className="text-emerald-300">Clarity: CLEAR</span></>
-              : <><AlertTriangle size={13} className="text-yellow-400" /> <span className="text-yellow-300">Clarity: GAPS ({clarityGaps.length})</span></>
-            }
-          </div>
-          {clarityGaps.map((g, i) => (
-            <p key={i} className="text-xs text-yellow-200 ml-5">â€¢ {g}</p>
-          ))}
-        </div>
-      )}
-
-      {/* â”€â”€ Product routing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      {product ? (
-        <div className="rounded-lg border border-altera-blue/40 bg-altera-blue/10 p-4 space-y-3">
-          <div className="flex items-center gap-2 text-altera-teal text-sm font-medium">
-            <Package size={14} />
-            Routed to: {product.displayName}
-          </div>
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <InfoRow label="SNOW Product" value={product.snowProduct} />
-            <InfoRow label="TASK table"   value={product.snowTaskTable} />
-          </div>
-          <div className="space-y-1">
-            <p className="text-xs text-gray-500 font-medium">Repos</p>
-            {product.repos.map((r) => (
-              <a key={r.key} href={`https://github.com/${r.owner}/${r.repo}`}
-                 target="_blank" rel="noreferrer"
-                 className="flex items-center gap-1.5 text-xs text-altera-teal hover:text-white">
-                <GitBranch size={11} />
-                {r.owner}/{r.repo}
-                {r.required && <span className="text-gray-500">(primary)</span>}
-              </a>
-            ))}
-          </div>
-        </div>
-      ) : adoItem && (
-        <div className="rounded-lg border border-yellow-800/50 bg-yellow-950/20 p-3 text-xs text-yellow-300">
-          âš  No product match for "{fields['System.AreaPath']}" â€” add it in the Registry.
-        </div>
-      )}
-
-      {/* â”€â”€ SNOW data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      {/* ── SNOW data ────────────────────────────────────────────────────────── */}
-      {snowTask && (
-        <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-gray-400">
-              ServiceNow — {snowVal(snowTask.number)}
-              <span className="text-gray-600 ml-1">({snowVal(snowTask.state)})</span>
-            </p>
-            <a href={snowTaskUrl(snowVal(snowTask.number))} target="_blank" rel="noreferrer"
-               className="text-altera-teal hover:text-white"><ExternalLink size={12} /></a>
-          </div>
-          <p className="text-sm text-gray-200">{snowVal(snowTask.short_description)}</p>
-          <div className="flex flex-wrap gap-2 text-xs pt-1">
-            {snowVal(snowTask.priority)    && <Badge label="Priority" value={snowVal(snowTask.priority)} />}
-            {snowVal(snowTask.assigned_to) && <Badge label="Assigned" value={snowVal(snowTask.assigned_to)} />}
-            {snowVal(snowTask.opened_at)   && <Badge label="Opened"   value={snowVal(snowTask.opened_at).slice(0,10)} />}
-            {snowVal(snowTask.company)     && <Badge label="Company"  value={snowVal(snowTask.company)} />}
-            {snowVal((snowTask as any).u_task_type) && <Badge label="Task type" value={snowVal((snowTask as any).u_task_type)} />}
-            {snowVal((snowTask as any).u_devid)     && <Badge label="Dev ID"    value={snowVal((snowTask as any).u_devid)} />}
-          </div>
-          {snowVal((snowTask as any).description) && (
-            <Collapsible label="SNOW Description">
-              <p className="text-xs text-gray-400 whitespace-pre-wrap leading-relaxed">
-                {snowVal((snowTask as any).description).slice(0, 800)}
-              </p>
-            </Collapsible>
-          )}
-          {snowVal((snowTask as any).u_steps_to_reproduce) && (
-            <Collapsible label="Steps to reproduce">
-              <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal((snowTask as any).u_steps_to_reproduce)}</p>
-            </Collapsible>
-          )}
-          {snowVal((snowTask as any).u_dev_assist_detail) && (
-            <Collapsible label="Dev assist detail">
-              <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal((snowTask as any).u_dev_assist_detail)}</p>
-            </Collapsible>
-          )}
-          {!!snowTask['_workNotes'] && (
-            <Collapsible label="Work notes">
-              <pre className="text-xs font-mono text-gray-400 whitespace-pre-wrap leading-relaxed max-h-64 overflow-auto">
-                {JSON.stringify(snowTask['_workNotes'], null, 2)}
-              </pre>
-            </Collapsible>
-          )}
-          {snowVal(snowTask.close_notes) && (
-            <Collapsible label="Close notes">
-              <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal(snowTask.close_notes)}</p>
-            </Collapsible>
-          )}
-          {session.snowIncident && (
-            <Collapsible label={`Incident — ${snowVal((session.snowIncident as any).number)}`}>
-              <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal((session.snowIncident as any).short_description)}</p>
-            </Collapsible>
-          )}
-          {session.snowCase && (
-            <Collapsible label={`Case — ${snowVal((session.snowCase as any).number)}`}>
-              <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal((session.snowCase as any).short_description)}</p>
-            </Collapsible>
-          )}
-        </div>
-      )}
-
-      {/* â”€â”€ Phase 2: Attachments ledger â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      {attachments && attachments.length > 0 && (
-        <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-2">
-          <p className="text-xs font-medium text-gray-400 flex items-center gap-1.5">
-            <Paperclip size={12} /> Attachments ({attachments.length})
-          </p>
-          <div className="space-y-1">
-            {attachments.map((a, i) => (
-              <div key={i} className="flex items-center justify-between text-xs py-1 border-b border-gray-800 last:border-0">
-                <span className="text-gray-300 font-mono truncate max-w-xs">{snowVal(a.file_name)}</span>
-                <span className="text-gray-600 shrink-0 ml-2">{snowVal(a.content_type)}</span>
-              </div>
-            ))}
-          </div>
-          {artifactLedger && (
-            <div className="text-xs text-gray-600 pt-1">
-              Coverage: timeframe <span className={artifactLedger.coverageTimeframe === 'ok' ? 'text-emerald-400' : 'text-yellow-400'}>
-                {artifactLedger.coverageTimeframe}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Workaround / dev notes from DA */}
-      {fields['Allscripts.Field.WorkaroundInstructions'] && (
-        <Collapsible label="Workaround instructions">
-          <p className="text-xs text-gray-400 whitespace-pre-wrap">
-            {String(fields['Allscripts.Field.WorkaroundInstructions'])}
-          </p>
-        </Collapsible>
-      )}
-
-      {/* ── Phase 3/4: Root Cause Analysis ───────────────────────────────── */}
+      {/* ROOT CAUSE ANALYSIS — primary section */}
       {session.status === 'ready' && product && (
         <AnalysisPanel session={session} onAnalysisComplete={onAnalysisComplete} />
       )}
 
-      {/* ── Log Scan -- download + grep SNOW attachments ──────────────────── */}
+      {/* Log Scan */}
       {session.status === 'ready' && snowTask && (
         <LogAnalysisPanel
           snowTask={snowTask}
@@ -281,6 +123,154 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
           }}
         />
       )}
+
+      {/* Clarity gaps (if any) */}
+      {clarityGaps !== undefined && clarityGaps.length > 0 && (
+        <div className="rounded-lg border border-yellow-800/60 bg-yellow-950/20 p-3">
+          <div className="flex items-center gap-1.5 font-medium mb-1.5 text-sm">
+            <AlertTriangle size={13} className="text-yellow-400" />
+            <span className="text-yellow-300">Info gaps ({clarityGaps.length}) — ask customer</span>
+          </div>
+          {clarityGaps.map((g, i) => (
+            <p key={i} className="text-xs text-yellow-200 ml-5">• {g}</p>
+          ))}
+        </div>
+      )}
+
+      {/* Raw evidence — collapsed */}
+      <details className="group">
+        <summary className="flex items-center gap-2 cursor-pointer select-none list-none rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs text-gray-400 hover:text-gray-200">
+          <ChevronDown size={13} className="group-open:rotate-180 transition-transform" />
+          Raw evidence — SNOW / TFS / Attachments
+          {snowTask && <span className="text-gray-600 ml-1">({snowVal(snowTask.number)})</span>}
+        </summary>
+        <div className="mt-2 space-y-3 pl-1">
+
+          {product ? (
+            <div className="rounded-lg border border-altera-blue/30 bg-altera-blue/5 p-3 space-y-2">
+              <div className="flex items-center gap-2 text-altera-teal text-xs font-medium">
+                <Package size={12} /> {product.displayName} — {product.snowProduct}
+              </div>
+              <InfoRow label="Task table" value={product.snowTaskTable} />
+              <div className="flex flex-wrap gap-x-3">
+                {product.repos.map((r) => (
+                  <a key={r.key} href={`https://github.com/${r.owner}/${r.repo}`}
+                     target="_blank" rel="noreferrer"
+                     className="flex items-center gap-1 text-xs text-altera-teal hover:text-white">
+                    <GitBranch size={10} />{r.owner}/{r.repo}
+                  </a>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-yellow-800/50 bg-yellow-950/20 p-3 text-xs text-yellow-300">
+              No product match for "{fields['System.AreaPath']}"
+            </div>
+          )}
+
+          {snowTask && (
+            <div className="rounded-lg border border-gray-700 bg-gray-900 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-gray-400">
+                  SNOW {snowVal(snowTask.number)} <span className="text-gray-600">({snowVal(snowTask.state)})</span>
+                </p>
+                <a href={snowTaskUrl(snowVal(snowTask.number))} target="_blank" rel="noreferrer"
+                   className="text-altera-teal hover:text-white"><ExternalLink size={11} /></a>
+              </div>
+              <p className="text-xs text-gray-300">{snowVal(snowTask.short_description)}</p>
+              <div className="flex flex-wrap gap-1.5 text-xs">
+                {snowVal(snowTask.priority)    && <Badge label="Priority" value={snowVal(snowTask.priority)} />}
+                {snowVal(snowTask.assigned_to) && <Badge label="Assigned" value={snowVal(snowTask.assigned_to)} />}
+                {snowVal(snowTask.opened_at)   && <Badge label="Opened"   value={snowVal(snowTask.opened_at).slice(0,10)} />}
+                {snowVal(snowTask.company)     && <Badge label="Company"  value={snowVal(snowTask.company)} />}
+                {snowVal((snowTask as any).u_task_type) && <Badge label="Task type" value={snowVal((snowTask as any).u_task_type)} />}
+                {snowVal((snowTask as any).u_devid)     && <Badge label="Dev ID"    value={snowVal((snowTask as any).u_devid)} />}
+              </div>
+              {snowVal((snowTask as any).description) && (
+                <Collapsible label="SNOW Description">
+                  <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal((snowTask as any).description).slice(0, 800)}</p>
+                </Collapsible>
+              )}
+              {snowVal((snowTask as any).u_steps_to_reproduce) && (
+                <Collapsible label="Steps to reproduce">
+                  <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal((snowTask as any).u_steps_to_reproduce)}</p>
+                </Collapsible>
+              )}
+              {snowVal((snowTask as any).u_dev_assist_detail) && (
+                <Collapsible label="Dev assist detail">
+                  <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal((snowTask as any).u_dev_assist_detail)}</p>
+                </Collapsible>
+              )}
+              {!!snowTask['_workNotes'] && (
+                <Collapsible label="Work notes">
+                  <pre className="text-xs font-mono text-gray-400 whitespace-pre-wrap max-h-64 overflow-auto">
+                    {JSON.stringify(snowTask['_workNotes'], null, 2)}
+                  </pre>
+                </Collapsible>
+              )}
+              {snowVal(snowTask.close_notes) && (
+                <Collapsible label="Close notes">
+                  <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal(snowTask.close_notes)}</p>
+                </Collapsible>
+              )}
+              {session.snowIncident && (
+                <Collapsible label={`Incident — ${snowVal((session.snowIncident as any).number)}`}>
+                  <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal((session.snowIncident as any).short_description)}</p>
+                </Collapsible>
+              )}
+              {session.snowCase && (
+                <Collapsible label={`Case — ${snowVal((session.snowCase as any).number)}`}>
+                  <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal((session.snowCase as any).short_description)}</p>
+                </Collapsible>
+              )}
+            </div>
+          )}
+
+          {(fields['System.Description'] || fields['Allscripts.Field.DevAssistDetail'] || fields['Allscripts.Field.WorkaroundInstructions']) && (
+            <div className="rounded-lg border border-gray-700 bg-gray-900 p-3 space-y-2">
+              <p className="text-xs font-medium text-gray-500">TFS fields</p>
+              {fields['System.Description'] && (
+                <Collapsible label="Description">
+                  <p className="text-xs text-gray-400 whitespace-pre-wrap">
+                    {String(fields['System.Description']).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 600)}
+                  </p>
+                </Collapsible>
+              )}
+              {fields['Allscripts.Field.DevAssistDetail'] && (
+                <Collapsible label="DevAssist Detail">
+                  <p className="text-xs text-gray-400 whitespace-pre-wrap">{String(fields['Allscripts.Field.DevAssistDetail']).slice(0, 600)}</p>
+                </Collapsible>
+              )}
+              {fields['Allscripts.Field.WorkaroundInstructions'] && (
+                <Collapsible label="Workaround">
+                  <p className="text-xs text-gray-400 whitespace-pre-wrap">{String(fields['Allscripts.Field.WorkaroundInstructions'])}</p>
+                </Collapsible>
+              )}
+            </div>
+          )}
+
+          {attachments && attachments.length > 0 && (
+            <div className="rounded-lg border border-gray-700 bg-gray-900 p-3 space-y-1">
+              <p className="text-xs font-medium text-gray-400 flex items-center gap-1.5">
+                <Paperclip size={11} /> Attachments ({attachments.length})
+              </p>
+              {attachments.map((a, i) => (
+                <div key={i} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-800 last:border-0">
+                  <span className="text-gray-300 font-mono truncate max-w-xs">{snowVal(a.file_name)}</span>
+                  <span className="text-gray-600 shrink-0 ml-2">{snowVal(a.content_type)}</span>
+                </div>
+              ))}
+              {artifactLedger && (
+                <div className="text-xs text-gray-600 pt-1">
+                  Coverage: <span className={artifactLedger.coverageTimeframe === 'ok' ? 'text-emerald-400' : 'text-yellow-400'}>
+                    {artifactLedger.coverageTimeframe}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </details>
     </div>
   );
 }
@@ -313,5 +303,4 @@ function Collapsible({ label, children }: { label: string; children: React.React
     </details>
   );
 }
-
 
