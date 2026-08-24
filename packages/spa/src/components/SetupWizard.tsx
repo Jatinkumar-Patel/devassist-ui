@@ -130,24 +130,38 @@ export default function SetupWizard({ onDone }: Props) {
                 <a href="https://nodejs.org" target="_blank" rel="noreferrer"
                    className="text-altera-teal hover:underline">download here</a>.
               </p>
-              {window.location.protocol === 'https:' && (
-                <div className="rounded-lg border border-yellow-800/50 bg-yellow-950/20 p-3 text-xs text-yellow-300 space-y-1">
-                  <p className="font-medium">⚠ You're on HTTPS (GitHub Pages)</p>
-                  <p>Once the bridge is running, this button will open the app at <span className="font-mono">http://localhost:7447</span> — browsers require HTTP for local bridge connections.</p>
+              {window.location.protocol === 'https:' ? (
+                <div className="rounded-lg border border-altera-teal/40 bg-altera-teal/10 p-4 space-y-3">
+                  <p className="text-sm text-altera-teal font-medium">✓ You're on GitHub Pages</p>
+                  <p className="text-xs text-gray-400">
+                    Once the bridge is running on your machine, open the app directly at the bridge URL.
+                    Browsers block connections from HTTPS pages to local HTTP servers.
+                  </p>
+                  <a
+                    href="http://localhost:7447"
+                    className="flex items-center justify-center gap-2 bg-altera-blue hover:bg-altera-blue/80
+                               text-white px-4 py-2.5 rounded-lg text-sm font-medium w-full"
+                  >
+                    <Wifi size={14} />
+                    Open app at http://localhost:7447
+                  </a>
+                  <p className="text-xs text-gray-600 text-center">Bridge must be running first (see command above)</p>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 pt-2">
+                  <button
+                    onClick={checkBridge}
+                    disabled={testing}
+                    className="flex items-center gap-2 bg-altera-teal/20 border border-altera-teal/40 hover:bg-altera-teal/30
+                               text-altera-teal px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+                  >
+                    <Wifi size={14} />
+                    {testing ? 'Checking…' : 'Check connection'}
+                  </button>
+                  {bridgeOk === true  && <span className="text-xs text-emerald-400 flex items-center gap-1"><CheckCircle2 size={13} /> Connected!</span>}
+                  {bridgeOk === false && <span className="text-xs text-red-400">Not found — is the bridge running?</span>}
                 </div>
               )}
-              <div className="flex items-center gap-3 pt-2">
-                <button
-                  onClick={checkBridge}
-                  disabled={testing}
-                  className="flex items-center gap-2 bg-altera-teal/20 border border-altera-teal/40 hover:bg-altera-teal/30
-                             text-altera-teal px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
-                >
-                  <Wifi size={14} />
-                  {testing ? 'Redirecting…' : window.location.protocol === 'https:' ? 'Bridge running → Open app' : 'Check connection'}
-                </button>
-                {bridgeOk === false && <span className="text-xs text-red-400">Not found — is the bridge running?</span>}
-              </div>
             </>
           )}
 
