@@ -1,61 +1,51 @@
 import { useState } from 'react';
-import { ClipboardCopy, Code2, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Wrench, Lightbulb, Sparkles, MessageSquare } from 'lucide-react';
+import { ClipboardCopy, Code2, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Wrench, Lightbulb, Sparkles } from 'lucide-react';
 import type { TriageAnalysis, TriageSession } from '../types';
 import { matchPattern, runCodeSearch, buildAssessment } from '../lib/analysis';
 import { useSettingsStore } from '../store/settings';
 import { snowVal } from '../lib/snow-client';
-function buildCopilotPrompt(session: TriageSession): string {
-  const { adoItem, snowTask, product } = session;
+
+/** Build structured prompt with all evidence for pasting into Copilot Chat */
+function buildAiPrompt(session: TriageSession): string {
+  const { adoItem, snowTask, product, analysis } = session;
   if (!adoItem) return '';
   const f = adoItem.fields;
   const logHits: Array<{ seed: string; text: string }> = (snowTask as any)?._logHits ?? [];
   const topSeeds: Record<string, number> = (snowTask as any)?._topSeeds ?? {};
   const pattern = product ? matchPattern(adoItem) : null;
-
-  return `You are a Sunrise product support engineer performing Level-2 triage.
-Use the evidence below to produce a structured assessment following this format:
-
+  const systemPrompt = `You are a Sunrise product support engineer doing Level-2 triage.
+Produce a structured assessment:
 Assessment: <CODE BUG | CONFIG / INSTALL | INTENDED BEHAVIOR | ENHANCEMENT | NEED MORE INFO>
 Client reported: <1-2 sentences>
-SNOW evidence: <key log lines / work notes>
-Code analysis: <file + method + what the code does vs should do>
+SNOW evidence: <key log lines>
+Code analysis: <file + method + logic>
 Gap: <one paragraph>
 Confidence: <High|Medium|Low> — <rationale>
-Blind spots: <what would raise confidence>
-Recommended next step: <single most important action>
+Blind spots: <what would confirm>
+Next step: <single action>
+Rules: No PHI. Facts only. Human review before any L2 post.`;
 
-Rules: No PHI. Facts only — no confirmed fixes. Human review before any L2 post.
-
----
-
-## DA ${adoItem.id} — ${f['System.Title']}
-
-Area: ${f['System.AreaPath']}
-Customer: ${f['Allscripts.Field.CustomerName'] ?? '—'}
-Release: ${f['Allscripts.Field.SupportVersion'] ?? '—'}
-Severity: ${f['Microsoft.VSTS.Common.Severity'] ?? '—'}
-State: ${f['System.State']}
-${product ? `Product: ${product.displayName}\nSNOW Product: ${product.snowProduct}` : 'Product: not mapped'}
+  const userContent = `## DA ${adoItem.id} — ${f['System.Title']}
+Area: ${f['System.AreaPath']} | Customer: ${f['Allscripts.Field.CustomerName'] ?? '—'} | Release: ${f['Allscripts.Field.SupportVersion'] ?? '—'} | Severity: ${f['Microsoft.VSTS.Common.Severity'] ?? '—'}
+${product ? `Product: ${product.displayName}` : ''}
+${analysis?.verdict ? `Pre-analysis verdict: ${analysis.verdict} (${analysis.confidence}) — ${analysis.gap}` : ''}
 
 ## Description
-${String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '(empty)').replace(/<[^>]+>/g, ' ').slice(0, 800)}
+${String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '').replace(/<[^>]+>/g, ' ').slice(0, 600)}
 
-## SNOW Task: ${snowTask ? snowVal(snowTask.number) : 'not fetched'}
-State: ${snowTask ? snowVal(snowTask.state) : '—'}
-${snowTask?.work_notes ? `Work notes: ${snowVal(snowTask.work_notes).slice(0, 400)}` : ''}
+## SNOW: ${snowTask ? snowVal(snowTask.number) + ' (' + snowVal(snowTask.state) + ')' : 'not fetched'}
+${snowTask ? snowVal(snowTask.short_description) : ''}
 
-## Log signal summary
-${Object.entries(topSeeds).map(([s, c]) => `  ${s}: ${c}×`).join('\n') || 'No log signals (bridge offline or no attachments)'}
+## Log signals
+${Object.entries(topSeeds).map(([s, c]) => `${s}: ${c}×`).join(' | ') || '(none)'}
 
-## Key log lines (top 15)
-${logHits.slice(0, 15).map(h => `  [${h.seed}] ${h.text}`).join('\n') || '(none)'}
+## Key log lines
+${logHits.slice(0, 12).map(h => `[${h.seed}] ${h.text}`).join('\n') || '(none)'}
 
-## Pre-matched pattern
-${pattern ? `"${pattern.name}" — ${pattern.fixDirection}` : 'No keyword pattern matched'}
+## Pattern: ${pattern ? `"${pattern.name}" — ${pattern.fixDirection}` : 'none matched'}
+## Repos: ${product?.repos.map(r => `${r.owner}/${r.repo}`).join(', ') ?? '(none)'}`;
 
-## Mapped repos
-${product?.repos.map(r => `${r.owner}/${r.repo}`).join(', ') ?? '(none)'}
-`;
+  return `${systemPrompt}\n\n---\n\n${userContent}`;
 }
 
 interface Props {
@@ -75,7 +65,6 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
   const { githubPat } = useSettingsStore();
   const [running, setRunning] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [aiResult] = useState<string | null>(null);
 
   const { adoItem, product, snowTask, analysis } = session;
 
@@ -84,8 +73,8 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
     setRunning(true);
     try {
       const pattern = matchPattern(adoItem);
-      const codeHits = pattern && githubPat
-        ? await runCodeSearch(githubPat, product, pattern)
+      const codeHits = pattern
+        ? await runCodeSearch(githubPat ?? '', product, pattern)
         : [];
       const workNotes = snowTask?.['_workNotes']
         ? JSON.stringify(snowTask['_workNotes']).slice(0, 500)
@@ -186,27 +175,21 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
         )}
       </div>
 
-      {/* AI Assessment — copy prompt to Copilot Chat (no API key needed) */}
+      {/* AI Assessment — inline prompt ready for Copilot Chat */}
       <div className="rounded-lg border border-purple-800/40 bg-purple-950/20 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-xs font-medium text-purple-300 flex items-center gap-1.5">
-            <Sparkles size={13} /> AI Assessment — Copilot Chat
+            <Sparkles size={13} /> AI Assessment
           </p>
-          <CopilotCopyButton session={session} />
+          <div className="flex items-center gap-2">
+            <AiPromptButton session={session} />
+          </div>
         </div>
-        {aiResult && (
-          <pre className="text-xs text-gray-200 whitespace-pre-wrap font-mono leading-relaxed
-                          bg-gray-950 rounded p-3 max-h-96 overflow-auto border border-gray-800">
-            {aiResult}
-          </pre>
-        )}
-        {!aiResult && (
-          <p className="text-xs text-gray-600">
-            Click <strong className="text-gray-400">Copy prompt</strong> then paste into{' '}
-            <strong className="text-gray-400">Copilot Chat</strong> in VS Code (Ctrl+Shift+I).
-            All evidence is pre-formatted — just paste and send.
-          </p>
-        )}
+        <p className="text-xs text-gray-500">
+          Corp firewall blocks direct AI calls. Click <strong className="text-gray-400">Copy prompt</strong> → open{' '}
+          <strong className="text-gray-400">Copilot Chat</strong> in VS Code (Ctrl+Shift+I) → paste.
+          The prompt contains all evidence pre-formatted.
+        </p>
       </div>
 
       {/* L2 draft — human-gated, never auto-posted */}      {analysis.l2Draft && (
@@ -235,24 +218,40 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
   );
 }
 
-function CopilotCopyButton({ session }: { session: TriageSession }) {
+function AiPromptButton({ session }: { session: TriageSession }) {
   const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const prompt = buildAiPrompt(session);
+
   const copy = () => {
-    const prompt = buildCopilotPrompt(session);
-    if (!prompt) return;
     navigator.clipboard.writeText(prompt).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     });
   };
+
   return (
-    <button onClick={copy}
-      className="flex items-center gap-1.5 text-xs bg-purple-900/50 hover:bg-purple-900/80
-                 border border-purple-700 text-purple-200 px-3 py-1.5 rounded font-medium">
-      {copied
-        ? <><CheckCircle2 size={11} className="text-emerald-400" /> Copied — paste in Copilot Chat</>
-        : <><MessageSquare size={11} /> Copy prompt</>
-      }
-    </button>
+    <div className="space-y-2 w-full">
+      <div className="flex gap-2 justify-end">
+        <button onClick={() => setExpanded(!expanded)}
+          className="text-xs text-purple-400 hover:text-purple-200 border border-purple-800 hover:border-purple-600 px-2 py-1 rounded">
+          {expanded ? 'Hide prompt' : 'View prompt'}
+        </button>
+        <button onClick={copy}
+          className="flex items-center gap-1.5 text-xs bg-purple-900/60 hover:bg-purple-900/90
+                     border border-purple-600 text-purple-100 px-3 py-1.5 rounded font-medium">
+          {copied
+            ? <><CheckCircle2 size={11} className="text-emerald-400" /> Copied!</>
+            : <><ClipboardCopy size={11} /> Copy prompt</>
+          }
+        </button>
+      </div>
+      {expanded && (
+        <pre className="text-xs font-mono text-gray-400 bg-gray-950 border border-gray-800
+                        rounded p-3 max-h-64 overflow-auto whitespace-pre-wrap leading-relaxed">
+          {prompt}
+        </pre>
+      )}
+    </div>
   );
 }

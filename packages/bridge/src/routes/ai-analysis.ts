@@ -1,11 +1,11 @@
 import { Router, Request, Response } from 'express';
-import https from 'https';
+import { execPowerShell } from '../utils/powershell';
 
 export const aiAnalysisRouter = Router();
 
-// GitHub Copilot Chat API — works on corp network with standard GitHub PAT
-const GH_MODELS_URL = 'https://api.githubcopilot.com/chat/completions';
-const MODEL = 'gpt-4o';
+// GitHub Models API via PowerShell — Node.js DNS can't resolve it on corp network, PS can
+const MODELS_API_URL = 'https://models.inference.ai.azure.com/chat/completions';
+const MODEL = 'gpt-4o-mini';
 
 interface AnalysisRequest {
   githubPat: string;
@@ -106,39 +106,50 @@ ${logSample || 'No log evidence available'}
 Based on all of the above, produce the structured assessment.`;
 }
 
+/** Call GitHub Models API via PowerShell — uses Windows DNS which resolves on corp network */
 function callGitHubModels(pat: string, messages: object[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const body = JSON.stringify({ model: MODEL, messages, temperature: 0.1, max_tokens: 1200 });
+  const os = require('os');
+  const fs = require('fs');
+  const { exec } = require('child_process');
 
-    const req = https.request(
-      GH_MODELS_URL,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${pat}`,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(body),
-        },
-      },
-      (res) => {
-        let data = '';
-        res.on('data', (c) => (data += c));
-        res.on('end', () => {
-          if (res.statusCode === 401) return reject(new Error('GitHub PAT rejected — ensure it has access to github.com/marketplace/models'));
-          if (res.statusCode === 429) return reject(new Error('Rate limited by GitHub Models API — try again in a moment'));
-          if ((res.statusCode ?? 0) >= 400) return reject(new Error(`GitHub Models API ${res.statusCode}: ${data.slice(0, 200)}`));
-          try {
-            const parsed = JSON.parse(data);
-            resolve(parsed.choices?.[0]?.message?.content ?? '(no response)');
-          } catch {
-            reject(new Error('Invalid JSON from GitHub Models API'));
-          }
-        });
+  const ts = Date.now();
+  const bodyFile   = `${os.tmpdir()}\\devassist-body-${ts}.json`;
+  const scriptFile = `${os.tmpdir()}\\devassist-ai-${ts}.ps1`;
+
+  // Write body to temp file — avoids all PS string-escaping issues
+  fs.writeFileSync(bodyFile, JSON.stringify({ model: MODEL, messages, temperature: 0.1, max_tokens: 1200 }), 'utf-8');
+
+  // Write full PS script to a .ps1 file — run with -File so newlines are preserved
+  const script = `
+$body = Get-Content -Path '${bodyFile}' -Raw -Encoding UTF8
+$headers = @{
+    Authorization = 'Bearer ${pat}'
+    'Content-Type' = 'application/json'
+}
+$r = Invoke-WebRequest -Uri '${MODELS_API_URL}' -Method POST -Headers $headers -Body $body -UseBasicParsing -TimeoutSec 60
+$r.Content
+`;
+  fs.writeFileSync(scriptFile, script, 'utf-8');
+
+  return new Promise((resolve, reject) => {
+    exec(
+      `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${scriptFile}"`,
+      { maxBuffer: 5 * 1024 * 1024, timeout: 90_000 },
+      (err: Error | null, stdout: string, stderr: string) => {
+        // Clean up temp files
+        try { fs.unlinkSync(bodyFile); } catch { /* ignore */ }
+        try { fs.unlinkSync(scriptFile); } catch { /* ignore */ }
+
+        if (err) return reject(new Error(stderr || err.message));
+        try {
+          const data = JSON.parse(stdout.trim());
+          if (data.error) return reject(new Error(String(data.error.message ?? data.error)));
+          resolve(data.choices?.[0]?.message?.content ?? '(no response)');
+        } catch {
+          reject(new Error(`Invalid response: ${stdout.slice(0, 200)}`));
+        }
       }
     );
-    req.on('error', reject);
-    req.write(body);
-    req.end();
   });
 }
 
