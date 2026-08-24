@@ -24,7 +24,6 @@ interface Props {
 
 export default function TriagePanel({ session, onAnalysisComplete }: Props) {
   const { adoItem, snowTask, product, error, currentPhase, clarityGaps, attachments, artifactLedger } = session;
-
   if (error) {
     return (
       <div className="rounded-lg border border-red-800 bg-red-950/30 p-4 flex items-start gap-3">
@@ -88,6 +87,36 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
                className="text-altera-teal hover:text-white font-mono">{String(snowNum)}</a>
             {session.snowTaskTable && <span className="text-gray-600 ml-1">({session.snowTaskTable})</span>}
           </div>
+        )}
+        {/* Linked IDs parsed from title (CS / KB / PRB / INC / DA) */}
+        {(() => {
+          const title = fields['System.Title'] ?? '';
+          const ids = [...title.matchAll(/\b(CS\d{5,}|KB\d{4,}|PRB\d{5,}|INC\d{6,}|DA[-\s]?\d{6,})\b/gi)]
+            .map(m => m[1]);
+          if (!ids.length) return null;
+          return (
+            <div className="flex flex-wrap gap-1 text-xs">
+              <span className="text-gray-500">Linked:</span>
+              {ids.map(id => (
+                <span key={id} className="bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 font-mono text-altera-teal">{id}</span>
+              ))}
+            </div>
+          );
+        })()}
+        {/* DA description (first 400 chars) */}
+        {fields['System.Description'] && (
+          <Collapsible label="Description">
+            <p className="text-xs text-gray-400 whitespace-pre-wrap leading-relaxed">
+              {String(fields['System.Description']).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 600)}
+            </p>
+          </Collapsible>
+        )}
+        {fields['Allscripts.Field.DevAssistDetail'] && (
+          <Collapsible label="DevAssist Detail">
+            <p className="text-xs text-gray-400 whitespace-pre-wrap leading-relaxed">
+              {String(fields['Allscripts.Field.DevAssistDetail']).slice(0, 600)}
+            </p>
+          </Collapsible>
         )}
       </div>
 

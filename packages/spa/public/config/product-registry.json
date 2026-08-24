@@ -1,6 +1,18 @@
 {
-  "version": 1,
+  "version": 2,
   "products": [
+    {
+      "id": "shm",
+      "displayName": "Secure Health Messaging (SHM)",
+      "areaPathPrefix": "SR\\SCM\\Ambulatory\\SHM",
+      "snowProduct": "Sunrise Ambulatory Care",
+      "snowTaskTable": "sc_task",
+      "repos": [
+        { "key": "aimanager", "owner": "allscriptshealthcare", "repo": "plhlt-aimanager-npm", "required": true }
+      ],
+      "mtmPlans": [],
+      "skillPath": ""
+    },
     {
       "id": "sunrise-mobile",
       "displayName": "Sunrise Mobile",
