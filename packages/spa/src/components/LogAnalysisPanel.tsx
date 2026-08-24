@@ -32,6 +32,7 @@ interface LogAnalysisResult {
 
 interface Props {
   snowTask: SnowTask;
+  autoResult?: LogAnalysisResult | null;
   onResult?: (hits: LogHit[], topSeeds: Record<string, number>) => void;
 }
 
@@ -51,9 +52,9 @@ const SEVERITY_COLOR = {
 
 const BRIDGE = (): string => (window as any).__BRIDGE_URL__ ?? 'http://localhost:7447';
 
-export default function LogAnalysisPanel({ snowTask, onResult }: Props) {
+export default function LogAnalysisPanel({ snowTask, autoResult, onResult }: Props) {
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<LogAnalysisResult | null>(null);
+  const [result, setResult] = useState<LogAnalysisResult | null>(autoResult ?? null);
   const [error, setError] = useState('');
 
   const sysId = snowVal(snowTask.sys_id);

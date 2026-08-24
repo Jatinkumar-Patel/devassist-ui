@@ -5,6 +5,7 @@ import { detectInput } from '../lib/input-detector';
 import { loadRegistry, routeByAreaPath } from '../lib/product-registry';
 import { fetchWorkItem } from '../lib/ado-client';
 import { fetchSnowTask, fetchSnowWorkNotes, fetchSnowAttachments, snowVal } from '../lib/snow-client';
+import { matchPattern, runCodeSearch, buildAssessment } from '../lib/analysis';
 import { useSettingsStore } from '../store/settings';
 import { useTriageStore } from '../store/triage';
 import type { TriageSession, SessionPhase } from '../types';
@@ -30,7 +31,7 @@ function phase(s: TriageSession, p: SessionPhase): TriageSession {
 }
 
 export default function TriagePage() {
-  const { adoPat } = useSettingsStore();
+  const { adoPat, githubPat, bridgeUrl } = useSettingsStore();
   const { sessions, active, upsert } = useTriageStore();
   const [loading, setLoading] = useState(false);
 
@@ -129,6 +130,48 @@ export default function TriagePage() {
           coverageSubject: 'pending review',
         },
       };
+
+      // ── Phase 2: Auto log scan — download + grep SNOW attachments ────────────
+      const snowSysId = s.snowTask ? snowVal(s.snowTask.sys_id) : '';
+      if (snowSysId) {
+        s = phase(s, 'artifacts');
+        upsert(s);
+        try {
+          const logResp = await fetch(`${bridgeUrl}/api/log-analysis/${snowSysId}`);
+          if (logResp.ok) {
+            const logData = await logResp.json();
+            // Store log hits on the snowTask so AnalysisPanel and AI can use them
+            s = {
+              ...s,
+              snowTask: {
+                ...s.snowTask!,
+                _logHits: logData.hits ?? [],
+                _topSeeds: logData.topSeeds ?? {},
+                _logAnalysis: logData,
+              },
+            };
+          }
+        } catch { /* bridge offline — non-fatal */ }
+      }
+
+      // ── Phase 3/4: Auto root cause analysis ──────────────────────────────────
+      s = phase(s, 'analysis');
+      upsert(s);
+      if (s.adoItem && s.product) {
+        try {
+          const pattern = matchPattern(s.adoItem);
+          const codeHits = pattern && githubPat
+            ? await runCodeSearch(githubPat, s.product, pattern)
+            : [];
+          const workNotes = s.snowTask
+            ? String((s.snowTask as any)._workNotes
+                ? JSON.stringify((s.snowTask as any)._workNotes).slice(0, 500)
+                : snowVal(s.snowTask.work_notes))
+            : undefined;
+          const analysis = buildAssessment(s.adoItem, pattern, codeHits, workNotes);
+          s = { ...s, analysis };
+        } catch { /* non-fatal */ }
+      }
 
       upsert({ ...s, currentPhase: 'done', status: 'ready' });
     } catch (err: any) {

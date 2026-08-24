@@ -7,13 +7,13 @@ import LogAnalysisPanel from './LogAnalysisPanel';
 
 // Phase label for the progress indicator
 const PHASE_LABELS: Record<string, string> = {
-  preflight: 'Preflight',
-  reading:   'Reading DA',
-  routing:   'Routing',
-  snow:      'Pulling SNOW',
-  clarity:   'Clarity check',
-  artifacts: 'Artifacts',
-  analysis:  'Analysis',
+  preflight: 'Preflight check...',
+  reading:   'Reading DA from ADO...',
+  routing:   'Routing to product...',
+  snow:      'Fetching SNOW data...',
+  clarity:   'Clarity check...',
+  artifacts: 'Scanning logs...',
+  analysis:  'Running root cause analysis...',
   done:      'Done',
 };
 
@@ -36,13 +36,15 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
 
   // Show phase progress while loading
   if (session.status === 'loading') {
+    const label = PHASE_LABELS[currentPhase] ?? currentPhase;
     return (
-      <div className="space-y-2 animate-pulse">
-        <p className="text-xs text-altera-teal">
-          {PHASE_LABELS[currentPhase] ?? currentPhase}â€¦
-        </p>
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 text-xs text-altera-teal">
+          <div className="w-3 h-3 rounded-full border-2 border-altera-teal border-t-transparent animate-spin" />
+          {label}
+        </div>
         <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
-          <div className="h-1 bg-altera-teal rounded-full w-1/3 transition-all" />
+          <div className="h-1 bg-altera-teal rounded-full w-1/3 transition-all animate-pulse" />
         </div>
       </div>
     );
@@ -203,12 +205,12 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
         <AnalysisPanel session={session} onAnalysisComplete={onAnalysisComplete} />
       )}
 
-      {/* ── Log Scan — download + grep SNOW attachments ─────────────────────── */}
+      {/* ── Log Scan -- download + grep SNOW attachments ──────────────────── */}
       {session.status === 'ready' && snowTask && (
         <LogAnalysisPanel
           snowTask={snowTask}
+          autoResult={(snowTask as any)._logAnalysis ?? null}
           onResult={(hits, topSeeds) => {
-            // Store log evidence in snowTask so AI analysis can use it
             (snowTask as any)._logHits = hits;
             (snowTask as any)._topSeeds = topSeeds;
           }}
