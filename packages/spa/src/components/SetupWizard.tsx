@@ -43,12 +43,18 @@ export default function SetupWizard({ onDone }: Props) {
 
   const checkBridge = async () => {
     setTesting(true);
+    // If on HTTPS (GitHub Pages), bridge calls are blocked by mixed-content policy.
+    // Redirect to the bridge's local HTTP URL which serves the same app.
+    if (window.location.protocol === 'https:') {
+      window.location.href = 'http://localhost:7447';
+      return;
+    }
     try {
       const r = await fetch('http://localhost:7447/api/status', { signal: AbortSignal.timeout(3000) });
       const ok = r.ok;
       setBridgeOk(ok);
       if (ok) {
-        await loadMcpConfig();       // auto-pull PATs from mcp.json
+        await loadMcpConfig();
         setTimeout(() => setStep('ado-pat'), 600);
       }
     } catch {
@@ -115,6 +121,12 @@ export default function SetupWizard({ onDone }: Props) {
                 <a href="https://nodejs.org" target="_blank" rel="noreferrer"
                    className="text-altera-teal hover:underline">download here</a>.
               </p>
+              {window.location.protocol === 'https:' && (
+                <div className="rounded-lg border border-yellow-800/50 bg-yellow-950/20 p-3 text-xs text-yellow-300 space-y-1">
+                  <p className="font-medium">⚠ You're on HTTPS (GitHub Pages)</p>
+                  <p>Once the bridge is running, this button will open the app at <span className="font-mono">http://localhost:7447</span> — browsers require HTTP for local bridge connections.</p>
+                </div>
+              )}
               <div className="flex items-center gap-3 pt-2">
                 <button
                   onClick={checkBridge}
@@ -123,9 +135,8 @@ export default function SetupWizard({ onDone }: Props) {
                              text-altera-teal px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
                 >
                   <Wifi size={14} />
-                  {testing ? 'Checking…' : 'Check connection'}
+                  {testing ? 'Redirecting…' : window.location.protocol === 'https:' ? 'Bridge running → Open app' : 'Check connection'}
                 </button>
-                {bridgeOk === true  && <span className="text-xs text-emerald-400 flex items-center gap-1"><CheckCircle2 size={13} /> Connected!</span>}
                 {bridgeOk === false && <span className="text-xs text-red-400">Not found — is the bridge running?</span>}
               </div>
             </>
