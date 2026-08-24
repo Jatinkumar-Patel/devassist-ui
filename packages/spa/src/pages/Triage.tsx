@@ -187,7 +187,9 @@ export default function TriagePage() {
                 ? JSON.stringify((s.snowTask as any)._workNotes).slice(0, 500)
                 : snowVal(s.snowTask.work_notes))
             : undefined;
-          const analysis = buildAssessment(s.adoItem, pattern, codeHits, workNotes);
+          const logHits = (s.snowTask as any)?._logHits ?? [];
+          const topSeeds = (s.snowTask as any)?._topSeeds ?? {};
+          const analysis = buildAssessment(s.adoItem, pattern, codeHits, workNotes, logHits, topSeeds);
           s = { ...s, analysis };
         } catch { /* non-fatal */ }
       }

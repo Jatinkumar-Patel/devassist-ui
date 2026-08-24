@@ -71,6 +71,7 @@ const SUNRISE_MOBILE_PATTERNS: Pattern[] = [
 
 // ── Pattern matching ──────────────────────────────────────────────────────────
 
+/** Match against ALL patterns (mobile + SHM + future areas) */
 export function matchPattern(adoItem: AdoWorkItem): Pattern | null {
   const text = [
     adoItem.fields['System.Title'] ?? '',
@@ -81,12 +82,9 @@ export function matchPattern(adoItem: AdoWorkItem): Pattern | null {
   let best: Pattern | null = null;
   let bestScore = 0;
 
-  for (const p of SUNRISE_MOBILE_PATTERNS) {
+  for (const p of ALL_PATTERNS) {
     const score = p.keywords.filter((k) => text.includes(k.toLowerCase())).length;
-    if (score > bestScore) {
-      bestScore = score;
-      best = p;
-    }
+    if (score > bestScore) { bestScore = score; best = p; }
   }
 
   return bestScore > 0 ? best : null;
@@ -101,7 +99,36 @@ export interface CodeHit {
   snippet?: string;
 }
 
-// Route GitHub search through bridge to avoid CORS from localhost
+// ── SHM Patterns ──────────────────────────────────────────────────────────────
+const SHM_PATTERNS: Pattern[] = [
+  {
+    id: 'shm-1',
+    name: 'SHM Send button disabled / grayed out',
+    keywords: ['send button', 'send is disabled', 'grayed out', 'grey', 'disabled', 'compose', 'SHM', 'secure health message', 'recipient'],
+    verdict: 'CODE BUG',
+    searchSeeds: ['SendButton', 'isDisabled', 'SHM', 'ComposeMessage', 'recipient'],
+    fixDirection: 'Check the Send button enabled/disabled state logic. The button should enable after a valid recipient is selected. Look for the condition that evaluates recipient validity.',
+    confidence: 'Medium',
+  },
+];
+
+const ALL_PATTERNS = [...SUNRISE_MOBILE_PATTERNS, ...SHM_PATTERNS];
+
+/** Match pattern against any product — checks all known patterns */
+export function matchPatternAny(adoItem: AdoWorkItem): Pattern | null {
+  const text = [
+    adoItem.fields['System.Title'] ?? '',
+    adoItem.fields['System.Description'] ?? '',
+    adoItem.fields['Allscripts.Field.DevAssistDetail'] ?? '',
+  ].join(' ').toLowerCase();
+  let best: Pattern | null = null;
+  let bestScore = 0;
+  for (const p of ALL_PATTERNS) {
+    const score = p.keywords.filter((k) => text.includes(k.toLowerCase())).length;
+    if (score > bestScore) { bestScore = score; best = p; }
+  }
+  return bestScore > 0 ? best : null;
+}
 const BRIDGE = (): string => (window as any).__BRIDGE_URL__ ?? 'http://localhost:7447';
 
 export async function runCodeSearch(
@@ -140,57 +167,141 @@ export async function runCodeSearch(
   return hits.filter((h) => { if (seen.has(h.path)) return false; seen.add(h.path); return true; });
 }
 
-// ── Phase 4: Build assessment ─────────────────────────────────────────────────
+// ── Phase 4: Build assessment with actual evidence ───────────────────────────
 
 export function buildAssessment(
   adoItem: AdoWorkItem,
   pattern: Pattern | null,
   codeHits: CodeHit[],
-  snowWorkNotes?: string
+  snowWorkNotes?: string,
+  logHits?: Array<{ seed: string; text: string; file: string }>,
+  topSeeds?: Record<string, number>
 ): TriageAnalysis {
-  const title = adoItem.fields['System.Title'] ?? '';
-  const customer = adoItem.fields['Allscripts.Field.CustomerName'] ?? 'the client';
-  const version = adoItem.fields['Allscripts.Field.SupportVersion'] ?? 'unknown';
+  const f = adoItem.fields;
+  const title = f['System.Title'] ?? '';
+  const customer = f['Allscripts.Field.CustomerName'] ?? 'the client';
+  const version = f['Allscripts.Field.SupportVersion'] ?? 'unknown';
+  const description = String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '')
+    .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
+  // ── 1. Extract SNOW evidence — parse work notes for diagnostic signals ──────
   const snowEvidence: string[] = [];
   if (snowWorkNotes) {
-    // Extract first meaningful lines from work notes
-    const lines = String(snowWorkNotes)
-      .split('\n')
-      .map((l) => l.trim())
-      .filter((l) => l.length > 20 && !l.startsWith('['));
-    snowEvidence.push(...lines.slice(0, 3));
+    const text = String(snowWorkNotes);
+    // Extract meaningful lines: errors, versions, reproduction steps, support actions
+    const evidenceLines = text.split(/\n|\\n/)
+      .map(l => l.replace(/\[.*?\]/g, '').trim())
+      .filter(l => l.length > 15 && (
+        /error|exception|fail|cannot|unable|version|repro|confirm|observed|occur|steps|workaround|found|checked|tested/i.test(l)
+      ))
+      .slice(0, 5);
+    snowEvidence.push(...evidenceLines);
+
+    // Also extract version numbers mentioned
+    const versions = text.match(/\d+\.\d+(\.\d+)?([\s.-]PR\d+)?/g)?.slice(0, 3) ?? [];
+    if (versions.length) snowEvidence.push(`Versions mentioned: ${versions.join(', ')}`);
   }
 
-  const codeAnalysis = codeHits.length
-    ? codeHits.map((h) => `${h.repo}: ${h.path}`).join('\n')
-    : 'Code search pending — see mapped repos';
+  // ── 2. Extract log evidence — key signals from log scan ──────────────────────
+  const logEvidence: string[] = [];
+  if (topSeeds && Object.keys(topSeeds).length > 0) {
+    const top3 = Object.entries(topSeeds).sort(([,a],[,b]) => b-a).slice(0,5);
+    logEvidence.push(`Log signals: ${top3.map(([s,c]) => `${s} (${c}×)`).join(', ')}`);
 
-  const blindSpots = [
-    'Device-side logs are hard to get on mobile; absence is expected',
-    'Client traces in HWS are anonymized — cannot tie to specific user',
-    ...(codeHits.length === 0 ? ['No code hits found — repos may not be cloned locally'] : []),
-  ];
+    // Server health: if GetPatientVisit/GetSelected complete quickly vs client timeouts
+    const hasTimeout = topSeeds['progress indicator has timed out'] ?? 0;
+    const hasLock = topSeeds['LockWithTimeout'] ?? 0;
+    const hasOps = (topSeeds['GetSelectedVisitDataAndObservations'] ?? 0) + (topSeeds['GetPatientVisit'] ?? 0);
+    if (hasTimeout > 0) logEvidence.push(`CLIENT timeout confirmed: "progress indicator has timed out" found ${hasTimeout}×`);
+    if (hasLock > 100)  logEvidence.push(`LOCK CONTENTION: LockWithTimeout ${hasLock}× — IIS worker queue is backing up`);
+    if (hasOps > 0 && hasTimeout > 0) logEvidence.push(`Server completed ops (${hasOps}× hits) but client timed out → server is healthy, issue is CLIENT-SIDE`);
+  }
+  if (logHits && logHits.length > 0) {
+    const keyHit = logHits.find(h => h.seed === 'progress indicator has timed out' || h.seed === 'FATAL' || h.seed === 'Exception');
+    if (keyHit) logEvidence.push(`Key log line: "${keyHit.text.slice(0,150)}"`);
+  }
 
-  const l2Draft = pattern
-    ? `Thank you for contacting Altera support.\n\n` +
-      `Pattern identified: ${pattern.name}.\n\n` +
-      `Fix direction: ${pattern.fixDirection}\n\n` +
-      `Please provide the following to confirm:\n` +
-      `1. HWSSyslogger logs covering the exact incident window from all nodes\n` +
-      `2. SCM + HWS version numbers\n` +
-      `3. IIS app pool configuration (maxWorkerProcesses, recycle schedule)`
-    : undefined;
+  // ── 3. Code analysis ─────────────────────────────────────────────────────────
+  let codeAnalysis: string;
+  if (codeHits.length > 0) {
+    codeAnalysis = codeHits.map(h => `${h.repo}: ${h.path}`).join('\n');
+  } else if (pattern) {
+    codeAnalysis = `Search seeds: ${pattern.searchSeeds.join(', ')}\nRepos to inspect: ${
+      adoItem.fields['System.AreaPath']?.includes('SHM') ? 'plhlt-aimanager-npm (SHM component)' :
+      adoItem.fields['System.AreaPath']?.includes('MobileX') ? 'SunriseMobile + sunrise-mobilewebservices' :
+      'Check product registry for mapped repos'
+    }`;
+  } else {
+    // No pattern — derive from symptom keywords
+    const symptomTerms = title.match(/\b(button|disable|grey|spinner|slow|error|fail|cannot|send|compose)\b/gi) ?? [];
+    codeAnalysis = `No pattern matched. Symptom keywords: ${[...new Set(symptomTerms)].join(', ')}\nSearch for these terms in mapped repos.`;
+  }
+
+  // ── 4. Gap: what the code does vs what it should ─────────────────────────────
+  let gap: string;
+  if (pattern) {
+    gap = pattern.fixDirection;
+    // Enrich gap with log evidence
+    if (logEvidence.length > 0 && pattern.id.startsWith('sm-')) {
+      gap += ` Log evidence supports this: ${logEvidence[0]}`;
+    }
+  } else {
+    // Build gap from DA description + SNOW evidence
+    const problemCore = description.slice(0, 200) || title;
+    gap = `No pre-defined pattern matched. Problem: "${problemCore}". ` +
+      (snowEvidence.length > 0
+        ? `SNOW adds: ${snowEvidence[0]}`
+        : 'Review SNOW work notes and logs for more context before drawing a conclusion.');
+  }
+
+  // ── 5. Confidence + blind spots ───────────────────────────────────────────────
+  let confidence = pattern?.confidence ?? 'Low';
+  const blindSpots: string[] = [];
+
+  // Raise confidence if log evidence confirms pattern
+  if (logEvidence.some(l => l.includes('CLIENT timeout confirmed')) && pattern?.id === 'sm-3') {
+    confidence = 'High';
+  }
+  // Lower confidence if no logs and no SNOW evidence
+  if (!snowWorkNotes && !logHits?.length) {
+    confidence = confidence === 'High' ? 'Medium' : 'Low';
+    blindSpots.push('No log files available — attach HWS logs for the incident window to raise confidence');
+  }
+  if (!codeHits.length) {
+    blindSpots.push('Code search found no hits — clone the mapped repos locally for deeper inspection');
+  }
+  if (!pattern) {
+    blindSpots.push('No pattern matched — this symptom class may need a new pattern added to analysis.ts');
+    blindSpots.push('Consider escalating to the area dev (SHM/SCM team) for domain context');
+  }
+  if (!snowEvidence.length && snowWorkNotes) {
+    blindSpots.push('Work notes present but no diagnostic evidence extracted — review them manually');
+  }
+
+  // ── 6. L2 draft ───────────────────────────────────────────────────────────────
+  const verdict = pattern?.verdict ?? 'NEED MORE INFO';
+  let l2Draft: string | undefined;
+  if (verdict === 'NEED MORE INFO') {
+    l2Draft = `Thank you for contacting Altera support.\n\n` +
+      `We have reviewed the information provided. To proceed with analysis, please provide:\n\n` +
+      `1. ${!logHits?.length ? 'Log files covering the exact incident window (see the area guide for which logs to collect)' : 'Additional log context if the attached logs do not cover the full incident window'}\n` +
+      `2. Exact ${version} build version\n` +
+      `3. Steps to reproduce on a test/dev environment\n` +
+      `4. Whether this affects all users or specific users/sites`;
+  } else if (verdict === 'CODE BUG') {
+    l2Draft = `Thank you for contacting Altera support.\n\n` +
+      `Issue identified: ${pattern?.name ?? title}\n\n` +
+      `Analysis: ${gap}\n\n` +
+      `Confidence: ${confidence}${blindSpots.length > 0 ? `\nNote: ${blindSpots[0]}` : ''}`;
+  }
 
   return {
-    verdict: pattern?.verdict ?? 'NEED MORE INFO',
-    confidence: pattern?.confidence ?? 'Low',
-    clientReported: `${customer} reports: ${title} (Release ${version})`,
-    snowEvidence,
+    verdict,
+    confidence: confidence as TriageAnalysis['confidence'],
+    clientReported: `${customer} reports (${version}): ${title}`,
+    snowEvidence: [...snowEvidence, ...logEvidence],
     codeAnalysis,
-    gap: pattern
-      ? `Matched pattern "${pattern.name}". ${pattern.fixDirection}`
-      : 'No matching pattern found. Manual analysis required.',
+    gap,
     blindSpots,
     l2Draft,
   };
