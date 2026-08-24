@@ -24,6 +24,8 @@ adoRouter.use('*', (req: Request, res: Response) => {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     },
+    // on-prem TFS uses an internal CA not in the default trust store
+    rejectUnauthorized: false,
   };
 
   const proxyReq = https.request(targetUrl, options, (proxyRes) => {

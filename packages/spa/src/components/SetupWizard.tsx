@@ -68,7 +68,7 @@ export default function SetupWizard({ onDone }: Props) {
     if (!adoVal) return;
     setTesting(true);
     try {
-      const r = await fetch('http://localhost:7447/api/ado/SR/_apis/projects?api-version=7.0', {
+      const r = await fetch('http://localhost:7447/api/ado/_apis/connectionData?api-version=7.0', {
         headers: { Authorization: `Basic ${btoa(`:${adoVal}`)}` },
         signal: AbortSignal.timeout(5000),
       });

@@ -31,7 +31,7 @@ export default function SettingsPage() {
           hint="Scopes needed: Work Items (Read) · Code (Read)"
           value={adoPat}
           onChange={setAdoPat}
-          testUrl={`${ORG_DEFAULTS.bridgeUrl}/api/ado/SR/_apis/projects?api-version=7.0`}
+          testUrl={`${ORG_DEFAULTS.bridgeUrl}/api/ado/_apis/connectionData?api-version=7.0`}
           testAuth={(v) => `Basic ${btoa(`:${v}`)}`}
         />
         <PatField
