@@ -107,7 +107,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
       <div className="rounded-lg border border-gray-700 bg-gray-900/50 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-sm font-medium text-gray-300 flex items-center gap-1.5">
-            <Code2 size={14} /> Phase 3 / 4 — Code Analysis &amp; Assessment
+            <Code2 size={14} /> Root Cause Analysis
           </p>
           <button
             onClick={runAnalysis}
@@ -116,11 +116,11 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                        text-white px-3 py-1.5 rounded text-xs font-medium"
           >
             {running ? <Loader2 size={12} className="animate-spin" /> : <Code2 size={12} />}
-            {running ? 'Analyzing…' : 'Run Analysis'}
+            {running ? 'Analyzing…' : 'Analyze'}
           </button>
         </div>
         <p className="text-xs text-gray-600">
-          Matches symptom against known patterns from the area playbook, searches mapped repos, and generates assessment.
+          Matches symptom against known patterns, searches mapped repos, and generates root cause assessment.
         </p>
       </div>
     );
@@ -247,7 +247,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
       <button onClick={runAnalysis} disabled={running}
         className="text-xs text-gray-600 hover:text-gray-400 flex items-center gap-1">
         {running ? <Loader2 size={11} className="animate-spin" /> : <Code2 size={11} />}
-        Re-run analysis
+        Re-analyze
       </button>
     </div>
   );

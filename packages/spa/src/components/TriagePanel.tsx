@@ -198,12 +198,12 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
         </Collapsible>
       )}
 
-      {/* ── Phase 3/4: Code analysis + Assessment ────────────────────────────── */}
+      {/* ── Phase 3/4: Root Cause Analysis ───────────────────────────────── */}
       {session.status === 'ready' && product && (
         <AnalysisPanel session={session} onAnalysisComplete={onAnalysisComplete} />
       )}
 
-      {/* ── Log analysis — download + grep SNOW attachments ──────────────────── */}
+      {/* ── Log Scan — download + grep SNOW attachments ─────────────────────── */}
       {session.status === 'ready' && snowTask && (
         <LogAnalysisPanel
           snowTask={snowTask}

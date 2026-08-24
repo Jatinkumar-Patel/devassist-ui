@@ -79,7 +79,7 @@ export default function LogAnalysisPanel({ snowTask, onResult }: Props) {
     <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs font-medium text-gray-400 flex items-center gap-1.5">
-          <FileSearch size={13} /> Log Analysis (Phase 2)
+          <FileSearch size={13} /> Log Scan (Phase 2)
         </p>
         <button onClick={analyze} disabled={running || !sysId}
           className="flex items-center gap-1.5 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-40

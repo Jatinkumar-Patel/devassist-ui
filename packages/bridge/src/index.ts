@@ -12,7 +12,7 @@ const app = createServer({ spaOrigin: SPA_ORIGIN });
 app.listen(PORT, '127.0.0.1', () => {
   const localUrl = `http://localhost:${PORT}`;
   console.log('\n╔══════════════════════════════════════════════════════╗');
-  console.log('║           DevAssist Bridge  v0.1.0                  ║');
+  console.log('║             DevAssist  v0.1.0                      ║');
   console.log('╚══════════════════════════════════════════════════════╝\n');
   console.log(`  Bridge:     ${localUrl}`);
   console.log(`  SNOW auth:  ${process.platform === 'win32' ? '✓ Windows session (no password needed)' : '✗ Windows only'}`);

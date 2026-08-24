@@ -14,7 +14,7 @@ export default function NavBar() {
       <div className="container mx-auto max-w-7xl flex items-center justify-between">
         <div className="flex items-center gap-6">
           <span className="text-altera-teal font-bold text-lg tracking-tight">
-            DevAssist UI
+            DevAssist
           </span>
           <nav className="flex gap-1">
             {links.map(({ to, label, icon: Icon }) => (
