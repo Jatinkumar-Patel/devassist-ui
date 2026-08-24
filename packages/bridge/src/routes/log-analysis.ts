@@ -27,13 +27,52 @@ const GREP_SEEDS = [
   'overlay',
   'spinner',
   'RecycleClient',
+  'WARNING',
+  'warn',
+  'Timeout',
+  'SqlException',
+  'UnauthorizedAccessException',
+  'OutOfMemoryException',
+  'StackOverflow',
+  'NullReferenceException',
+  'ArgumentException',
 ];
+
+const SEED_CATEGORY: Record<string, 'error' | 'warning' | 'lock' | 'ops' | 'other'> = {
+  'ERROR':                              'error',
+  'FATAL':                              'error',
+  'Exception':                          'error',
+  'SqlException':                       'error',
+  'UnauthorizedAccessException':        'error',
+  'OutOfMemoryException':               'error',
+  'StackOverflow':                      'error',
+  'NullReferenceException':             'error',
+  'ArgumentException':                  'error',
+  'WARNING':                            'warning',
+  'warn':                               'warning',
+  'progress indicator has timed out':   'warning',
+  'Client service error':               'warning',
+  'timed out':                          'warning',
+  'Timeout':                            'warning',
+  'LogTraceInfo':                       'warning',
+  'LockWithTimeout':                    'lock',
+  'lock granted':                       'lock',
+  'lock released':                      'lock',
+  'GetPatientVisit':                    'ops',
+  'GetSelectedVisitDataAndObservations':'ops',
+  'GetPatientList':                     'ops',
+  'Application_Start':                  'other',
+  'overlay':                            'other',
+  'spinner':                            'other',
+  'RecycleClient':                      'other',
+};
 
 interface LogHit {
   file: string;
   line: number;
   text: string;
   seed: string;
+  category: 'error' | 'warning' | 'lock' | 'ops' | 'other';
 }
 
 const MAX_PLAIN_BYTES  = 50 * 1024 * 1024;  // 50 MB — read whole file
@@ -77,8 +116,14 @@ function parseHwsLog(content: string, fileName: string): LogHit[] {
     const line = lines[i];
     for (const seed of GREP_SEEDS) {
       if (line.toLowerCase().includes(seed.toLowerCase())) {
-        hits.push({ file: fileName, line: i + 1, text: line.trim().slice(0, 300), seed });
-        break; // one hit per line
+        hits.push({
+          file: fileName,
+          line: i + 1,
+          text: line.trim().slice(0, 300),
+          seed,
+          category: SEED_CATEGORY[seed] ?? 'other',
+        });
+        break;
       }
     }
   }
@@ -179,14 +224,18 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
 
     // Build op-duration summary from lock granted/released pairs (per analysis-playbook.md tooling)
     const lockPairs = extractLockPairs(allHits);
+    const byCategory = groupByCategory(allHits);
+    const suggestions = buildSuggestions(allHits);
 
     return res.json({
       analyzed,
       skipped,
       totalHits: allHits.length,
       hits: allHits.slice(0, 100), // cap display at 100
+      byCategory,
       lockPairs: lockPairs.slice(0, 20),
       topSeeds: summariseBySeeds(allHits),
+      suggestions,
     });
 
   } finally {
@@ -195,11 +244,23 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
   }
 });
 
-function extractLockPairs(hits: LogHit[]): Array<{ file: string; line: number; seed: string; text: string }> {
+function extractLockPairs(hits: LogHit[]): LogHit[] {
   return hits.filter((h) =>
     h.seed === 'lock granted' || h.seed === 'lock released' ||
     h.seed === 'LockWithTimeout' || h.seed === 'progress indicator has timed out'
   );
+}
+
+function groupByCategory(hits: LogHit[]): Record<string, LogHit[]> {
+  const groups: Record<string, LogHit[]> = { error: [], warning: [], lock: [], ops: [], other: [] };
+  for (const h of hits) {
+    groups[h.category].push(h);
+  }
+  // Cap each group to 30 lines for display
+  for (const k of Object.keys(groups)) {
+    groups[k] = groups[k].slice(0, 30);
+  }
+  return groups;
 }
 
 function summariseBySeeds(hits: LogHit[]): Record<string, number> {
@@ -210,4 +271,81 @@ function summariseBySeeds(hits: LogHit[]): Record<string, number> {
   return Object.fromEntries(
     Object.entries(counts).sort(([, a], [, b]) => b - a)
   );
+}
+
+interface CodeSuggestion {
+  title: string;
+  severity: 'critical' | 'high' | 'medium';
+  observation: string;
+  codeDirection: string;
+  repo: string;
+  searchTerms: string[];
+}
+
+function buildSuggestions(hits: LogHit[]): CodeSuggestion[] {
+  const suggestions: CodeSuggestion[] = [];
+  const counts = summariseBySeeds(hits);
+
+  // progress indicator timed out → client-side overlay bug (Pattern #3)
+  if (counts['progress indicator has timed out']) {
+    suggestions.push({
+      title: 'Client-side overlay/spinner left stuck',
+      severity: 'critical',
+      observation: `"progress indicator has timed out" found ${counts['progress indicator has timed out']}× — client gave up waiting while server was still processing.`,
+      codeDirection: 'The overlay/spinner dismissal is tied to a server response that the client never received. Look for the spinner/overlay lifecycle: where it is set visible and where it is cleared. The clear path must handle the timeout case.',
+      repo: 'allscriptshealthcare/SunriseMobile',
+      searchTerms: ['overlay', 'spinner', 'progressIndicator', 'HideProgressIndicator', 'ShowProgressIndicator'],
+    });
+  }
+
+  // High lock contention
+  if ((counts['LockWithTimeout'] ?? 0) > 100) {
+    suggestions.push({
+      title: `SCMLib lock contention (${counts['LockWithTimeout']}× LockWithTimeout)`,
+      severity: 'high',
+      observation: `${counts['LockWithTimeout']} LockWithTimeout events — workers are queuing heavily. This is the IIS web-garden bottleneck described in the analysis playbook.`,
+      codeDirection: 'Increase IIS app pool Maximum Worker Processes (e.g. 4 → 6). The SCMLibServiceManager lock is a known contention point; more workers reduce queue depth. Validated fix on similar DAs (DA 9358329 → Defect 9377813).',
+      repo: 'allscriptshealthcare/sunrise-mobilewebservices',
+      searchTerms: ['LockWithTimeout', 'SCMLibServiceManager', 'maxWorkerProcesses'],
+    });
+  }
+
+  // LogTraceInfo client timeouts
+  if ((counts['LogTraceInfo'] ?? 0) > 100) {
+    suggestions.push({
+      title: `High client timeout rate (${counts['LogTraceInfo']}× LogTraceInfo)`,
+      severity: 'high',
+      observation: `${counts['LogTraceInfo']} LogTraceInfo entries — these are anonymous client-side traces showing the mobile app logged errors/timeouts. Cannot tie to specific user (anonymization per Spike 9375402).`,
+      codeDirection: 'Correlate LogTraceInfo timestamps with server-side op durations. If server ops complete in < client timeout threshold, the bug is in the client timeout/retry logic. Check HWS RecycleClient and connection backoff settings.',
+      repo: 'allscriptshealthcare/sunrise-mobilewebservices',
+      searchTerms: ['LogTraceInfo', 'RecycleClient', 'ClientTimeout'],
+    });
+  }
+
+  // Raw errors in log
+  if ((counts['ERROR'] ?? 0) > 0 || (counts['FATAL'] ?? 0) > 0) {
+    const total = (counts['ERROR'] ?? 0) + (counts['FATAL'] ?? 0);
+    suggestions.push({
+      title: `${total} ERROR/FATAL entries in logs`,
+      severity: total > 50 ? 'critical' : 'high',
+      observation: `${counts['ERROR'] ?? 0} ERROR + ${counts['FATAL'] ?? 0} FATAL lines. Review the key log lines section for exact error messages — these are the primary diagnostic signals.`,
+      codeDirection: 'Find the first ERROR/FATAL in the incident window and trace back the call stack. Match against known exception types (SqlException → DB, UnauthorizedException → auth, NullReferenceException → data model).',
+      repo: 'allscriptshealthcare/sunrise-mobilewebservices',
+      searchTerms: ['ERROR', 'FATAL', 'Exception', 'catch'],
+    });
+  }
+
+  // App pool recycle
+  if (counts['Application_Start']) {
+    suggestions.push({
+      title: 'App pool recycle during incident window',
+      severity: 'medium',
+      observation: `Application_Start found — app pool recycled during the log window. A cold-start stall right after recycle can cause slow responses (Pattern #5).`,
+      codeDirection: 'Enable IIS warmup: set startMode=AlwaysRunning + preloadEnabled=true + applicationInitialization warmup URL. This prevents cold-start stalls from affecting active med-pass users.',
+      repo: 'allscriptshealthcare/sunrise-mobilewebservices',
+      searchTerms: ['Application_Start', 'preloadEnabled', 'startMode', 'LoadAzureAppConfigKeyVaultSecrets'],
+    });
+  }
+
+  return suggestions;
 }

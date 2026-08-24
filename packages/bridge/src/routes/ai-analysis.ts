@@ -3,8 +3,8 @@ import https from 'https';
 
 export const aiAnalysisRouter = Router();
 
-// GitHub Models API — works with a standard GitHub PAT (no extra scope needed for public models)
-const GH_MODELS_URL = 'https://models.inference.ai.azure.com/chat/completions';
+// GitHub Copilot Chat API — works on corp network with standard GitHub PAT
+const GH_MODELS_URL = 'https://api.githubcopilot.com/chat/completions';
 const MODEL = 'gpt-4o';
 
 interface AnalysisRequest {
