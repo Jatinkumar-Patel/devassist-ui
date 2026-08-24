@@ -112,8 +112,17 @@ export default function SetupWizard({ onDone }: Props) {
                 The bridge is a tiny local server that connects to ServiceNow using your
                 Windows login. It runs on your machine — nothing is sent to any cloud.
               </p>
-              <div className="bg-gray-950 rounded-lg p-3 font-mono text-sm text-altera-teal border border-gray-800">
-                npx @jatinkumar-patel/devassist-bridge
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500 font-medium">Run once to install:</p>
+                <div className="bg-gray-950 rounded-lg p-3 font-mono text-xs text-altera-teal border border-gray-800 space-y-1">
+                  <div>git clone https://github.com/Jatinkumar-Patel/devassist-ui.git</div>
+                  <div>cd devassist-ui</div>
+                  <div>npm install</div>
+                </div>
+                <p className="text-xs text-gray-500 font-medium">Run every session:</p>
+                <div className="bg-gray-950 rounded-lg p-3 font-mono text-sm text-altera-teal border border-gray-800">
+                  npm run bridge:dev
+                </div>
               </div>
               <p className="text-xs text-gray-600">
                 Open a new terminal, paste the command above, and press Enter.
