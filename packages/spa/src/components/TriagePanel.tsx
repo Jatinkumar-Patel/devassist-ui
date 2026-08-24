@@ -205,7 +205,14 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
 
       {/* ── Log analysis — download + grep SNOW attachments ──────────────────── */}
       {session.status === 'ready' && snowTask && (
-        <LogAnalysisPanel snowTask={snowTask} />
+        <LogAnalysisPanel
+          snowTask={snowTask}
+          onResult={(hits, topSeeds) => {
+            // Store log evidence in snowTask so AI analysis can use it
+            (snowTask as any)._logHits = hits;
+            (snowTask as any)._topSeeds = topSeeds;
+          }}
+        />
       )}
     </div>
   );

@@ -21,6 +21,7 @@ interface LogAnalysisResult {
 
 interface Props {
   snowTask: SnowTask;
+  onResult?: (hits: LogHit[], topSeeds: Record<string, number>) => void;
 }
 
 // Seed → color for display
@@ -41,7 +42,7 @@ const SEED_COLOR: Record<string, string> = {
 
 const BRIDGE = (): string => (window as any).__BRIDGE_URL__ ?? 'http://localhost:7447';
 
-export default function LogAnalysisPanel({ snowTask }: Props) {
+export default function LogAnalysisPanel({ snowTask, onResult }: Props) {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<LogAnalysisResult | null>(null);
   const [error, setError] = useState('');
@@ -55,7 +56,9 @@ export default function LogAnalysisPanel({ snowTask }: Props) {
     try {
       const r = await fetch(`${BRIDGE()}/api/log-analysis/${sysId}`);
       if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
-      setResult(await r.json());
+      const data: LogAnalysisResult = await r.json();
+      setResult(data);
+      onResult?.(data.hits, data.topSeeds);
     } catch (e: any) {
       setError(e.message);
     } finally {

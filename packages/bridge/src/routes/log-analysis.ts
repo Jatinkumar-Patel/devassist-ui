@@ -36,6 +36,26 @@ interface LogHit {
   seed: string;
 }
 
+const MAX_PLAIN_BYTES  = 50 * 1024 * 1024;  // 50 MB — read whole file
+const MAX_CHUNK_BYTES  = 200 * 1024 * 1024; // 200 MB — read last N lines
+const TAIL_LINES       = 5000;               // lines to tail on very large files
+const MAX_SKIP_BYTES   = 500 * 1024 * 1024; // 500 MB — truly skip
+
+/** Read up to TAIL_LINES from the end of a large log file */
+function readTail(filePath: string, maxLines: number): string {
+  const stat = fs.statSync(filePath);
+  // For large files: read last ~2 MB as bytes and decode
+  const chunkSize = Math.min(stat.size, 2 * 1024 * 1024);
+  const buf = Buffer.alloc(chunkSize);
+  const fd = fs.openSync(filePath, 'r');
+  fs.readSync(fd, buf, 0, chunkSize, stat.size - chunkSize);
+  fs.closeSync(fd);
+  const text = buf.toString('utf-8');
+  const lines = text.split('\n');
+  // Drop the first line (likely partial) and take the last maxLines
+  return lines.slice(Math.max(1, lines.length - maxLines)).join('\n');
+}
+
 interface AttachmentMeta {
   file_name: { value: string } | string;
   sys_id: { value: string } | string;
@@ -95,9 +115,9 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
       const sizeBytesStr = val(att.size_bytes);
       const sizeBytes = parseInt(sizeBytesStr, 10) || 0;
 
-      // Skip very large files (> 5 MB) to avoid timeout
-      if (sizeBytes > 5 * 1024 * 1024) {
-        skipped.push(`${fileName} (too large: ${Math.round(sizeBytes / 1024)}KB)`);
+      // Skip very large files (> 500 MB) entirely
+      if (sizeBytes > MAX_SKIP_BYTES) {
+        skipped.push(`${fileName} (too large to process: ${Math.round(sizeBytes / 1024 / 1024)}MB)`);
         continue;
       }
 
@@ -122,21 +142,35 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
             if (inner.toLowerCase().endsWith('.log') || inner.toLowerCase().endsWith('.txt')) {
               const innerPath = path.join(extractDir, inner);
               const innerStat = fs.statSync(innerPath);
-              if (innerStat.size > 10 * 1024 * 1024) {
-                skipped.push(`${fileName}/${inner} (too large)`);
+              let content: string;
+              let note = '';
+              if (innerStat.size > MAX_SKIP_BYTES) {
+                skipped.push(`${fileName}/${inner} (too large: ${Math.round(innerStat.size / 1024 / 1024)}MB)`);
                 continue;
+              } else if (innerStat.size > MAX_PLAIN_BYTES) {
+                content = readTail(innerPath, TAIL_LINES);
+                note = ` [last ${TAIL_LINES} lines of ${Math.round(innerStat.size / 1024 / 1024)}MB]`;
+              } else {
+                content = fs.readFileSync(innerPath, 'utf-8');
               }
-              const content = fs.readFileSync(innerPath, 'utf-8');
               const hits = parseHwsLog(content, `${fileName}/${inner}`);
               allHits.push(...hits);
-              analyzed.push(`${fileName}/${inner} (${hits.length} hits)`);
+              analyzed.push(`${fileName}/${inner}${note} (${hits.length} hits)`);
             }
           }
         } else {
-          const content = fs.readFileSync(outPath, 'utf-8');
+          let content: string;
+          let note = '';
+          const rawStat = fs.statSync(outPath);
+          if (rawStat.size > MAX_PLAIN_BYTES) {
+            content = readTail(outPath, TAIL_LINES);
+            note = ` [last ${TAIL_LINES} lines of ${Math.round(rawStat.size / 1024 / 1024)}MB]`;
+          } else {
+            content = fs.readFileSync(outPath, 'utf-8');
+          }
           const hits = parseHwsLog(content, fileName);
           allHits.push(...hits);
-          analyzed.push(`${fileName} (${hits.length} hits)`);
+          analyzed.push(`${fileName}${note} (${hits.length} hits)`);
         }
       } catch (e: any) {
         skipped.push(`${fileName} (${e.message.slice(0, 80)})`);
