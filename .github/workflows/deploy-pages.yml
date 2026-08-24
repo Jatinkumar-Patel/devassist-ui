@@ -28,15 +28,12 @@ jobs:
       - run: npm ci
 
       # Copy product registry into the SPA public folder so Vite serves it
-      - run: cp config/product-registry.json packages/spa/public/config/product-registry.json
+      - run: mkdir -p packages/spa/public/config && cp config/product-registry.json packages/spa/public/config/product-registry.json
         shell: bash
 
       - name: Build SPA
         working-directory: packages/spa
         run: npm run build
-        env:
-          # If deploying to GitHub Pages at /devassist-ui/, set BASE here
-          # VITE_BASE: /devassist-ui/
 
       - uses: actions/upload-pages-artifact@v3
         with:
