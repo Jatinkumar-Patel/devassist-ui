@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "products": [
+    {
+      "id": "sunrise-mobile",
+      "displayName": "Sunrise Mobile",
+      "areaPathPrefix": "SR\\MobileX",
+      "snowProduct": "Sunrise Mobile",
+      "snowTaskTable": "incident_task",
+      "repos": [
+        { "key": "SunriseMobile", "owner": "allscriptshealthcare", "repo": "SunriseMobile", "required": true },
+        { "key": "HWS",           "owner": "allscriptshealthcare", "repo": "sunrise-mobilewebservices", "required": true }
+      ],
+      "mtmPlans": [],
+      "skillPath": "skills/devassist-triage/areas/sunrise-mobile"
+    },
+    {
+      "id": "aimanager",
+      "displayName": "AI Manager",
+      "areaPathPrefix": "SR\\AIManager",
+      "snowProduct": "Sunrise AI Manager",
+      "snowTaskTable": "incident_task",
+      "repos": [
+        { "key": "aimanager", "owner": "allscriptshealthcare", "repo": "plhlt-aimanager-npm", "required": true }
+      ],
+      "mtmPlans": [],
+      "skillPath": ""
+    },
+    {
+      "id": "compass-scm",
+      "displayName": "Compass / SCM (Ambulatory)",
+      "areaPathPrefix": "SR\\SCM\\Ambulatory\\Compass",
+      "snowProduct": "Sunrise Ambulatory Care",
+      "snowTaskTable": "sc_task",
+      "repos": [],
+      "mtmPlans": [],
+      "skillPath": "skills/devassist-triage/areas/compass-scm"
+    },
+    {
+      "id": "clindoc-scm",
+      "displayName": "ClinDoc / SCM",
+      "areaPathPrefix": "SR\\SCM\\ClinDoc",
+      "snowProduct": "Sunrise Acute Care (SCM)",
+      "snowTaskTable": "incident_task",
+      "repos": [
+        { "key": "POH-BusinessServices", "owner": "allscriptshealthcare", "repo": "POH-BusinessServices", "required": true }
+      ],
+      "mtmPlans": [],
+      "skillPath": "skills/devassist-triage/areas/clindoc-scm"
+    },
+    {
+      "id": "schedule-webclient",
+      "displayName": "Schedule Web Client",
+      "areaPathPrefix": "SR\\Schedule",
+      "snowProduct": "Sunrise Schedule",
+      "snowTaskTable": "incident_task",
+      "repos": [
+        { "key": "schedule-webclient", "owner": "allscriptshealthcare", "repo": "plhlt-schedule-webclient", "required": true }
+      ],
+      "mtmPlans": [],
+      "skillPath": ""
+    }
+  ]
+}

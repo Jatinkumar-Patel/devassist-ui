@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.local
+*.tsbuildinfo
+packages/spa/dist/
+packages/bridge/dist/
+# Never commit credentials
+.snow.curlrc
+.ado.curlrc
+.devassist-cache/
+temp/devassist/

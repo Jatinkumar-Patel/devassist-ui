@@ -1,0 +1,16 @@
+{
+  "name": "devassist-ui",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n bridge,spa -c cyan,magenta \"npm run dev --workspace=packages/bridge\" \"npm run dev --workspace=packages/spa\"",
+    "build": "npm run build --workspace=packages/spa",
+    "bridge": "npm run start --workspace=packages/bridge",
+    "bridge:dev": "npm run dev --workspace=packages/bridge"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

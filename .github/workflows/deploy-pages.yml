@@ -1,0 +1,53 @@
+name: Deploy SPA to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # Copy product registry into the SPA public folder so Vite serves it
+      - run: cp config/product-registry.json packages/spa/public/config/product-registry.json
+        shell: bash
+
+      - name: Build SPA
+        working-directory: packages/spa
+        run: npm run build
+        env:
+          # If deploying to GitHub Pages at /devassist-ui/, set BASE here
+          # VITE_BASE: /devassist-ui/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: packages/spa/dist
+
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
