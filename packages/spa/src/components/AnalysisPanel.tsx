@@ -1,9 +1,62 @@
 import { useState } from 'react';
-import { ClipboardCopy, Code2, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Wrench, Lightbulb, Sparkles } from 'lucide-react';
+import { ClipboardCopy, Code2, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Wrench, Lightbulb, Sparkles, MessageSquare } from 'lucide-react';
 import type { TriageAnalysis, TriageSession } from '../types';
 import { matchPattern, runCodeSearch, buildAssessment } from '../lib/analysis';
 import { useSettingsStore } from '../store/settings';
 import { snowVal } from '../lib/snow-client';
+function buildCopilotPrompt(session: TriageSession): string {
+  const { adoItem, snowTask, product } = session;
+  if (!adoItem) return '';
+  const f = adoItem.fields;
+  const logHits: Array<{ seed: string; text: string }> = (snowTask as any)?._logHits ?? [];
+  const topSeeds: Record<string, number> = (snowTask as any)?._topSeeds ?? {};
+  const pattern = product ? matchPattern(adoItem) : null;
+
+  return `You are a Sunrise product support engineer performing Level-2 triage.
+Use the evidence below to produce a structured assessment following this format:
+
+Assessment: <CODE BUG | CONFIG / INSTALL | INTENDED BEHAVIOR | ENHANCEMENT | NEED MORE INFO>
+Client reported: <1-2 sentences>
+SNOW evidence: <key log lines / work notes>
+Code analysis: <file + method + what the code does vs should do>
+Gap: <one paragraph>
+Confidence: <High|Medium|Low> — <rationale>
+Blind spots: <what would raise confidence>
+Recommended next step: <single most important action>
+
+Rules: No PHI. Facts only — no confirmed fixes. Human review before any L2 post.
+
+---
+
+## DA ${adoItem.id} — ${f['System.Title']}
+
+Area: ${f['System.AreaPath']}
+Customer: ${f['Allscripts.Field.CustomerName'] ?? '—'}
+Release: ${f['Allscripts.Field.SupportVersion'] ?? '—'}
+Severity: ${f['Microsoft.VSTS.Common.Severity'] ?? '—'}
+State: ${f['System.State']}
+${product ? `Product: ${product.displayName}\nSNOW Product: ${product.snowProduct}` : 'Product: not mapped'}
+
+## Description
+${String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '(empty)').replace(/<[^>]+>/g, ' ').slice(0, 800)}
+
+## SNOW Task: ${snowTask ? snowVal(snowTask.number) : 'not fetched'}
+State: ${snowTask ? snowVal(snowTask.state) : '—'}
+${snowTask?.work_notes ? `Work notes: ${snowVal(snowTask.work_notes).slice(0, 400)}` : ''}
+
+## Log signal summary
+${Object.entries(topSeeds).map(([s, c]) => `  ${s}: ${c}×`).join('\n') || 'No log signals (bridge offline or no attachments)'}
+
+## Key log lines (top 15)
+${logHits.slice(0, 15).map(h => `  [${h.seed}] ${h.text}`).join('\n') || '(none)'}
+
+## Pre-matched pattern
+${pattern ? `"${pattern.name}" — ${pattern.fixDirection}` : 'No keyword pattern matched'}
+
+## Mapped repos
+${product?.repos.map(r => `${r.owner}/${r.repo}`).join(', ') ?? '(none)'}
+`;
+}
 
 interface Props {
   session: TriageSession;
@@ -18,67 +71,11 @@ const VERDICT_STYLE: Record<string, { icon: React.ReactNode; color: string }> = 
   'NEED MORE INFO':   { icon: <HelpCircle size={14} />,   color: 'text-gray-400 border-gray-700 bg-gray-800' },
 };
 
-const BRIDGE = (): string => (window as any).__BRIDGE_URL__ ?? 'http://localhost:7447';
-
 export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
   const { githubPat } = useSettingsStore();
   const [running, setRunning] = useState(false);
-  const [aiRunning, setAiRunning] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [aiResult, setAiResult] = useState<string | null>(null);
-  const [aiError, setAiError] = useState('');
-
-  const runAiAnalysis = async () => {
-    const { adoItem, product } = session;
-    if (!adoItem || !githubPat) return;
-    setAiRunning(true);
-    setAiError('');
-    try {
-      const f = adoItem.fields;
-      const logHits = (session.snowTask as any)?._logHits ?? [];
-      const topSeeds = (session.snowTask as any)?._topSeeds ?? {};
-      const pattern = product ? matchPattern(adoItem) : null;
-
-      const body = {
-        githubPat,
-        da: {
-          id: adoItem.id,
-          title: f['System.Title'],
-          areaPath: f['System.AreaPath'],
-          customer: String(f['Allscripts.Field.CustomerName'] ?? ''),
-          release: String(f['Allscripts.Field.SupportVersion'] ?? ''),
-          severity: String(f['Microsoft.VSTS.Common.Severity'] ?? ''),
-          description: String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? ''),
-        },
-        snowTask: session.snowTask ? {
-          number: snowVal(session.snowTask.number),
-          shortDescription: snowVal(session.snowTask.short_description),
-          state: snowVal(session.snowTask.state),
-          workNotes: String((session.snowTask as any)._workNotes
-            ? JSON.stringify((session.snowTask as any)._workNotes).slice(0, 500)
-            : snowVal(session.snowTask.work_notes)),
-        } : null,
-        logHits,
-        topSeeds,
-        patternName: pattern?.name,
-        patternFixDirection: pattern?.fixDirection,
-        repos: (product?.repos ?? []).map((r: { owner: string; repo: string }) => `${r.owner}/${r.repo}`),
-      };
-
-      const r = await fetch(`${BRIDGE()}/api/ai-analyze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
-      setAiResult(data.assessment);
-    } catch (e: any) {
-      setAiError(e.message);
-    } finally {
-      setAiRunning(false);
-    }
-  };
+  const [aiResult] = useState<string | null>(null);
 
   const { adoItem, product, snowTask, analysis } = session;
 
@@ -189,40 +186,25 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
         )}
       </div>
 
-      {/* AI Assessment — GitHub Models (GPT-4o) with full skill reasoning prompt */}
+      {/* AI Assessment — copy prompt to Copilot Chat (no API key needed) */}
       <div className="rounded-lg border border-purple-800/40 bg-purple-950/20 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-xs font-medium text-purple-300 flex items-center gap-1.5">
-            <Sparkles size={13} /> AI Assessment (GitHub Models · GPT-4o)
+            <Sparkles size={13} /> AI Assessment — Copilot Chat
           </p>
-          <button
-            onClick={runAiAnalysis}
-            disabled={aiRunning || !githubPat}
-            title={!githubPat ? 'Add GitHub PAT in Settings' : ''}
-            className="flex items-center gap-1.5 text-xs bg-purple-900/50 hover:bg-purple-900/80
-                       disabled:opacity-40 border border-purple-700 text-purple-200
-                       px-3 py-1.5 rounded font-medium"
-          >
-            {aiRunning ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
-            {aiRunning ? 'Analyzing…' : aiResult ? 'Re-run AI' : 'Ask AI'}
-          </button>
+          <CopilotCopyButton session={session} />
         </div>
-        {!githubPat && (
-          <p className="text-xs text-gray-600">Add your GitHub PAT in Settings to enable AI analysis.</p>
-        )}
-        {aiError && (
-          <p className="text-xs text-red-400">{aiError}</p>
-        )}
         {aiResult && (
           <pre className="text-xs text-gray-200 whitespace-pre-wrap font-mono leading-relaxed
                           bg-gray-950 rounded p-3 max-h-96 overflow-auto border border-gray-800">
             {aiResult}
           </pre>
         )}
-        {!aiResult && !aiError && !aiRunning && (
+        {!aiResult && (
           <p className="text-xs text-gray-600">
-            Sends DA fields, SNOW work notes, and log evidence to GPT-4o with the devassist-triage
-            reasoning prompt. Human review required before using output.
+            Click <strong className="text-gray-400">Copy prompt</strong> then paste into{' '}
+            <strong className="text-gray-400">Copilot Chat</strong> in VS Code (Ctrl+Shift+I).
+            All evidence is pre-formatted — just paste and send.
           </p>
         )}
       </div>
@@ -250,5 +232,27 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
         Re-analyze
       </button>
     </div>
+  );
+}
+
+function CopilotCopyButton({ session }: { session: TriageSession }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    const prompt = buildCopilotPrompt(session);
+    if (!prompt) return;
+    navigator.clipboard.writeText(prompt).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    });
+  };
+  return (
+    <button onClick={copy}
+      className="flex items-center gap-1.5 text-xs bg-purple-900/50 hover:bg-purple-900/80
+                 border border-purple-700 text-purple-200 px-3 py-1.5 rounded font-medium">
+      {copied
+        ? <><CheckCircle2 size={11} className="text-emerald-400" /> Copied — paste in Copilot Chat</>
+        : <><MessageSquare size={11} /> Copy prompt</>
+      }
+    </button>
   );
 }
