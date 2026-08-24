@@ -169,10 +169,11 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
       const outPath = path.join(tmpDir, fileName.replace(/[^\w.\-]/g, '_'));
 
       try {
-        // Download via PS
+        // Suppress PS progress output (fixes transport errors on large downloads)
         await execPowerShell(
+          `$ProgressPreference = 'SilentlyContinue'; ` +
           `Invoke-WebRequest -Uri '${SNOW_BASE}/GetAttachment/?sysid=${sysId}' ` +
-          `-UseDefaultCredentials -UseBasicParsing -OutFile '${outPath}'`
+          `-UseDefaultCredentials -UseBasicParsing -TimeoutSec 300 -OutFile '${outPath}'`
         );
 
         if (contentType.includes('zip') || fileName.endsWith('.zip')) {
