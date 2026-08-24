@@ -23,17 +23,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
-      - run: npm ci
+      # Install root workspace deps; bridge deps are not needed for SPA build
+      - run: npm install --workspaces=false
+        working-directory: .
 
-      # Copy product registry into the SPA public folder so Vite serves it
-      - run: mkdir -p packages/spa/public/config && cp config/product-registry.json packages/spa/public/config/product-registry.json
+      - name: Install SPA deps
+        run: npm install
+        working-directory: packages/spa
+
+      # Copy product registry into SPA public folder before build
+      - run: mkdir -p public/config && cp ../../config/product-registry.json public/config/product-registry.json
+        working-directory: packages/spa
         shell: bash
 
       - name: Build SPA
-        working-directory: packages/spa
         run: npm run build
+        working-directory: packages/spa
 
       - uses: actions/upload-pages-artifact@v3
         with:
