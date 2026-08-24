@@ -3,7 +3,7 @@ import { Bug, Database, Settings } from 'lucide-react';
 import BridgeStatus from './BridgeStatus';
 
 const links = [
-  { to: '/triage',   label: 'Triage',   icon: Bug },
+  { to: '/triage',   label: 'Analysis', icon: Bug },
   { to: '/registry', label: 'Products', icon: Database },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];

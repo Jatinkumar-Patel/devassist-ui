@@ -53,7 +53,7 @@ export default function TriageInput({ onSubmit, loading }: Props) {
                      px-4 py-3 rounded-lg text-sm font-medium transition-colors"
         >
           {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-          Triage
+          {loading ? 'Analyzing…' : 'Analyze'}
         </button>
       </div>
     </form>
