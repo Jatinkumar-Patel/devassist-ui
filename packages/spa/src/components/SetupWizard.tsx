@@ -107,7 +107,7 @@ export default function SetupWizard({ onDone }: Props) {
                 Windows login. It runs on your machine — nothing is sent to any cloud.
               </p>
               <div className="bg-gray-950 rounded-lg p-3 font-mono text-sm text-altera-teal border border-gray-800">
-                npx @allscriptshealthcare/devassist-bridge
+                npx @jatinkumar-patel/devassist-bridge
               </div>
               <p className="text-xs text-gray-600">
                 Open a new terminal, paste the command above, and press Enter.

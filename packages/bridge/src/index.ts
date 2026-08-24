@@ -3,9 +3,9 @@ import { createServer } from './server';
 import open from 'open';
 
 const PORT = parseInt(process.env.BRIDGE_PORT ?? '7447', 10);
-const SPA_ORIGIN = process.env.SPA_ORIGIN ?? 'https://allscriptshealthcare.github.io';
+const SPA_ORIGIN = process.env.SPA_ORIGIN ?? 'https://jatinkumar-patel.github.io';
 // The GitHub Pages URL where the SPA is deployed
-const PAGES_URL = process.env.PAGES_URL ?? 'https://allscriptshealthcare.github.io/devassist-ui/';
+const PAGES_URL = process.env.PAGES_URL ?? 'https://jatinkumar-patel.github.io/devassist-ui/';
 
 const app = createServer({ spaOrigin: SPA_ORIGIN });
 

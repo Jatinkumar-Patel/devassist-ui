@@ -17,7 +17,7 @@ export function createServer({ spaOrigin }: ServerOptions) {
     // Allow GitHub Pages origin + local dev
     origin: [
       spaOrigin,
-      'https://allscriptshealthcare.github.io',
+      'https://jatinkumar-patel.github.io',
       'http://localhost:5173',
       'http://localhost:7447',
     ],
