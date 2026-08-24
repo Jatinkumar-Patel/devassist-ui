@@ -5,6 +5,8 @@ import { snowRouter } from './routes/snow';
 import { adoRouter } from './routes/ado';
 import { statusRouter } from './routes/status';
 import { mcpRouter } from './routes/mcp-config';
+import { ghSearchRouter } from './routes/gh-search';
+import { logAnalysisRouter } from './routes/log-analysis';
 
 interface ServerOptions {
   spaOrigin: string;
@@ -30,6 +32,8 @@ export function createServer({ spaOrigin }: ServerOptions) {
   app.use('/api/mcp-config', mcpRouter);
   app.use('/api/snow', snowRouter);
   app.use('/api/ado', adoRouter);
+  app.use('/api/gh-search', ghSearchRouter);
+  app.use('/api/log-analysis', logAnalysisRouter);
 
   // Serve the built SPA if it exists alongside the bridge dist
   const spaPath = path.resolve(__dirname, '../../spa/dist');

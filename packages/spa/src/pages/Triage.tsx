@@ -181,7 +181,12 @@ export default function TriagePage() {
       {/* Right: triage panel */}
       <section>
         {activeSession ? (
-          <TriagePanel session={activeSession} />
+          <TriagePanel
+            session={activeSession}
+            onAnalysisComplete={(analysis) =>
+              upsert({ ...activeSession, analysis })
+            }
+          />
         ) : (
           <div className="flex flex-col items-center justify-center h-64 text-gray-600 text-sm space-y-2">
             <p>Paste a DA ID, SNOW number, or TFS work item ID above.</p>

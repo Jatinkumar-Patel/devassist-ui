@@ -1,7 +1,9 @@
-import { ExternalLink, GitBranch, Package, AlertTriangle, CheckCircle2, Paperclip, ChevronDown } from 'lucide-react';
-import type { TriageSession } from '../types';
+﻿import { ExternalLink, GitBranch, Package, AlertTriangle, CheckCircle2, Paperclip, ChevronDown } from 'lucide-react';
+import type { TriageSession, TriageAnalysis } from '../types';
 import { workItemUrl } from '../lib/ado-client';
 import { snowTaskUrl, snowVal } from '../lib/snow-client';
+import AnalysisPanel from './AnalysisPanel';
+import LogAnalysisPanel from './LogAnalysisPanel';
 
 // Phase label for the progress indicator
 const PHASE_LABELS: Record<string, string> = {
@@ -17,9 +19,10 @@ const PHASE_LABELS: Record<string, string> = {
 
 interface Props {
   session: TriageSession;
+  onAnalysisComplete: (analysis: TriageAnalysis) => void;
 }
 
-export default function TriagePanel({ session }: Props) {
+export default function TriagePanel({ session, onAnalysisComplete }: Props) {
   const { adoItem, snowTask, product, error, currentPhase, clarityGaps, attachments, artifactLedger } = session;
 
   if (error) {
@@ -36,7 +39,7 @@ export default function TriagePanel({ session }: Props) {
     return (
       <div className="space-y-2 animate-pulse">
         <p className="text-xs text-altera-teal">
-          {PHASE_LABELS[currentPhase] ?? currentPhase}…
+          {PHASE_LABELS[currentPhase] ?? currentPhase}â€¦
         </p>
         <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
           <div className="h-1 bg-altera-teal rounded-full w-1/3 transition-all" />
@@ -52,7 +55,7 @@ export default function TriagePanel({ session }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* ── Run header ────────────────────────────────────────────────────────── */}
+      {/* â”€â”€ Run header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-2">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -86,7 +89,7 @@ export default function TriagePanel({ session }: Props) {
         )}
       </div>
 
-      {/* ── Phase 1: Clarity ─────────────────────────────────────────────────── */}
+      {/* â”€â”€ Phase 1: Clarity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {clarityGaps !== undefined && (
         <div className={`rounded-lg border p-3 text-sm ${
           clarityGaps.length === 0
@@ -100,12 +103,12 @@ export default function TriagePanel({ session }: Props) {
             }
           </div>
           {clarityGaps.map((g, i) => (
-            <p key={i} className="text-xs text-yellow-200 ml-5">• {g}</p>
+            <p key={i} className="text-xs text-yellow-200 ml-5">â€¢ {g}</p>
           ))}
         </div>
       )}
 
-      {/* ── Product routing ──────────────────────────────────────────────────── */}
+      {/* â”€â”€ Product routing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {product ? (
         <div className="rounded-lg border border-altera-blue/40 bg-altera-blue/10 p-4 space-y-3">
           <div className="flex items-center gap-2 text-altera-teal text-sm font-medium">
@@ -131,16 +134,16 @@ export default function TriagePanel({ session }: Props) {
         </div>
       ) : adoItem && (
         <div className="rounded-lg border border-yellow-800/50 bg-yellow-950/20 p-3 text-xs text-yellow-300">
-          ⚠ No product match for "{fields['System.AreaPath']}" — add it in the Registry.
+          âš  No product match for "{fields['System.AreaPath']}" â€” add it in the Registry.
         </div>
       )}
 
-      {/* ── SNOW data ────────────────────────────────────────────────────────── */}
+      {/* â”€â”€ SNOW data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {snowTask && (
         <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium text-gray-400">
-              ServiceNow — {snowVal(snowTask.number)}
+              ServiceNow â€” {snowVal(snowTask.number)}
               <span className="text-gray-600 ml-1">({snowVal(snowTask.state)})</span>
             </p>
             <a href={snowTaskUrl(snowVal(snowTask.number))} target="_blank" rel="noreferrer"
@@ -162,7 +165,7 @@ export default function TriagePanel({ session }: Props) {
         </div>
       )}
 
-      {/* ── Phase 2: Attachments ledger ──────────────────────────────────────── */}
+      {/* â”€â”€ Phase 2: Attachments ledger â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {attachments && attachments.length > 0 && (
         <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-2">
           <p className="text-xs font-medium text-gray-400 flex items-center gap-1.5">
@@ -193,6 +196,16 @@ export default function TriagePanel({ session }: Props) {
             {String(fields['Allscripts.Field.WorkaroundInstructions'])}
           </p>
         </Collapsible>
+      )}
+
+      {/* ── Phase 3/4: Code analysis + Assessment ────────────────────────────── */}
+      {session.status === 'ready' && product && (
+        <AnalysisPanel session={session} onAnalysisComplete={onAnalysisComplete} />
+      )}
+
+      {/* ── Log analysis — download + grep SNOW attachments ──────────────────── */}
+      {session.status === 'ready' && snowTask && (
+        <LogAnalysisPanel snowTask={snowTask} />
       )}
     </div>
   );
@@ -226,3 +239,4 @@ function Collapsible({ label, children }: { label: string; children: React.React
     </details>
   );
 }
+
