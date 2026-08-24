@@ -10,3 +10,5 @@ packages/bridge/dist/
 .ado.curlrc
 .devassist-cache/
 temp/devassist/
+
+devassist-ui/
