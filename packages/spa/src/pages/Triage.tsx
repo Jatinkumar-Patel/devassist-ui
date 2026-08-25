@@ -339,9 +339,9 @@ export default function TriagePage() {
   }, [adoPat, bridgeUrl, githubPat, upsert]);
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-5 sm:gap-7 items-start">
+    <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-5 sm:gap-7 items-start xl:h-[calc(100vh-10rem)] xl:overflow-hidden">
       {/* Left: input + session list */}
-      <aside className="space-y-5 xl:sticky xl:top-24">
+      <aside className="space-y-5 xl:h-full xl:overflow-y-auto xl:pr-1">
         <div className="glass-panel rounded-2xl p-3 sm:p-4 space-y-2">
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-white">Quick Start (End Users)</h3>
@@ -423,7 +423,7 @@ export default function TriagePage() {
       </aside>
 
       {/* Right: triage panel */}
-      <section className="min-w-0">
+      <section className="min-w-0 xl:h-full xl:overflow-y-auto xl:pr-1">
         {activeSession ? (
           <TriagePanel
             session={activeSession}
