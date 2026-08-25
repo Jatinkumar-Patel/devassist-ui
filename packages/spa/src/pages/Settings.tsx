@@ -108,9 +108,9 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={toggleBridgeCard}
-              className="text-xs px-2 py-1 rounded-md border border-gray-700 text-gray-300 hover:border-gray-500"
+              className="text-xs px-2.5 py-1 rounded-md border border-cyan-500/70 bg-cyan-500/15 text-cyan-200 hover:bg-cyan-500/25 font-medium"
             >
-              {bridgeCardOpen ? 'Collapse' : 'Open'}
+              {bridgeCardOpen ? 'Collapse' : 'Expand'}
             </button>
           </div>
           {bridgeCardOpen && (

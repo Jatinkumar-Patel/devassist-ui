@@ -144,9 +144,9 @@ export default function TriageInput({ onSubmit, loading }: Props) {
             <button
               type="button"
               onClick={toggleScopeOpen}
-              className="text-xs px-2 py-1 rounded-md border border-white/20 text-gray-200 hover:bg-white/10"
+              className="text-xs px-2.5 py-1 rounded-md border border-cyan-400/70 bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 font-medium"
             >
-              {scopeOpen ? 'Collapse' : 'Open'}
+              {scopeOpen ? 'Collapse' : 'Expand'}
             </button>
           </div>
 
@@ -250,9 +250,9 @@ export default function TriageInput({ onSubmit, loading }: Props) {
           <button
             type="button"
             onClick={toggleInputOpen}
-            className="text-xs px-2 py-1 rounded-md border border-white/20 text-gray-200 hover:bg-white/10"
+            className="text-xs px-2.5 py-1 rounded-md border border-cyan-400/70 bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 font-medium"
           >
-            {inputOpen ? 'Collapse' : 'Open'}
+            {inputOpen ? 'Collapse' : 'Expand'}
           </button>
         </div>
 

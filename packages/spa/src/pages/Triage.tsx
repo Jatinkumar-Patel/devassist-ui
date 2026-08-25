@@ -347,9 +347,9 @@ export default function TriagePage() {
             <button
               type="button"
               onClick={toggleQuickStart}
-              className="text-xs px-2 py-1 rounded-md border border-white/20 text-gray-200 hover:bg-white/10"
+              className="text-xs px-2.5 py-1 rounded-md border border-cyan-400/70 bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 font-medium"
             >
-              {quickStartOpen ? 'Collapse' : 'Open'}
+              {quickStartOpen ? 'Collapse' : 'Expand'}
             </button>
           </div>
           {quickStartOpen && (
@@ -383,9 +383,9 @@ export default function TriagePage() {
               <button
                 type="button"
                 onClick={toggleRecent}
-                className="text-xs px-2 py-1 rounded-md border border-white/20 text-gray-200 hover:bg-white/10"
+                className="text-xs px-2.5 py-1 rounded-md border border-cyan-400/70 bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 font-medium"
               >
-                {recentOpen ? 'Collapse' : 'Open'}
+                {recentOpen ? 'Collapse' : 'Expand'}
               </button>
             </div>
             {recentOpen && sessions.map((s) => (
