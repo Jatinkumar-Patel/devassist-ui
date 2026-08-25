@@ -30,7 +30,7 @@ export default function BridgeStatus() {
           ? 'border-emerald-700 text-emerald-400 bg-emerald-950/40'
           : 'border-red-800 text-red-400 bg-red-950/40'
       }`}
-      title={ok ? `Bridge v${status.version} · SNOW: ${status.snowAuth}` : 'Bridge offline — run: npx devassist-bridge'}
+      title={ok ? `Bridge v${status.version} · SNOW: ${status.snowAuth}` : 'Bridge offline — run: npx @jatinkumar-patel/devassist-bridge'}
     >
       {ok ? <Wifi size={12} /> : <WifiOff size={12} />}
       {ok ? 'Bridge' : 'Bridge offline'}

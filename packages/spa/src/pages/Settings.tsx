@@ -94,7 +94,7 @@ export default function SettingsPage() {
             <Terminal size={12} /> Start the bridge on your machine
           </p>
           <pre className="text-xs font-mono text-altera-teal bg-gray-950 rounded p-2 overflow-x-auto">
-            npx devassist-bridge
+            npx @jatinkumar-patel/devassist-bridge
           </pre>
           <p className="text-xs text-gray-600">
             Runs a local server that proxies SNOW (Windows NTLM) and ADO calls.
