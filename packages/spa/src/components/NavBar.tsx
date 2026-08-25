@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { Bug, Database, Settings } from 'lucide-react';
+import { Bug, Database, Settings, RefreshCw } from 'lucide-react';
 import BridgeStatus from './BridgeStatus';
 
 const links = [
@@ -9,6 +9,13 @@ const links = [
 ];
 
 export default function NavBar() {
+  const refreshLatest = () => {
+    const base = `${window.location.origin}/devassist-ui/`;
+    const hash = window.location.hash || '#/triage';
+    const bust = `v=${Date.now()}`;
+    window.location.href = `${base}?${bust}${hash}`;
+  };
+
   return (
     <header className="sticky top-0 z-30 px-3 sm:px-4 py-3 border-b border-white/10 bg-slate-950/70 backdrop-blur-md">
       <div className="container mx-auto max-w-7xl flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -35,7 +42,16 @@ export default function NavBar() {
             ))}
           </nav>
         </div>
-        <div className="self-start sm:self-auto">
+        <div className="self-start sm:self-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={refreshLatest}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-2.5 py-1.5 text-xs text-cyan-100 hover:bg-cyan-500/20"
+            title="Refresh and fetch latest deployed build"
+          >
+            <RefreshCw size={12} />
+            Refresh latest
+          </button>
           <BridgeStatus />
         </div>
       </div>
