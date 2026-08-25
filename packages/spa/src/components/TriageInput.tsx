@@ -110,13 +110,13 @@ export default function TriageInput({ onSubmit, loading }: Props) {
     <form onSubmit={handleSubmit} className="w-full space-y-3">
       {registry && (
         <div className="glass-panel rounded-2xl p-3 sm:p-4 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-3">
             <div>
-              <label className="block text-xs text-gray-300 mb-1">Product group</label>
+              <label className="block text-xs text-gray-300 mb-1.5">Product group</label>
               <select
                 value={selectedGroupId}
                 onChange={(e) => setGroup(e.target.value)}
-                className="bg-slate-950/70 border border-white/15 rounded-xl px-3 py-2 text-sm text-gray-100 w-full"
+                className="bg-slate-950/70 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-gray-100 w-full"
               >
                 {groupOptions.map((g) => (
                   <option key={g.id} value={g.id}>{g.name}</option>
@@ -124,13 +124,13 @@ export default function TriageInput({ onSubmit, loading }: Props) {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-300 mb-1">Products (multi-select)</label>
+              <label className="block text-xs text-gray-300 mb-1.5">Products (multi-select)</label>
               <select
                 multiple
-                size={Math.min(7, Math.max(4, availableProducts.length || 4))}
+                size={Math.min(8, Math.max(5, availableProducts.length || 5))}
                 value={selectedProductIds}
                 onChange={updateProductsFromDropdown}
-                className="bg-slate-950/70 border border-white/15 rounded-xl px-3 py-2 text-sm text-gray-100 w-full"
+                className="bg-slate-950/70 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-gray-100 w-full min-h-[180px]"
               >
                 {availableProducts.map((p) => (
                   <option key={p.id} value={p.id}>{p.displayName}</option>
