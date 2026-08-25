@@ -37,7 +37,7 @@ function friendlyErrorMessage(error: string, bridgeUrl: string): string {
     if (window.location.protocol === 'https:' && isLocalBridgeUrl(bridgeUrl)) {
       return `Cannot reach local bridge (${bridgeUrl}) from HTTPS page. Open app from bridge URL ${bridgeUrl} and retry.`;
     }
-    return `Bridge is unreachable at ${bridgeUrl}. Start bridge with \"npx @jatinkumar-patel/devassist-bridge\" and check VPN.`;
+    return `Bridge is unreachable at ${bridgeUrl}. Start bridge from Settings using the one-command setup, then retry.`;
   }
   return error;
 }

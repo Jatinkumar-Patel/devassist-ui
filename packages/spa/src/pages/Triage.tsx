@@ -45,7 +45,7 @@ function bridgeHelpMessage(bridgeUrl: string): string {
   if (window.location.protocol === 'https:' && isLocalBridgeUrl(bridgeUrl)) {
     return `Cannot reach local bridge (${bridgeUrl}) from HTTPS due browser security. Open the app from bridge URL ${bridgeUrl} and retry.`;
   }
-  return `Bridge is unreachable at ${bridgeUrl}. Start bridge with "npx @jatinkumar-patel/devassist-bridge" and check VPN connectivity.`;
+  return `Bridge is unreachable at ${bridgeUrl}. Start bridge from Settings using the one-command setup, then retry.`;
 }
 
 async function ensureBridgeReachable(bridgeUrl: string): Promise<void> {
@@ -319,7 +319,7 @@ export default function TriagePage() {
           <h3 className="text-sm font-semibold text-white">Quick Start (End Users)</h3>
           <p className="text-xs text-gray-300">Run this in PowerShell and keep it open:</p>
           <pre className="text-xs font-mono text-cyan-200 bg-gray-950/70 border border-white/10 rounded-lg p-2 overflow-x-auto">
-            npx @jatinkumar-patel/devassist-bridge
+            npx --yes degit Jatinkumar-Patel/devassist-ui devassist-ui; Set-Location devassist-ui; npm install; npm run bridge
           </pre>
           <p className="text-xs text-gray-400">Then open:</p>
           <a

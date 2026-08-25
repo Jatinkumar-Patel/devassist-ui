@@ -145,7 +145,7 @@ export default function SetupWizard({ onDone }: Props) {
               <div className="space-y-2">
                 <p className="text-xs text-gray-500 font-medium">End-user start (no repo clone):</p>
                 <div className="bg-gray-950 rounded-lg p-3 font-mono text-sm text-altera-teal border border-gray-800">
-                  npx @jatinkumar-patel/devassist-bridge
+                  npx --yes degit Jatinkumar-Patel/devassist-ui devassist-ui; Set-Location devassist-ui; npm install; npm run bridge
                 </div>
               </div>
               <p className="text-xs text-gray-600">
