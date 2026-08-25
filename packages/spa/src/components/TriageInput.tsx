@@ -211,16 +211,16 @@ export default function TriageInput({ onSubmit, loading }: Props) {
         </div>
       )}
 
-      <div className="relative flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="relative flex-1">
+      <div className="space-y-2.5">
+        <div className="relative">
           <input
             ref={inputRef}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder={`Paste a work item ID, e.g. ${PLACEHOLDERS[Math.floor(Math.random() * PLACEHOLDERS.length)]}`}
-            className="w-full bg-slate-950/70 border border-white/15 rounded-xl px-4 py-3 pr-28
+            className="w-full bg-slate-950/70 border border-white/15 rounded-2xl px-4 py-4 pr-28
                        text-gray-100 placeholder-gray-500 focus:outline-none focus:border-cyan-400
-                       focus:ring-1 focus:ring-cyan-400 text-sm"
+                       focus:ring-1 focus:ring-cyan-400 text-base"
           />
           {detected && (
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs bg-cyan-400/20 text-cyan-200 px-2 py-0.5 rounded">
@@ -228,30 +228,34 @@ export default function TriageInput({ onSubmit, loading }: Props) {
             </span>
           )}
         </div>
-        {voiceSupported && (
+
+        <div className={`grid gap-2 ${voiceSupported ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+          {voiceSupported && (
+            <button
+              type="button"
+              onClick={toggleVoice}
+              className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium border transition-colors ${
+                listening
+                  ? 'border-rose-400/60 bg-rose-500/20 text-rose-100'
+                  : 'border-cyan-400/40 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20'
+              }`}
+            >
+              {listening ? <MicOff size={16} /> : <Mic size={16} />}
+              {listening ? 'Stop voice' : 'Voice input'}
+            </button>
+          )}
+
           <button
-            type="button"
-            onClick={toggleVoice}
-            className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium border transition-colors w-full sm:w-auto ${
-              listening
-                ? 'border-rose-400/60 bg-rose-500/20 text-rose-100'
-                : 'border-cyan-400/40 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20'
-            }`}
+            type="submit"
+            disabled={loading || !value.trim()}
+            className="flex items-center gap-2 bg-gradient-to-r from-sky-600 to-blue-700 hover:from-sky-500 hover:to-blue-600
+                       disabled:opacity-40 disabled:cursor-not-allowed text-white
+                       px-5 py-3 rounded-xl text-sm font-semibold transition-colors justify-center"
           >
-            {listening ? <MicOff size={16} /> : <Mic size={16} />}
-            {listening ? 'Stop voice' : 'Voice input'}
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+            {loading ? 'Analyzing…' : 'Analyze'}
           </button>
-        )}
-        <button
-          type="submit"
-          disabled={loading || !value.trim()}
-          className="flex items-center gap-2 bg-gradient-to-r from-sky-600 to-blue-700 hover:from-sky-500 hover:to-blue-600
-                     disabled:opacity-40 disabled:cursor-not-allowed text-white
-                     px-5 py-3 rounded-xl text-sm font-semibold transition-colors justify-center w-full sm:w-auto"
-        >
-          {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-          {loading ? 'Analyzing…' : 'Analyze'}
-        </button>
+        </div>
       </div>
 
       {voiceSupported && (
