@@ -13,10 +13,19 @@ interface DiagnosticResult {
 export default function SettingsPage() {
   const { adoPat, githubPat, openaiKey, bridgeUrl, setAdoPat, setGithubPat, setOpenaiKey, setBridgeUrl, clearPats } = useSettingsStore();
   const installCmds = getBridgeInstallCommands();
+  const [bridgeCardOpen, setBridgeCardOpen] = useState<boolean>(() => localStorage.getItem('devassist-settings-bridge-open') !== '0');
 
   const reRunWizard = () => {
     localStorage.removeItem('devassist-setup-done');
     window.location.reload();
+  };
+
+  const toggleBridgeCard = () => {
+    setBridgeCardOpen((prev) => {
+      const next = !prev;
+      localStorage.setItem('devassist-settings-bridge-open', next ? '1' : '0');
+      return next;
+    });
   };
 
   return (
@@ -92,19 +101,32 @@ export default function SettingsPage() {
         </div>
 
         <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-2">
-          <p className="text-xs font-medium text-gray-400 flex items-center gap-1.5">
-            <Terminal size={12} /> Start the bridge on your machine
-          </p>
-          <div className="text-xs font-mono text-altera-teal bg-gray-950 rounded p-2 overflow-x-auto space-y-2">
-            <p className="text-[11px] text-gray-400 font-sans">Command Prompt (cmd)</p>
-            <p className="break-all">{installCmds.cmd}</p>
-            <p className="text-[11px] text-gray-400 font-sans">PowerShell</p>
-            <p className="break-all">{installCmds.powershell}</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-medium text-gray-400 flex items-center gap-1.5">
+              <Terminal size={12} /> Start the bridge on your machine
+            </p>
+            <button
+              type="button"
+              onClick={toggleBridgeCard}
+              className="text-xs px-2 py-1 rounded-md border border-gray-700 text-gray-300 hover:border-gray-500"
+            >
+              {bridgeCardOpen ? 'Collapse' : 'Open'}
+            </button>
           </div>
-          <p className="text-xs text-gray-600">
-            Runs a local server that proxies SNOW (Windows NTLM) and ADO calls.
-            Must be running for SNOW data and ADO triage to work.
-          </p>
+          {bridgeCardOpen && (
+            <>
+              <div className="text-xs font-mono text-altera-teal bg-gray-950 rounded p-2 overflow-x-auto space-y-2">
+                <p className="text-[11px] text-gray-400 font-sans">Command Prompt (cmd)</p>
+                <p className="break-all">{installCmds.cmd}</p>
+                <p className="text-[11px] text-gray-400 font-sans">PowerShell</p>
+                <p className="break-all">{installCmds.powershell}</p>
+              </div>
+              <p className="text-xs text-gray-600">
+                Runs a local server that proxies SNOW (Windows NTLM) and ADO calls.
+                Must be running for SNOW data and ADO triage to work.
+              </p>
+            </>
+          )}
         </div>
       </section>
 

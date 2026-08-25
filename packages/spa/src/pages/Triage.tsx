@@ -112,12 +112,24 @@ export default function TriagePage() {
     const saved = localStorage.getItem('devassist-quickstart-open');
     return saved !== '0';
   });
+  const [recentOpen, setRecentOpen] = useState<boolean>(() => {
+    const saved = localStorage.getItem('devassist-recent-open');
+    return saved !== '0';
+  });
   const [loading, setLoading] = useState(false);
 
   const toggleQuickStart = () => {
     setQuickStartOpen((prev) => {
       const next = !prev;
       localStorage.setItem('devassist-quickstart-open', next ? '1' : '0');
+      return next;
+    });
+  };
+
+  const toggleRecent = () => {
+    setRecentOpen((prev) => {
+      const next = !prev;
+      localStorage.setItem('devassist-recent-open', next ? '1' : '0');
       return next;
     });
   };
@@ -366,8 +378,17 @@ export default function TriagePage() {
 
         {sessions.length > 0 && (
           <div className="glass-panel rounded-2xl p-3 space-y-2">
-            <p className="text-xs text-gray-400 px-1 font-medium">Recent</p>
-            {sessions.map((s) => (
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-gray-400 px-1 font-medium">Recent</p>
+              <button
+                type="button"
+                onClick={toggleRecent}
+                className="text-xs px-2 py-1 rounded-md border border-white/20 text-gray-200 hover:bg-white/10"
+              >
+                {recentOpen ? 'Collapse' : 'Open'}
+              </button>
+            </div>
+            {recentOpen && sessions.map((s) => (
               <button
                 key={s.id}
                 onClick={() => useTriageStore.getState().setActive(s.id)}
