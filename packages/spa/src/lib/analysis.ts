@@ -207,35 +207,59 @@ export function buildAssessment(
 
   const summarizeSnowAuditJson = (raw: string): string[] => {
     const normalized = raw.trim().replace(/^[-*]\s*/, '');
-    if (!normalized.startsWith('[') && !normalized.startsWith('{')) return [];
+    if (!normalized.startsWith('[') && !normalized.startsWith('{') && !normalized.startsWith('"')) return [];
 
-    try {
-      const parsed = JSON.parse(normalized);
-      const rows = Array.isArray(parsed) ? parsed : [parsed];
-      const summaries = rows
-        .slice(0, 5)
-        .map((row: any) => {
-          const field = row?.fieldname?.display_value ?? row?.fieldname?.value ?? row?.fieldname;
-          const oldVal = row?.oldvalue?.display_value ?? row?.oldvalue?.value ?? row?.oldvalue;
-          const newVal = row?.newvalue?.display_value ?? row?.newvalue?.value ?? row?.newvalue;
-          const who = row?.user?.display_value ?? row?.user?.value ?? row?.user ?? row?.sys_created_by?.display_value;
-          const when = row?.sys_created_on?.display_value ?? row?.sys_created_on?.value ?? row?.sys_created_on;
+    const parseCandidates: string[] = [normalized];
 
-          if (!field && !oldVal && !newVal) return null;
-
-          const transition = oldVal !== undefined && newVal !== undefined
-            ? `${String(oldVal)} → ${String(newVal)}`
-            : `${String(newVal ?? oldVal ?? '')}`;
-
-          return `${String(field ?? 'field')} changed (${transition})${who ? ` by ${String(who)}` : ''}${when ? ` at ${String(when)}` : ''}`;
-        })
-        .filter((v): v is string => Boolean(v));
-
-      if (rows.length > 5) summaries.push(`...and ${rows.length - 5} more audit updates`);
-      return summaries;
-    } catch {
-      return [];
+    // Handle escaped JSON blobs like [{\"fieldname\":...}] that often appear in work notes.
+    if (normalized.includes('\\"')) {
+      parseCandidates.push(normalized.replace(/\\"/g, '"'));
+      parseCandidates.push(normalized.replace(/\\"/g, '"').replace(/\\\\/g, '\\'));
     }
+
+    // Handle wrapped JSON string payloads: "[{\"fieldname\":...}]"
+    if (normalized.startsWith('"') && normalized.endsWith('"')) {
+      try {
+        const unwrapped = JSON.parse(normalized);
+        if (typeof unwrapped === 'string') parseCandidates.push(unwrapped);
+      } catch {
+        // non-fatal
+      }
+    }
+
+    const uniqueCandidates = Array.from(new Set(parseCandidates));
+
+    for (const candidate of uniqueCandidates) {
+      try {
+        const parsed = JSON.parse(candidate);
+        const rows = Array.isArray(parsed) ? parsed : [parsed];
+        const summaries = rows
+          .slice(0, 5)
+          .map((row: any) => {
+            const field = row?.fieldname?.display_value ?? row?.fieldname?.value ?? row?.fieldname;
+            const oldVal = row?.oldvalue?.display_value ?? row?.oldvalue?.value ?? row?.oldvalue;
+            const newVal = row?.newvalue?.display_value ?? row?.newvalue?.value ?? row?.newvalue;
+            const who = row?.user?.display_value ?? row?.user?.value ?? row?.user ?? row?.sys_created_by?.display_value;
+            const when = row?.sys_created_on?.display_value ?? row?.sys_created_on?.value ?? row?.sys_created_on;
+
+            if (!field && !oldVal && !newVal) return null;
+
+            const transition = oldVal !== undefined && newVal !== undefined
+              ? `${String(oldVal)} → ${String(newVal)}`
+              : `${String(newVal ?? oldVal ?? '')}`;
+
+            return `${String(field ?? 'field')} changed (${transition})${who ? ` by ${String(who)}` : ''}${when ? ` at ${String(when)}` : ''}`;
+          })
+          .filter((v): v is string => Boolean(v));
+
+        if (rows.length > 5) summaries.push(`...and ${rows.length - 5} more audit updates`);
+        if (summaries.length) return summaries;
+      } catch {
+        // try next parsing strategy
+      }
+    }
+
+    return [];
   };
 
   const normalizeEvidenceLine = (line: string): string[] => {
