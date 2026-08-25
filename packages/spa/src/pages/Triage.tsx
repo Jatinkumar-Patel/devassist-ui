@@ -4,8 +4,8 @@ import TriageInput from '../components/TriageInput';
 import TriagePanel from '../components/TriagePanel';
 import { detectInput } from '../lib/input-detector';
 import { loadRegistry, routeByAreaPath } from '../lib/product-registry';
-import { fetchWorkItem } from '../lib/ado-client';
-import { fetchSnowTask, fetchSnowWorkNotes, fetchSnowAttachments, fetchSnowCase, fetchSnowIncident, fetchSnowIncidentByCase, escalateSnowTask, snowVal } from '../lib/snow-client';
+import { fetchWorkItem, findWorkItemBySnowTask, findWorkItemByCase } from '../lib/ado-client';
+import { fetchSnowTask, fetchSnowWorkNotes, fetchSnowAttachments, fetchSnowCase, fetchSnowIncident, fetchSnowIncidentByCase, fetchSnowTasksByIncident, escalateSnowTask, snowVal } from '../lib/snow-client';
 import { matchPattern, runCodeSearch, buildSkillDrivenAssessment } from '../lib/analysis';
 import { fetchRelatedBugs, fetchTestCases } from '../lib/ado-client';
 import { searchCommits } from '../lib/github-client';
@@ -157,6 +157,30 @@ function deriveSnowLinkedWorkItemId(...records: Array<any | undefined>): number 
   }
 
   return undefined;
+}
+
+async function enrichSnowTaskArtifacts(s: TriageSession, taskRecord: any): Promise<TriageSession> {
+  let next = { ...s, snowTask: taskRecord };
+  const sysId = snowVal(taskRecord?.sys_id);
+  if (!sysId) return next;
+
+  const [notesResp, attachResp] = await Promise.allSettled([
+    fetchSnowWorkNotes(sysId),
+    fetchSnowAttachments(sysId),
+  ]);
+
+  if (notesResp.status === 'fulfilled' && notesResp.value?.result) {
+    next = { ...next, snowTask: { ...next.snowTask!, _workNotes: notesResp.value.result } };
+  }
+
+  if (attachResp.status === 'fulfilled' && attachResp.value?.result) {
+    const attachments = Array.isArray(attachResp.value.result)
+      ? attachResp.value.result
+      : [attachResp.value.result];
+    next = { ...next, attachments };
+  }
+
+  return next;
 }
 
 export default function TriagePage() {
@@ -334,6 +358,21 @@ export default function TriagePage() {
           const incRecord = Array.isArray(incResp?.result) ? incResp.result[0] : incResp?.result;
           if (incRecord) {
             s = { ...s, snowIncident: incRecord };
+
+            const incNum = snowVal(incRecord?.number) || incidentNumber;
+            try {
+              const taskResp = await fetchSnowTasksByIncident(incNum);
+              const firstTask = Array.isArray(taskResp?.result) ? taskResp.result[0] : taskResp?.result;
+              if (firstTask) {
+                s = { ...s, snowTaskTable: taskResp?.table ?? s.snowTaskTable };
+                s = await enrichSnowTaskArtifacts(s, firstTask);
+                const taskNumber = snowVal(firstTask?.number);
+                if (taskNumber) s = { ...s, snowTaskNumber: taskNumber };
+              }
+            } catch {
+              // non-fatal degraded mode
+            }
+
             const caseNum = getIncidentCaseNumber(incRecord);
             if (caseNum) {
               try {
@@ -361,7 +400,25 @@ export default function TriagePage() {
             try {
               const incResp = await fetchSnowIncidentByCase(caseNumber);
               const incRecord = Array.isArray(incResp?.result) ? incResp.result[0] : incResp?.result;
-              if (incRecord) s = { ...s, snowIncident: incRecord };
+              if (incRecord) {
+                s = { ...s, snowIncident: incRecord };
+
+                const incNum = snowVal(incRecord?.number);
+                if (incNum) {
+                  try {
+                    const taskResp = await fetchSnowTasksByIncident(incNum);
+                    const firstTask = Array.isArray(taskResp?.result) ? taskResp.result[0] : taskResp?.result;
+                    if (firstTask) {
+                      s = { ...s, snowTaskTable: taskResp?.table ?? s.snowTaskTable };
+                      s = await enrichSnowTaskArtifacts(s, firstTask);
+                      const taskNumber = snowVal(firstTask?.number);
+                      if (taskNumber) s = { ...s, snowTaskNumber: taskNumber };
+                    }
+                  } catch {
+                    // non-fatal degraded mode
+                  }
+                }
+              }
             } catch {
               // non-fatal degraded mode
             }
@@ -373,44 +430,73 @@ export default function TriagePage() {
 
       // ── Bridge from SNOW records back to DA/TFS for full analysis ──────────
       if (!s.adoItem && adoPat) {
-        const linkedWorkItemId = deriveSnowLinkedWorkItemId(s.snowIncident, s.snowCase, s.snowTask);
+        const hydrateFromAdoItem = async (adoItem: any): Promise<void> => {
+          const areaPath = adoItem.fields['System.AreaPath'] ?? '';
+          const autoProduct = routeByAreaPath(areaPath, registry, adoItem.fields['System.Title']);
+          const product = s.product ?? autoProduct;
+          s = { ...s, workItemId: adoItem.id, adoItem, product };
+
+          s = phase(s, 'routing');
+          upsert(s);
+
+          const routedProduct = s.product;
+          if (routedProduct) {
+            const [relatedBugs, testCases] = await Promise.allSettled([
+              fetchRelatedBugs(areaPath, adoPat),
+              fetchTestCases(areaPath, adoPat),
+            ]);
+            if (relatedBugs.status === 'fulfilled') s = { ...s, relatedItems: relatedBugs.value };
+            if (testCases.status === 'fulfilled') s = { ...s, testCases: testCases.value };
+            if (githubPat && routedProduct.repos.length) {
+              const repo = routedProduct.repos.find((r) => r.required);
+              if (repo) {
+                const keywords = [
+                  adoItem.fields['System.Title']?.split(' ').slice(0, 4).join(' ') ?? '',
+                  routedProduct.displayName,
+                ].filter(Boolean);
+                const commits = await searchCommits(githubPat, `${repo.owner}/${repo.repo}`, keywords).catch(() => []);
+                if (commits.length) s = { ...s, recentCommits: commits };
+              }
+            }
+          }
+          upsert(s);
+        };
+
+        const linkedWorkItemId = deriveSnowLinkedWorkItemId(s.snowTask, s.snowIncident, s.snowCase);
         if (linkedWorkItemId) {
           try {
             s = phase(s, 'reading');
             upsert(s);
-
             const adoItem = await fetchWorkItem(linkedWorkItemId, adoPat);
-            const areaPath = adoItem.fields['System.AreaPath'] ?? '';
-            const autoProduct = routeByAreaPath(areaPath, registry, adoItem.fields['System.Title']);
-            const product = s.product ?? autoProduct;
-            s = { ...s, workItemId: linkedWorkItemId, adoItem, product };
-
-            s = phase(s, 'routing');
-            upsert(s);
-
-            const routedProduct = s.product;
-            if (routedProduct) {
-              const [relatedBugs, testCases] = await Promise.allSettled([
-                fetchRelatedBugs(areaPath, adoPat),
-                fetchTestCases(areaPath, adoPat),
-              ]);
-              if (relatedBugs.status === 'fulfilled') s = { ...s, relatedItems: relatedBugs.value };
-              if (testCases.status === 'fulfilled') s = { ...s, testCases: testCases.value };
-              if (githubPat && routedProduct.repos.length) {
-                const repo = routedProduct.repos.find((r) => r.required);
-                if (repo) {
-                  const keywords = [
-                    adoItem.fields['System.Title']?.split(' ').slice(0, 4).join(' ') ?? '',
-                    routedProduct.displayName,
-                  ].filter(Boolean);
-                  const commits = await searchCommits(githubPat, `${repo.owner}/${repo.repo}`, keywords).catch(() => []);
-                  if (commits.length) s = { ...s, recentCommits: commits };
-                }
-              }
-            }
-            upsert(s);
+            await hydrateFromAdoItem(adoItem);
           } catch {
             // non-fatal; keep SNOW-only output if DA lookup fails
+          }
+        }
+
+        if (!s.adoItem && s.snowTaskNumber) {
+          const taskNumber = s.snowTaskNumber;
+          try {
+            s = phase(s, 'reading');
+            upsert(s);
+            const adoItem = await findWorkItemBySnowTask(taskNumber, adoPat);
+            if (adoItem) await hydrateFromAdoItem(adoItem);
+          } catch {
+            // non-fatal fallback
+          }
+        }
+
+        if (!s.adoItem) {
+          const caseNumber = s.snowCaseNumber || snowVal((s.snowCase as any)?.number);
+          if (caseNumber) {
+            try {
+              s = phase(s, 'reading');
+              upsert(s);
+              const adoItem = await findWorkItemByCase(caseNumber, adoPat);
+              if (adoItem) await hydrateFromAdoItem(adoItem);
+            } catch {
+              // non-fatal fallback
+            }
           }
         }
       }

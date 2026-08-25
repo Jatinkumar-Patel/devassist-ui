@@ -227,6 +227,45 @@ snowRouter.get('/incident-by-case/:number', async (req: Request, res: Response) 
   }
 });
 
+// GET /api/snow/incident-tasks/:number — fetch TASK records linked to an incident
+snowRouter.get('/incident-tasks/:number', async (req: Request, res: Response) => {
+  const { number } = req.params;
+  const incNum = number.toUpperCase();
+  const fields = [
+    'sys_id',
+    'number',
+    'state',
+    'short_description',
+    'description',
+    'priority',
+    'assigned_to',
+    'assignment_group',
+    'incident',
+    'incident.number',
+    'u_devid',
+    'u_dev_id',
+    'u_vsts_id',
+    'u_tfs_id',
+    'u_case_number',
+    'u_customer_case',
+    'opened_at',
+  ].join(',');
+
+  for (const table of ['incident_task', 'sc_task']) {
+    try {
+      const query = encodeURIComponent(`incident.number=${incNum}`);
+      const url = `${SNOW_BASE}/GetTableJSON/?tablename=${table}&sysparm_query=${query}&sysparm_fields=${fields}`;
+      const decoded = await snowFetchDecoded(url) as { result?: unknown[] };
+      const records = Array.isArray(decoded?.result) ? decoded.result : [];
+      if (records.length > 0) return res.json({ result: records, table });
+    } catch {
+      // try next table
+    }
+  }
+
+  return res.json({ result: [], table: null });
+});
+
 // GET /api/snow/escalate/:taskSysId — Task → Incident → Case chain per snow-viewer-api.md
 snowRouter.get('/escalate/:taskSysId', async (req: Request, res: Response) => {
   const { taskSysId } = req.params;

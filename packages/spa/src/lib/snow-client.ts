@@ -30,6 +30,12 @@ export async function fetchSnowIncidentByCase(number: string) {
   return res.json();
 }
 
+export async function fetchSnowTasksByIncident(number: string) {
+  const res = await fetch(bridgeApi(`/api/snow/incident-tasks/${encodeURIComponent(number)}`));
+  if (!res.ok) throw new Error(`SNOW incident-tasks ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
 /** List attachment metadata — use fetchSnowAttachment() to download the binary */
 export async function fetchSnowAttachments(sysId: string) {
   const res = await fetch(bridgeApi(`/api/snow/attachments/${encodeURIComponent(sysId)}`));

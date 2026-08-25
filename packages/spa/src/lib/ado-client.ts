@@ -108,3 +108,19 @@ export async function fetchTestCases(areaPath: string, pat: string): Promise<Rel
   const ids = await runWiql(pat, query);
   return fetchItemsBatch(ids.slice(0, 10), pat);
 }
+
+export async function findWorkItemBySnowTask(taskNumber: string, pat: string) {
+  const escaped = taskNumber.replace(/'/g, "''");
+  const query = `SELECT [System.Id] FROM WorkItems WHERE [Allscripts.Field.IncidentTaskID] = '${escaped}' ORDER BY [System.ChangedDate] DESC`;
+  const ids = await runWiql(pat, query);
+  if (!ids.length) return null;
+  return fetchWorkItem(ids[0], pat);
+}
+
+export async function findWorkItemByCase(caseNumber: string, pat: string) {
+  const escaped = caseNumber.replace(/'/g, "''");
+  const query = `SELECT [System.Id] FROM WorkItems WHERE [Allscripts.Field.CaseId] = '${escaped}' ORDER BY [System.ChangedDate] DESC`;
+  const ids = await runWiql(pat, query);
+  if (!ids.length) return null;
+  return fetchWorkItem(ids[0], pat);
+}
