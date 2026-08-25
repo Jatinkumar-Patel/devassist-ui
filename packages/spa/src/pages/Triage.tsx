@@ -10,6 +10,7 @@ import { fetchRelatedBugs, fetchTestCases } from '../lib/ado-client';
 import { searchCommits } from '../lib/github-client';
 import { useSettingsStore } from '../store/settings';
 import { useTriageStore } from '../store/triage';
+import { getBridgeInstallCommands } from '../lib/bridge-install';
 import type { TriageSession, SessionPhase, Product } from '../types';
 
 function newSession(raw: string): TriageSession {
@@ -106,6 +107,7 @@ function buildSelectedScope(selectedProducts: Product[]): Product | undefined {
 export default function TriagePage() {
   const { adoPat, githubPat, bridgeUrl } = useSettingsStore();
   const { sessions, active, upsert } = useTriageStore();
+  const installCmds = getBridgeInstallCommands();
   const [loading, setLoading] = useState(false);
 
   const activeSession = sessions.find((s) => s.id === active);
@@ -320,9 +322,9 @@ export default function TriagePage() {
           <p className="text-xs text-gray-300">Run one command below and keep that terminal open:</p>
           <div className="text-xs font-mono text-cyan-200 bg-gray-950/70 border border-white/10 rounded-lg p-2 overflow-x-auto space-y-2">
             <p className="text-[11px] text-gray-400 font-sans">Command Prompt (cmd)</p>
-            <p className="break-all">npx --yes degit Jatinkumar-Patel/devassist-ui devassist-ui && cd devassist-ui && npm install && npm run bridge</p>
+            <p className="break-all">{installCmds.cmd}</p>
             <p className="text-[11px] text-gray-400 font-sans">PowerShell</p>
-            <p className="break-all">npx --yes degit Jatinkumar-Patel/devassist-ui devassist-ui; Set-Location devassist-ui; npm install; npm run bridge</p>
+            <p className="break-all">{installCmds.powershell}</p>
           </div>
           <p className="text-xs text-gray-400">Then open:</p>
           <a

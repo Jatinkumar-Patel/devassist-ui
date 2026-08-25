@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Eye, EyeOff, Check, AlertCircle, Terminal, RefreshCw } from 'lucide-react';
 import { useSettingsStore, ORG_DEFAULTS } from '../store/settings';
+import { getBridgeInstallCommands } from '../lib/bridge-install';
 
 interface DiagnosticResult {
   key: 'bridge' | 'snow' | 'ado' | 'github';
@@ -11,6 +12,7 @@ interface DiagnosticResult {
 
 export default function SettingsPage() {
   const { adoPat, githubPat, openaiKey, bridgeUrl, setAdoPat, setGithubPat, setOpenaiKey, setBridgeUrl, clearPats } = useSettingsStore();
+  const installCmds = getBridgeInstallCommands();
 
   const reRunWizard = () => {
     localStorage.removeItem('devassist-setup-done');
@@ -95,9 +97,9 @@ export default function SettingsPage() {
           </p>
           <div className="text-xs font-mono text-altera-teal bg-gray-950 rounded p-2 overflow-x-auto space-y-2">
             <p className="text-[11px] text-gray-400 font-sans">Command Prompt (cmd)</p>
-            <p className="break-all">npx --yes degit Jatinkumar-Patel/devassist-ui devassist-ui && cd devassist-ui && npm install && npm run bridge</p>
+            <p className="break-all">{installCmds.cmd}</p>
             <p className="text-[11px] text-gray-400 font-sans">PowerShell</p>
-            <p className="break-all">npx --yes degit Jatinkumar-Patel/devassist-ui devassist-ui; Set-Location devassist-ui; npm install; npm run bridge</p>
+            <p className="break-all">{installCmds.powershell}</p>
           </div>
           <p className="text-xs text-gray-600">
             Runs a local server that proxies SNOW (Windows NTLM) and ADO calls.

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CheckCircle2, ExternalLink, Eye, EyeOff, Wifi, Wand2 } from 'lucide-react';
 import { useSettingsStore } from '../store/settings';
 import { getBridgeUrl } from '../lib/bridge-url';
+import { getBridgeInstallCommands } from '../lib/bridge-install';
 
 interface Props {
   onDone: () => void;
@@ -19,6 +20,7 @@ interface McpConfig {
 export default function SetupWizard({ onDone }: Props) {
   const { setAdoPat, setGithubPat } = useSettingsStore();
   const bridgeBase = getBridgeUrl();
+  const installCmds = getBridgeInstallCommands();
   const [step, setStep] = useState<Step>('bridge');
   const [adoVal, setAdoVal]       = useState('');
   const [githubVal, setGithubVal] = useState('');
@@ -147,11 +149,11 @@ export default function SetupWizard({ onDone }: Props) {
                 <div className="bg-gray-950 rounded-lg p-3 border border-gray-800 space-y-2">
                   <p className="text-[11px] text-gray-400">Command Prompt (cmd)</p>
                   <div className="font-mono text-sm text-altera-teal break-all">
-                    npx --yes degit Jatinkumar-Patel/devassist-ui devassist-ui && cd devassist-ui && npm install && npm run bridge
+                    {installCmds.cmd}
                   </div>
                   <p className="text-[11px] text-gray-400">PowerShell</p>
                   <div className="font-mono text-sm text-altera-teal break-all">
-                    npx --yes degit Jatinkumar-Patel/devassist-ui devassist-ui; Set-Location devassist-ui; npm install; npm run bridge
+                    {installCmds.powershell}
                   </div>
                 </div>
               </div>
