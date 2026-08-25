@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import TriageInput from '../components/TriageInput';
 import TriagePanel from '../components/TriagePanel';
 import { detectInput } from '../lib/input-detector';
@@ -195,6 +195,10 @@ export default function TriagePage() {
     const saved = localStorage.getItem('devassist-recent-open');
     return saved !== '0';
   });
+  const [leftPaneHidden, setLeftPaneHidden] = useState<boolean>(() => {
+    const saved = localStorage.getItem('devassist-left-pane-hidden');
+    return saved === '1';
+  });
   const [loading, setLoading] = useState(false);
 
   const toggleQuickStart = () => {
@@ -209,6 +213,14 @@ export default function TriagePage() {
     setRecentOpen((prev) => {
       const next = !prev;
       localStorage.setItem('devassist-recent-open', next ? '1' : '0');
+      return next;
+    });
+  };
+
+  const toggleLeftPane = () => {
+    setLeftPaneHidden((prev) => {
+      const next = !prev;
+      localStorage.setItem('devassist-left-pane-hidden', next ? '1' : '0');
       return next;
     });
   };
@@ -589,9 +601,23 @@ export default function TriagePage() {
   }, [adoPat, bridgeUrl, githubPat, upsert]);
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-5 sm:gap-7 items-start xl:h-[calc(100vh-10rem)] xl:overflow-hidden">
+    <div className="space-y-3">
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={toggleLeftPane}
+          className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg border border-cyan-400/70 bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 font-medium"
+          aria-label={leftPaneHidden ? 'Show input pane' : 'Hide input pane'}
+          title={leftPaneHidden ? 'Show input pane' : 'Hide input pane'}
+        >
+          {leftPaneHidden ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
+          {leftPaneHidden ? 'Show input pane' : 'Hide input pane'}
+        </button>
+      </div>
+
+      <div className={`grid grid-cols-1 ${leftPaneHidden ? '' : 'xl:grid-cols-[420px_1fr]'} gap-5 sm:gap-7 items-start xl:h-[calc(100vh-10rem)] xl:overflow-hidden`}>
       {/* Left: input + session list */}
-      <aside className="space-y-5 xl:h-full xl:overflow-y-auto xl:pr-1">
+      <aside className={`${leftPaneHidden ? 'hidden' : 'space-y-5 xl:h-full xl:overflow-y-auto xl:pr-1'}`}>
         <div className="glass-panel rounded-2xl p-3 sm:p-4 space-y-2">
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-white">Quick Start (End Users)</h3>
@@ -691,6 +717,7 @@ export default function TriagePage() {
           </div>
         )}
       </section>
+      </div>
     </div>
   );
 }
