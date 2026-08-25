@@ -457,6 +457,71 @@ function deriveVerdictFromSnowEvidence(allSnowText: string): TriageAnalysis['ver
   return null;
 }
 
+function truncateEvidence(text: string, max = 180): string {
+  const t = text.replace(/\s+/g, ' ').trim();
+  return t.length > max ? `${t.slice(0, max)}...` : t;
+}
+
+function parseJsonCandidates(raw: string): unknown[] {
+  const out: unknown[] = [];
+  const normalized = raw.trim();
+  const candidates = [normalized];
+
+  if (normalized.includes('\\"')) {
+    candidates.push(normalized.replace(/\\"/g, '"'));
+  }
+
+  if (normalized.startsWith('"') && normalized.endsWith('"')) {
+    try {
+      const unwrapped = JSON.parse(normalized);
+      if (typeof unwrapped === 'string') candidates.push(unwrapped);
+    } catch {
+      // ignore
+    }
+  }
+
+  for (const c of Array.from(new Set(candidates))) {
+    try {
+      out.push(JSON.parse(c));
+    } catch {
+      // ignore
+    }
+  }
+  return out;
+}
+
+function summarizeSnowWorkNotes(raw: string): string[] {
+  const summaries: string[] = [];
+
+  const parsedCandidates = parseJsonCandidates(raw);
+  for (const candidate of parsedCandidates) {
+    const rows = Array.isArray(candidate) ? candidate : [candidate];
+
+    // ServiceNow audit row shape: fieldname/newvalue/oldvalue/user/sys_created_on
+    const auditRows = rows.filter((r: any) => r?.fieldname && (r?.newvalue || r?.oldvalue));
+    if (auditRows.length > 0) {
+      for (const row of auditRows.slice(0, 8)) {
+        const field = row?.fieldname?.display_value ?? row?.fieldname?.value ?? row?.fieldname ?? 'field';
+        const oldVal = row?.oldvalue?.display_value ?? row?.oldvalue?.value ?? row?.oldvalue ?? '-';
+        const newVal = row?.newvalue?.display_value ?? row?.newvalue?.value ?? row?.newvalue ?? '-';
+        const user = row?.user?.display_value ?? row?.user?.value ?? row?.sys_created_by?.display_value ?? row?.sys_created_by ?? '';
+        const when = row?.sys_created_on?.display_value ?? row?.sys_created_on?.value ?? row?.sys_created_on ?? '';
+        summaries.push(truncateEvidence(`${field}: ${oldVal} -> ${newVal}${user ? ` | ${user}` : ''}${when ? ` | ${when}` : ''}`));
+      }
+      return summaries;
+    }
+  }
+
+  // Fallback plain-text extraction for normal note/comment bodies
+  const lines = raw.split(/\n|\\n/)
+    .map(l => l.replace(/\[.*?\]/g, '').trim())
+    .filter(l => l.length > 15 && /error|exception|fail|cannot|unable|version|repro|confirm|observed|occur|steps|workaround|found|tested|timed out|timeout|format|spacing|line break|missing|broken|incorrect|wrong|reproduc|screen|attach|upload|check|verify|investigat|customer|report|ticket|impact|updated|priority|assigned|state/i.test(l))
+    .map(l => truncateEvidence(l))
+    .slice(0, 8);
+
+  return lines;
+}
+
 /** Extract technical identifiers from SNOW notes (table names, field names, components) */
 function extractTechTerms(snowText: string): string[] {
   return [...snowText.matchAll(/\b([A-Z][a-zA-Z]{2,}(?:\.[A-Z][a-zA-Z]+)+|CV3\w+|SXA\w+|SHM\w+|MLM\w+|HWS\w+|SCM\w+|eMAR\w*|KBMA\w*)\b/g)]
@@ -544,10 +609,7 @@ export async function buildSkillDrivenAssessment(
   // ── Step 4: SNOW evidence ─────────────────────────────────────────────────
   const snowEvidence: string[] = [];
   if (snowWorkNotes) {
-    const lines = snowWorkNotes.split(/\n|\\n/)
-      .map(l => l.replace(/\[.*?\]/g, '').trim())
-      .filter(l => l.length > 15 && /error|exception|fail|cannot|unable|version|repro|confirm|observed|occur|steps|workaround|found|tested|timed out|timeout|format|spacing|line break|missing|broken|incorrect|wrong|reproduc|screen|attach|upload|check|verify|investigat|customer|report|ticket|impact/i.test(l))
-      .slice(0, 6);
+    const lines = summarizeSnowWorkNotes(snowWorkNotes);
     snowEvidence.push(...lines);
     const vers = snowWorkNotes.match(/\b\d+\.\d+(\.\d+)+\b/g)?.slice(0, 3) ?? [];
     if (vers.length) snowEvidence.push(`Versions in SNOW: ${vers.join(', ')}`);
@@ -612,7 +674,7 @@ export async function buildSkillDrivenAssessment(
   } else if (snowEvidence.length >= 2) {
     // Synthesise a gap statement from what SNOW support actually found
     gap = bulletize([
-      `SNOW diagnosis: ${snowEvidence.slice(0, 3).join(' | ')}`,
+      `SNOW diagnosis: ${snowEvidence.slice(0, 3).map(e => truncateEvidence(e, 120)).join(' | ')}`,
       snowTechTerms.length ? `Impacted components: ${snowTechTerms.slice(0, 4).join(', ')}` : '',
       keywordPattern ? `Related fix direction: ${keywordPattern.fixDirection}` : 'No matching code pattern; inspect components above.',
     ]);
