@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Eye, EyeOff, Check, AlertCircle, Terminal, RefreshCw } from 'lucide-react';
 import { useSettingsStore, ORG_DEFAULTS } from '../store/settings';
 import { getBridgeInstallCommands } from '../lib/bridge-install';
@@ -251,21 +251,58 @@ interface PatFieldProps {
 function PatField({ label, hint, value, onChange, testUrl, testAuth }: PatFieldProps) {
   const [show, setShow] = useState(false);
   const [testState, setTestState] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
+  const [statusText, setStatusText] = useState('');
+  const requestIdRef = useRef(0);
 
-  const test = async () => {
-    if (!value) return;
+  const runValidation = async (token: string) => {
+    const requestId = ++requestIdRef.current;
     setTestState('testing');
+    setStatusText('Validating token...');
     try {
       const res = await fetch(testUrl, {
-        headers: { Authorization: testAuth(value) },
+        headers: { Authorization: testAuth(token) },
         signal: AbortSignal.timeout(5000),
       });
-      setTestState(res.ok ? 'ok' : 'fail');
+
+      if (requestId !== requestIdRef.current) return;
+
+      if (res.ok) {
+        setTestState('ok');
+        setStatusText('Token looks valid.');
+      } else {
+        setTestState('fail');
+        setStatusText(`Token validation failed (HTTP ${res.status}).`);
+      }
     } catch {
+      if (requestId !== requestIdRef.current) return;
       setTestState('fail');
+      setStatusText('Token validation failed (network/bridge).');
     }
-    setTimeout(() => setTestState('idle'), 4000);
   };
+
+  const test = async () => {
+    const token = value.trim();
+    if (!token) return;
+    await runValidation(token);
+  };
+
+  useEffect(() => {
+    const token = value.trim();
+    if (!token) {
+      requestIdRef.current += 1;
+      setTestState('idle');
+      setStatusText('');
+      return;
+    }
+
+    const handle = window.setTimeout(() => {
+      void runValidation(token);
+    }, 700);
+
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [value, testUrl]);
 
   return (
     <div className="space-y-1.5">
@@ -299,10 +336,15 @@ function PatField({ label, hint, value, onChange, testUrl, testAuth }: PatFieldP
         >
           {testState === 'ok'      ? <Check size={14} /> :
            testState === 'fail'    ? <AlertCircle size={14} /> :
-           testState === 'testing' ? '…' : 'Test'}
+           testState === 'testing' ? '…' : 'Retest'}
         </button>
       </div>
       <p className="text-xs text-gray-600">{hint}</p>
+      {statusText && (
+        <p className={`text-xs ${testState === 'ok' ? 'text-emerald-400' : testState === 'fail' ? 'text-red-400' : 'text-gray-500'}`}>
+          {statusText}
+        </p>
+      )}
     </div>
   );
 }
