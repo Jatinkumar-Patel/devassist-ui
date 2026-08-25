@@ -205,17 +205,65 @@ export function buildAssessment(
   const description = String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '')
     .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
+  const summarizeSnowAuditJson = (raw: string): string[] => {
+    const normalized = raw.trim().replace(/^[-*]\s*/, '');
+    if (!normalized.startsWith('[') && !normalized.startsWith('{')) return [];
+
+    try {
+      const parsed = JSON.parse(normalized);
+      const rows = Array.isArray(parsed) ? parsed : [parsed];
+      const summaries = rows
+        .slice(0, 5)
+        .map((row: any) => {
+          const field = row?.fieldname?.display_value ?? row?.fieldname?.value ?? row?.fieldname;
+          const oldVal = row?.oldvalue?.display_value ?? row?.oldvalue?.value ?? row?.oldvalue;
+          const newVal = row?.newvalue?.display_value ?? row?.newvalue?.value ?? row?.newvalue;
+          const who = row?.user?.display_value ?? row?.user?.value ?? row?.user ?? row?.sys_created_by?.display_value;
+          const when = row?.sys_created_on?.display_value ?? row?.sys_created_on?.value ?? row?.sys_created_on;
+
+          if (!field && !oldVal && !newVal) return null;
+
+          const transition = oldVal !== undefined && newVal !== undefined
+            ? `${String(oldVal)} → ${String(newVal)}`
+            : `${String(newVal ?? oldVal ?? '')}`;
+
+          return `${String(field ?? 'field')} changed (${transition})${who ? ` by ${String(who)}` : ''}${when ? ` at ${String(when)}` : ''}`;
+        })
+        .filter((v): v is string => Boolean(v));
+
+      if (rows.length > 5) summaries.push(`...and ${rows.length - 5} more audit updates`);
+      return summaries;
+    } catch {
+      return [];
+    }
+  };
+
+  const normalizeEvidenceLine = (line: string): string[] => {
+    const stripped = line.replace(/\[.*?\]/g, '').trim();
+    if (!stripped) return [];
+
+    const jsonSummaries = summarizeSnowAuditJson(stripped);
+    if (jsonSummaries.length) return jsonSummaries;
+
+    if (stripped.length > 260) {
+      return [`${stripped.slice(0, 260)}...`];
+    }
+
+    return [stripped];
+  };
+
   // ── 1. Extract SNOW evidence — parse work notes for diagnostic signals ──────
   const snowEvidence: string[] = [];
   if (snowWorkNotes) {
     const text = String(snowWorkNotes);
-    // Extract meaningful lines: errors, versions, reproduction steps, support actions
+    // Extract meaningful lines: errors, versions, reproduction steps, support actions.
+    // Also parse SNOW audit-style JSON payloads into readable field-change summaries.
     const evidenceLines = text.split(/\n|\\n/)
-      .map(l => l.replace(/\[.*?\]/g, '').trim())
+      .flatMap(normalizeEvidenceLine)
       .filter(l => l.length > 15 && (
-        /error|exception|fail|cannot|unable|version|repro|confirm|observed|occur|steps|workaround|found|checked|tested/i.test(l)
+        /error|exception|fail|cannot|unable|version|repro|confirm|observed|occur|steps|workaround|found|checked|tested|changed|updated|priority|assigned|state/i.test(l)
       ))
-      .slice(0, 5);
+      .slice(0, 8);
     snowEvidence.push(...evidenceLines);
 
     // Also extract version numbers mentioned

@@ -108,9 +108,11 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
         {analysis.snowEvidence.length > 0 && (
           <div className="space-y-1">
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">SNOW Evidence</p>
-            {analysis.snowEvidence.map((e, i) => (
-              <p key={i} className="text-xs text-gray-400 font-mono leading-relaxed">- {e}</p>
-            ))}
+            <div className="max-h-52 overflow-auto pr-1 space-y-1">
+              {analysis.snowEvidence.map((e, i) => (
+                <p key={i} className="text-xs text-gray-400 font-mono leading-relaxed whitespace-pre-wrap break-words">- {e}</p>
+              ))}
+            </div>
           </div>
         )}
 
