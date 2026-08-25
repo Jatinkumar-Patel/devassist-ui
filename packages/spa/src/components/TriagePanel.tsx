@@ -4,6 +4,7 @@ import { workItemUrl } from '../lib/ado-client';
 import { snowTaskUrl, snowVal } from '../lib/snow-client';
 import AnalysisPanel from './AnalysisPanel';
 import LogAnalysisPanel from './LogAnalysisPanel';
+import { useSettingsStore } from '../store/settings';
 
 // Phase label for the progress indicator
 const PHASE_LABELS: Record<string, string> = {
@@ -22,13 +23,33 @@ interface Props {
   onAnalysisComplete: (analysis: TriageAnalysis) => void;
 }
 
+function isLocalBridgeUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+  } catch {
+    return false;
+  }
+}
+
+function friendlyErrorMessage(error: string, bridgeUrl: string): string {
+  if (/Failed to fetch|NetworkError|Load failed/i.test(error)) {
+    if (window.location.protocol === 'https:' && isLocalBridgeUrl(bridgeUrl)) {
+      return `Cannot reach local bridge (${bridgeUrl}) from HTTPS page. Open app from bridge URL ${bridgeUrl} and retry.`;
+    }
+    return `Bridge is unreachable at ${bridgeUrl}. Start bridge with \"npx @jatinkumar-patel/devassist-bridge\" and check VPN.`;
+  }
+  return error;
+}
+
 export default function TriagePanel({ session, onAnalysisComplete }: Props) {
+  const bridgeUrl = useSettingsStore((s) => s.bridgeUrl);
   const { adoItem, snowTask, product, error, currentPhase, clarityGaps, attachments, artifactLedger } = session;
   if (error) {
     return (
       <div className="rounded-lg border border-red-800 bg-red-950/30 p-4 flex items-start gap-3">
         <AlertTriangle size={16} className="text-red-400 mt-0.5 shrink-0" />
-        <p className="text-red-300 text-sm">{error}</p>
+        <p className="text-red-300 text-sm">{friendlyErrorMessage(error, bridgeUrl)}</p>
       </div>
     );
   }
