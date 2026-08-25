@@ -136,7 +136,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
             Confidence: {analysis.confidence}
           </span>
         </div>
-        <p className="text-xs opacity-80">{analysis.clientReported}</p>
+        <pre className="text-xs opacity-80 whitespace-pre-wrap font-sans">{analysis.clientReported}</pre>
       </div>
 
       {/* Reasoning chain */}
@@ -161,7 +161,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
 
         <section className="space-y-2">
           <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Gap</p>
-          <p className="text-sm text-gray-200 leading-relaxed">{analysis.gap}</p>
+          <pre className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap font-sans">{analysis.gap}</pre>
         </section>
 
         {analysis.blindSpots.length > 0 && (

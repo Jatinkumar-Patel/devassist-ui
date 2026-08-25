@@ -473,6 +473,13 @@ export async function buildSkillDrivenAssessment(
   topSeeds: Record<string, number> | undefined,
   codeHits: CodeHit[]
 ): Promise<TriageAnalysis> {
+  const bulletize = (items: Array<string | undefined | null>): string =>
+    items
+      .map((v) => String(v ?? '').trim())
+      .filter(Boolean)
+      .map((v) => `- ${v}`)
+      .join('\n');
+
   const bridge = BRIDGE();
   const f = adoItem.fields;
   const areaPath = String(f['System.AreaPath'] ?? '').toLowerCase();
@@ -527,7 +534,12 @@ export async function buildSkillDrivenAssessment(
   // ── Step 3: client reported ───────────────────────────────────────────────
   const desc = String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '')
     .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-  const clientReported = `${customer} (${version}): ${title}${desc ? ' — ' + desc.slice(0, 200) : ''}`;
+  const clientReported = bulletize([
+    `Customer: ${customer}`,
+    `Version: ${version}`,
+    `Issue: ${title}`,
+    desc ? `Context: ${desc.slice(0, 220)}` : '',
+  ]);
 
   // ── Step 4: SNOW evidence ─────────────────────────────────────────────────
   const snowEvidence: string[] = [];
@@ -561,47 +573,60 @@ export async function buildSkillDrivenAssessment(
   let codeAnalysis: string;
   if (matchedPlaybookPattern) {
     const repoRow = reposMd.match(/\|\s*(HWS|SunriseMobile)[^\|]*\|[^\|]*\|[^\|]*\|([^\|]+)\|/)?.[2]?.trim() ?? '';
-    codeAnalysis = [
-      `Playbook match: Pattern ${matchedPlaybookPattern.num} — "${matchedPlaybookPattern.name}"`,
+    codeAnalysis = bulletize([
+      `Pattern match: ${matchedPlaybookPattern.num} - ${matchedPlaybookPattern.name}`,
       `Signature: ${matchedPlaybookPattern.signature.slice(0, 300)}`,
-      matchedPlaybookPattern.confirm ? `How to confirm: ${matchedPlaybookPattern.confirm.slice(0, 300)}` : '',
-      repoRow ? `Key code areas (from repositories.md): ${repoRow}` : '',
-      codeHits.length ? `Code search hits: ${codeHits.map(h => h.path).slice(0,4).join(', ')}` : '',
-    ].filter(Boolean).join('\n');
+      matchedPlaybookPattern.confirm ? `Confirm with: ${matchedPlaybookPattern.confirm.slice(0, 300)}` : '',
+      repoRow ? `Priority code areas: ${repoRow}` : '',
+      codeHits.length ? `Code hits: ${codeHits.map(h => h.path).slice(0,4).join(', ')}` : 'Code hits: none from API search',
+    ]);
   } else if (keywordPattern) {
-    codeAnalysis = [
-      `Keyword pattern: "${keywordPattern.name}"`,
+    codeAnalysis = bulletize([
+      `Keyword pattern: ${keywordPattern.name}`,
       `Search seeds: ${keywordPattern.searchSeeds.join(', ')}`,
       `Repos: ${product.repos.filter(r => r.required).map(r => `${r.owner}/${r.repo}`).join(', ')}`,
-      snowTechTerms.length ? `Technical terms from SNOW: ${snowTechTerms.join(', ')}` : '',
-      codeHits.length ? `Code search hits: ${codeHits.map(h => h.path).slice(0,4).join(', ')}` : 'No code hits — clone repos locally for direct inspection',
-    ].filter(Boolean).join('\n');
+      snowTechTerms.length ? `SNOW technical terms: ${snowTechTerms.join(', ')}` : '',
+      codeHits.length ? `Code hits: ${codeHits.map(h => h.path).slice(0,4).join(', ')}` : 'Code hits: none (consider local clone search)',
+    ]);
   } else {
     // Derive from SNOW evidence — most reliable when no pattern matches
-    codeAnalysis = [
-      `No pre-defined pattern matched for: "${title.slice(0, 100)}"`,
-      snowTechTerms.length ? `Technical identifiers in SNOW notes: ${snowTechTerms.join(', ')}` : '',
+    codeAnalysis = bulletize([
+      `No pattern match for: ${title.slice(0, 100)}`,
+      snowTechTerms.length ? `SNOW technical identifiers: ${snowTechTerms.join(', ')}` : '',
       `Repos: ${product.repos.map(r => `${r.owner}/${r.repo}`).join(', ')}`,
       areaId
-        ? `Skill area: ${areaId} (${playbook.length} patterns loaded — none scored high enough)`
-        : `No skills pack for this product yet — SHM/Ambulatory analysis is pattern-free`,
-      codeHits.length ? `Code search hits: ${codeHits.map(h => h.path).slice(0,4).join(', ')}` : '',
-    ].filter(Boolean).join('\n');
+        ? `Skill area: ${areaId} (${playbook.length} patterns loaded, none high-confidence)`
+        : `No skills pack mapped for this product yet`,
+      codeHits.length ? `Code hits: ${codeHits.map(h => h.path).slice(0,4).join(', ')}` : 'Code hits: none',
+    ]);
   }
 
   // ── Step 6: gap — prefer SNOW-derived over pattern fallback ──────────────
   let gap: string;
   if (matchedPlaybookPattern) {
-    gap = matchedPlaybookPattern.fixDirection;
+    gap = bulletize([
+      `Observed gap: behavior aligns to playbook pattern ${matchedPlaybookPattern.num}`,
+      `Fix direction: ${matchedPlaybookPattern.fixDirection}`,
+      'Confidence support: evidence aligns with playbook signature and confirm steps',
+    ]);
   } else if (snowEvidence.length >= 2) {
     // Synthesise a gap statement from what SNOW support actually found
-    gap = `SNOW diagnosis: ${snowEvidence.slice(0, 3).join(' | ')}.${
-      snowTechTerms.length ? ` Key components: ${snowTechTerms.slice(0, 4).join(', ')}.` : ''
-    } ${keywordPattern ? `Related pattern direction: ${keywordPattern.fixDirection}` : 'No matching code pattern — inspect the components identified above.'}`;
+    gap = bulletize([
+      `SNOW diagnosis: ${snowEvidence.slice(0, 3).join(' | ')}`,
+      snowTechTerms.length ? `Impacted components: ${snowTechTerms.slice(0, 4).join(', ')}` : '',
+      keywordPattern ? `Related fix direction: ${keywordPattern.fixDirection}` : 'No matching code pattern; inspect components above.',
+    ]);
   } else if (keywordPattern) {
-    gap = keywordPattern.fixDirection;
+    gap = bulletize([
+      `Observed gap: keyword pattern match (${keywordPattern.name})`,
+      `Fix direction: ${keywordPattern.fixDirection}`,
+    ]);
   } else {
-    gap = `Symptom: ${title.slice(0, 150)}. No matching analysis pattern. Inspect ${product.repos.map(r=>r.repo).join(', ')} for the relevant component.`;
+    gap = bulletize([
+      `Symptom: ${title.slice(0, 150)}`,
+      'No matching analysis pattern detected.',
+      `Inspect repos: ${product.repos.map(r=>r.repo).join(', ')}`,
+    ]);
   }
 
   // ── Step 7: verdict — SNOW evidence overrides keyword pattern ────────────
