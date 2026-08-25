@@ -39,7 +39,14 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'devassist-settings',
-      partialize: (s) => ({ adoPat: s.adoPat, githubPat: s.githubPat, openaiKey: s.openaiKey, bridgeUrl: s.bridgeUrl }),
+      version: 2,
+      migrate: (persistedState: any) => ({
+        adoPat: '',
+        githubPat: '',
+        openaiKey: '',
+        bridgeUrl: persistedState?.bridgeUrl ?? ORG_DEFAULTS.bridgeUrl,
+      }),
+      partialize: (s) => ({ adoPat: '', githubPat: '', openaiKey: '', bridgeUrl: s.bridgeUrl }),
     }
   )
 );

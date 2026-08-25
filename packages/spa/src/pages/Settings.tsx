@@ -42,7 +42,7 @@ export default function SettingsPage() {
         <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Authentication</h2>
         <p className="text-xs text-gray-600">
           PATs are <strong className="text-gray-400">personal</strong> — each person uses their own token.
-          Stored only in this browser's localStorage; never sent to any server other than ADO / GitHub directly.
+          For enterprise security, PATs are held in-memory for the current session and not persisted in browser localStorage.
         </p>
         <PatField
           label="Azure DevOps PAT"
@@ -148,7 +148,7 @@ function EnvironmentDiagnostics({ bridgeUrl, adoPat, githubPat }: { bridgeUrl: s
     try {
       const statusRes = await fetch(`${bridgeUrl}/api/status`, { signal: AbortSignal.timeout(4000) });
       if (statusRes.ok) {
-        const status = await statusRes.json() as { version?: string; snowAuth?: string };
+        const status = await statusRes.json() as { version?: string; snowAuth?: string; adoAuth?: string; githubAuth?: string };
         out.push({
           key: 'bridge',
           label: 'Bridge',
@@ -161,6 +161,13 @@ function EnvironmentDiagnostics({ bridgeUrl, adoPat, githubPat }: { bridgeUrl: s
           ok: status.snowAuth === 'ok',
           details: status.snowAuth === 'ok' ? 'Windows auth ready' : `Bridge reported: ${status.snowAuth ?? 'unknown'}`,
         });
+
+        if (!adoPat.trim() && status.adoAuth === 'ok') {
+          out.push({ key: 'ado', label: 'ADO', ok: true, details: 'Server-managed credential ready (mcp/env)' });
+        }
+        if (!githubPat.trim() && status.githubAuth === 'ok') {
+          out.push({ key: 'github', label: 'GitHub', ok: true, details: 'Server-managed credential ready (mcp/env)' });
+        }
       } else {
         out.push({ key: 'bridge', label: 'Bridge', ok: false, details: `HTTP ${statusRes.status}` });
         out.push({ key: 'snow', label: 'SNOW', ok: false, details: 'Bridge unavailable' });
@@ -186,7 +193,7 @@ function EnvironmentDiagnostics({ bridgeUrl, adoPat, githubPat }: { bridgeUrl: s
       } catch {
         out.push({ key: 'ado', label: 'ADO', ok: false, details: 'Request failed (VPN/network/bridge)' });
       }
-    } else {
+    } else if (!out.some((r) => r.key === 'ado')) {
       out.push({ key: 'ado', label: 'ADO', ok: false, details: 'PAT missing in Settings' });
     }
 
@@ -205,7 +212,7 @@ function EnvironmentDiagnostics({ bridgeUrl, adoPat, githubPat }: { bridgeUrl: s
       } catch {
         out.push({ key: 'github', label: 'GitHub', ok: false, details: 'Request failed (network/proxy)' });
       }
-    } else {
+    } else if (!out.some((r) => r.key === 'github')) {
       out.push({ key: 'github', label: 'GitHub', ok: false, details: 'PAT missing (optional)' });
     }
 

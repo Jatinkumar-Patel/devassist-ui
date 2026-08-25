@@ -4,11 +4,15 @@ const ADO_ORG = 'https://alm-prod-app1.rd.allscripts.com/tfs/boc_projects';
 const API_VER = '7.0';
 
 function adoHeaders(pat: string): HeadersInit {
-  const token = btoa(`:${pat}`);
-  return {
-    Authorization: `Basic ${token}`,
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
+  const trimmed = pat.trim();
+  if (trimmed) {
+    const token = btoa(`:${trimmed}`);
+    headers.Authorization = `Basic ${token}`;
+  }
+  return headers;
 }
 
 export async function fetchWorkItem(id: number, pat: string) {

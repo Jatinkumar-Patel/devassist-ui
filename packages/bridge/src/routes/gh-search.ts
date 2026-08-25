@@ -1,13 +1,19 @@
 import { Router, Request, Response } from 'express';
 import https from 'https';
+import { readMcpSecrets } from '../utils/mcp-secrets';
 
 export const ghSearchRouter = Router();
 
 function resolveGithubToken(req: Request): string | null {
-  const fromHeader = req.headers['x-github-token'];
-  if (typeof fromHeader === 'string' && fromHeader.trim()) return fromHeader.trim();
+  const mcpToken = readMcpSecrets().githubPat;
+  if (mcpToken) return mcpToken;
+
   const fromEnv = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
   if (typeof fromEnv === 'string' && fromEnv.trim()) return fromEnv.trim();
+
+  const fromHeader = req.headers['x-github-token'];
+  if (typeof fromHeader === 'string' && fromHeader.trim()) return fromHeader.trim();
+
   return null;
 }
 

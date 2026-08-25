@@ -5,7 +5,7 @@ import TriagePanel from '../components/TriagePanel';
 import { detectInput } from '../lib/input-detector';
 import { loadRegistry, routeByAreaPath } from '../lib/product-registry';
 import { fetchWorkItem } from '../lib/ado-client';
-import { fetchSnowTask, fetchSnowWorkNotes, fetchSnowAttachments, fetchSnowCase, fetchSnowIncident, escalateSnowTask, snowVal } from '../lib/snow-client';
+import { fetchSnowTask, fetchSnowWorkNotes, fetchSnowAttachments, fetchSnowCase, fetchSnowIncident, fetchSnowIncidentByCase, escalateSnowTask, snowVal } from '../lib/snow-client';
 import { matchPattern, runCodeSearch, buildSkillDrivenAssessment } from '../lib/analysis';
 import { fetchRelatedBugs, fetchTestCases } from '../lib/ado-client';
 import { searchCommits } from '../lib/github-client';
@@ -118,6 +118,47 @@ function getIncidentCaseNumber(incident: any): string | undefined {
   return candidates.find((v) => /^CS\d+$/i.test(v));
 }
 
+function deriveSnowLinkedWorkItemId(...records: Array<any | undefined>): number | undefined {
+  const candidateFields = [
+    'u_devid',
+    'u_dev_id',
+    'u_vsts_id',
+    'u_tfs_id',
+    'u_work_item_id',
+    'u_workitem_id',
+    'u_tfs_workitem',
+    'u_vsts_workitem',
+    'u_da_number',
+    'u_devassist_id',
+  ];
+
+  const tryParse = (value: string): number | undefined => {
+    const normalized = value.trim().toUpperCase();
+    const m = normalized.match(/(?:DA[-\s]?)?(\d{6,9})/);
+    if (!m) return undefined;
+    const id = parseInt(m[1], 10);
+    return Number.isFinite(id) ? id : undefined;
+  };
+
+  for (const rec of records) {
+    if (!rec) continue;
+
+    for (const field of candidateFields) {
+      const value = snowVal(rec[field]);
+      if (!value) continue;
+      const parsed = tryParse(value);
+      if (parsed) return parsed;
+    }
+
+    const fromSummary = [snowVal(rec.short_description), snowVal(rec.description)]
+      .map((v) => tryParse(v))
+      .find(Boolean);
+    if (fromSummary) return fromSummary;
+  }
+
+  return undefined;
+}
+
 export default function TriagePage() {
   const { adoPat, githubPat, bridgeUrl } = useSettingsStore();
   const { sessions, active, upsert } = useTriageStore();
@@ -152,10 +193,6 @@ export default function TriagePage() {
 
   const handleSubmit = useCallback(async (raw: string, selectedProductIds: string[]) => {
     const preview = newSession(raw);
-    if (preview.workItemId && !adoPat) {
-      alert('Set your Azure DevOps PAT in Settings first for DA/TFS work items. TASK/INC/CS can run without ADO PAT.');
-      return;
-    }
 
     setLoading(true);
     let s = preview;
@@ -319,9 +356,62 @@ export default function TriagePage() {
         try {
           const caseResp = await fetchSnowCase(caseNumber);
           const caseRecord = Array.isArray(caseResp?.result) ? caseResp.result[0] : caseResp?.result;
-          if (caseRecord) s = { ...s, snowCase: caseRecord };
+          if (caseRecord) {
+            s = { ...s, snowCase: caseRecord };
+            try {
+              const incResp = await fetchSnowIncidentByCase(caseNumber);
+              const incRecord = Array.isArray(incResp?.result) ? incResp.result[0] : incResp?.result;
+              if (incRecord) s = { ...s, snowIncident: incRecord };
+            } catch {
+              // non-fatal degraded mode
+            }
+          }
         } catch {
           // non-fatal degraded mode
+        }
+      }
+
+      // ── Bridge from SNOW records back to DA/TFS for full analysis ──────────
+      if (!s.adoItem && adoPat) {
+        const linkedWorkItemId = deriveSnowLinkedWorkItemId(s.snowIncident, s.snowCase, s.snowTask);
+        if (linkedWorkItemId) {
+          try {
+            s = phase(s, 'reading');
+            upsert(s);
+
+            const adoItem = await fetchWorkItem(linkedWorkItemId, adoPat);
+            const areaPath = adoItem.fields['System.AreaPath'] ?? '';
+            const autoProduct = routeByAreaPath(areaPath, registry, adoItem.fields['System.Title']);
+            const product = s.product ?? autoProduct;
+            s = { ...s, workItemId: linkedWorkItemId, adoItem, product };
+
+            s = phase(s, 'routing');
+            upsert(s);
+
+            const routedProduct = s.product;
+            if (routedProduct) {
+              const [relatedBugs, testCases] = await Promise.allSettled([
+                fetchRelatedBugs(areaPath, adoPat),
+                fetchTestCases(areaPath, adoPat),
+              ]);
+              if (relatedBugs.status === 'fulfilled') s = { ...s, relatedItems: relatedBugs.value };
+              if (testCases.status === 'fulfilled') s = { ...s, testCases: testCases.value };
+              if (githubPat && routedProduct.repos.length) {
+                const repo = routedProduct.repos.find((r) => r.required);
+                if (repo) {
+                  const keywords = [
+                    adoItem.fields['System.Title']?.split(' ').slice(0, 4).join(' ') ?? '',
+                    routedProduct.displayName,
+                  ].filter(Boolean);
+                  const commits = await searchCommits(githubPat, `${repo.owner}/${repo.repo}`, keywords).catch(() => []);
+                  if (commits.length) s = { ...s, recentCommits: commits };
+                }
+              }
+            }
+            upsert(s);
+          } catch {
+            // non-fatal; keep SNOW-only output if DA lookup fails
+          }
         }
       }
 

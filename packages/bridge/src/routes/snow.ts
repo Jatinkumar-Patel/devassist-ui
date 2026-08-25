@@ -196,6 +196,37 @@ snowRouter.get('/case/:number', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/snow/incident-by-case/:number — find incident linked to a CS case
+snowRouter.get('/incident-by-case/:number', async (req: Request, res: Response) => {
+  const { number } = req.params;
+  const caseNum = number.toUpperCase();
+  const fields = [
+    'sys_id',
+    'number',
+    'state',
+    'short_description',
+    'description',
+    'priority',
+    'assigned_to',
+    'assignment_group',
+    'parent',
+    'u_case_number',
+    'u_customer_case',
+    'u_devid',
+    'u_dev_id',
+    'u_vsts_id',
+    'u_tfs_id',
+    'opened_at',
+  ].join(',');
+  const query = encodeURIComponent(`parent.number=${caseNum}^ORu_case_number=${caseNum}^ORu_customer_case=${caseNum}`);
+  const url = `${SNOW_BASE}/GetTableJSON/?tablename=incident&sysparm_query=${query}&sysparm_fields=${fields}`;
+  try {
+    return res.json(await snowFetchDecoded(url));
+  } catch (err: any) {
+    return res.status(502).json({ error: err.message });
+  }
+});
+
 // GET /api/snow/escalate/:taskSysId — Task → Incident → Case chain per snow-viewer-api.md
 snowRouter.get('/escalate/:taskSysId', async (req: Request, res: Response) => {
   const { taskSysId } = req.params;

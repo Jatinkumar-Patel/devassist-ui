@@ -1,26 +1,30 @@
 import { Router, Request, Response } from 'express';
 import https from 'https';
+import { readMcpSecrets } from '../utils/mcp-secrets';
 
 export const adoRouter = Router();
 
 const ADO_BASE = 'https://alm-prod-app1.rd.allscripts.com/tfs/boc_projects';
 
 function serverSideAdoAuthHeader(): string | null {
-  const pat = process.env.AZURE_DEVOPS_PAT?.trim();
+  const envPat = process.env.AZURE_DEVOPS_PAT?.trim();
+  const mcpPat = readMcpSecrets().adoPat;
+  const pat = envPat || mcpPat;
   if (!pat) return null;
   const token = Buffer.from(`:${pat}`, 'utf-8').toString('base64');
   return `Basic ${token}`;
 }
 
-// Proxy ADO REST calls to avoid CORS issues with on-prem TFS
-// Authorization header is forwarded from the SPA (PAT as Basic auth)
+// Proxy ADO REST calls to avoid CORS issues with on-prem TFS.
+// Prefer server-side credentials (env/mcp.json) to avoid browser secret exposure.
 adoRouter.use('*', (req: Request, res: Response) => {
   const adoPath = req.params[0] ?? '';
   const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
   const targetUrl = `${ADO_BASE}${adoPath}${query}`;
 
   const incomingAuth = req.headers['authorization'];
-  const authHeader = (typeof incomingAuth === 'string' ? incomingAuth : null) ?? serverSideAdoAuthHeader();
+  const serverAuth = serverSideAdoAuthHeader();
+  const authHeader = serverAuth ?? (typeof incomingAuth === 'string' ? incomingAuth : null);
   if (!authHeader) {
     return res.status(401).json({ error: 'Missing Authorization header and no server-side AZURE_DEVOPS_PAT configured' });
   }

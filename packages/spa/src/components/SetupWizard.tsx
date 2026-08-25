@@ -12,8 +12,10 @@ type Step = 'bridge' | 'ado-pat' | 'github-pat' | 'done';
 
 interface McpConfig {
   found: boolean;
-  adoPat: string | null;
-  githubPat: string | null;
+  hasAdoPat: boolean;
+  hasGithubPat: boolean;
+  adoPat?: string | null;
+  githubPat?: string | null;
   adoOrgUrl: string | null;
 }
 
@@ -38,9 +40,6 @@ export default function SetupWizard({ onDone }: Props) {
       if (r.ok) {
         const cfg: McpConfig = await r.json();
         setMcpConfig(cfg);
-        // Pre-fill inputs if PATs found
-        if (cfg.adoPat)    setAdoVal(cfg.adoPat);
-        if (cfg.githubPat) setGithubVal(cfg.githubPat);
         return cfg;
       }
       return null;
@@ -63,16 +62,13 @@ export default function SetupWizard({ onDone }: Props) {
       setBridgeOk(ok);
       if (ok) {
         const cfg = await loadMcpConfig();
-        const ado = cfg?.adoPat?.trim() ?? '';
-        const gh = cfg?.githubPat?.trim() ?? '';
+        const adoReady = Boolean(cfg?.hasAdoPat);
+        const ghReady = Boolean(cfg?.hasGithubPat);
 
-        if (ado) setAdoPat(ado);
-        if (gh) setGithubPat(gh);
-
-        if (ado && gh) {
+        if (adoReady && ghReady) {
           localStorage.setItem('devassist-setup-done', '1');
           setTimeout(() => setStep('done'), 300);
-        } else if (!ado) {
+        } else if (!adoReady) {
           setTimeout(() => setStep('ado-pat'), 600);
         } else {
           setTimeout(() => setStep('github-pat'), 600);
@@ -212,25 +208,22 @@ export default function SetupWizard({ onDone }: Props) {
               )}
 
               {/* Auto-detected from mcp.json */}
-              {mcpConfig?.adoPat ? (
+              {mcpConfig?.hasAdoPat ? (
                 <div className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 space-y-2">
                   <div className="flex items-center gap-2 text-emerald-300 text-sm font-medium">
                     <Wand2 size={14} />
                     Found in VS Code MCP config
                   </div>
                   <p className="text-xs text-gray-400">
-                    Detected your ADO PAT from <span className="font-mono text-gray-300">mcp.json</span>.
-                    Click <strong className="text-white">Use it</strong> to confirm, or paste a different one below.
+                    ADO PAT is available to the local bridge from this machine configuration.
+                    Token values are not exposed to the browser.
                   </p>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs text-gray-500 bg-gray-800 rounded px-2 py-1 flex-1 truncate">
-                      {'•'.repeat(12)}{mcpConfig.adoPat.slice(-4)}
-                    </span>
                     <button
-                      onClick={() => { setAdoPat(mcpConfig.adoPat!); setStep('github-pat'); }}
+                      onClick={() => { setStep('github-pat'); }}
                       className="bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded text-xs font-medium shrink-0"
                     >
-                      Use it ✓
+                      Continue ✓
                     </button>
                   </div>
                 </div>
@@ -241,7 +234,7 @@ export default function SetupWizard({ onDone }: Props) {
               )}
 
               {/* Manual creation guide — shown when not auto-detected */}
-              {!mcpConfig?.adoPat && (
+              {!mcpConfig?.hasAdoPat && (
                 <ol className="text-xs text-gray-400 space-y-1.5 list-decimal list-inside bg-gray-800/50 rounded-lg p-3">
                   <li>Open ADO:
                     <a href="https://alm-prod-app1.rd.allscripts.com/tfs/boc_projects" target="_blank" rel="noreferrer"
@@ -258,7 +251,7 @@ export default function SetupWizard({ onDone }: Props) {
 
               {/* Always show manual input so user can override */}
               <div className="space-y-1.5">
-                {mcpConfig?.adoPat && (
+                {mcpConfig?.hasAdoPat && (
                   <p className="text-xs text-gray-600">Or enter a different PAT:</p>
                 )}
                 <div className="relative">
@@ -266,7 +259,7 @@ export default function SetupWizard({ onDone }: Props) {
                     type={showAdo ? 'text' : 'password'}
                     value={adoVal}
                     onChange={(e) => { setAdoVal(e.target.value); setAdoOk(null); }}
-                    placeholder={mcpConfig?.adoPat ? 'Override PAT (optional)' : 'Paste your ADO PAT here'}
+                    placeholder={mcpConfig?.hasAdoPat ? 'Override PAT (optional)' : 'Paste your ADO PAT here'}
                     className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm
                                font-mono text-gray-200 focus:outline-none focus:border-altera-teal pr-9"
                   />
@@ -277,7 +270,7 @@ export default function SetupWizard({ onDone }: Props) {
                 </div>
               </div>
 
-              {adoVal && !mcpConfig?.adoPat && (
+              {adoVal && !mcpConfig?.hasAdoPat && (
                 <div className="flex items-center gap-3">
                   <button onClick={testAdoPat} disabled={testing}
                     className="bg-altera-blue hover:bg-altera-blue/80 disabled:opacity-40 text-white
@@ -288,7 +281,7 @@ export default function SetupWizard({ onDone }: Props) {
                   {adoOk === false && <span className="text-xs text-red-400">Invalid — check the token and VPN</span>}
                 </div>
               )}
-              {adoVal && mcpConfig?.adoPat && (
+              {adoVal && mcpConfig?.hasAdoPat && (
                 <button onClick={testAdoPat} disabled={testing}
                   className="bg-altera-blue hover:bg-altera-blue/80 disabled:opacity-40 text-white
                              px-4 py-2 rounded-lg text-sm font-medium text-xs">
@@ -303,7 +296,7 @@ export default function SetupWizard({ onDone }: Props) {
             <>
               <h2 className="text-lg font-semibold text-gray-100">GitHub PAT</h2>
 
-              {!mcpConfig?.githubPat && (
+              {!mcpConfig?.hasGithubPat && (
                 <div className="rounded-lg border border-amber-700/60 bg-amber-950/30 p-3">
                   <p className="text-xs text-amber-200">
                     Could not find GitHub PAT in VS Code mcp.json on this VM. Please enter your GitHub PAT to continue.
@@ -312,27 +305,25 @@ export default function SetupWizard({ onDone }: Props) {
               )}
 
               {/* Auto-detected from mcp.json */}
-              {mcpConfig?.githubPat ? (
+              {mcpConfig?.hasGithubPat ? (
                 <div className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 space-y-2">
                   <div className="flex items-center gap-2 text-emerald-300 text-sm font-medium">
                     <Wand2 size={14} />
                     Found in VS Code MCP config
                   </div>
+                  <p className="text-xs text-gray-400">
+                    GitHub PAT is available to the local bridge from this machine configuration.
+                    Token values are not exposed to the browser.
+                  </p>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs text-gray-500 bg-gray-800 rounded px-2 py-1 flex-1 truncate">
-                      {'•'.repeat(12)}{mcpConfig.githubPat.slice(-4)}
-                    </span>
                     <button
                       onClick={() => {
-                        const pat = mcpConfig.githubPat!;
-                        setGithubVal(pat);
-                        setGithubPat(pat);
                         localStorage.setItem('devassist-setup-done', '1');
                         setStep('done');
                       }}
                       className="bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded text-xs font-medium shrink-0"
                     >
-                      Use it ✓
+                      Continue ✓
                     </button>
                   </div>
                 </div>
@@ -342,7 +333,7 @@ export default function SetupWizard({ onDone }: Props) {
                 </p>
               )}
 
-              {!mcpConfig?.githubPat && (
+              {!mcpConfig?.hasGithubPat && (
                 <ol className="text-xs text-gray-400 space-y-1.5 list-decimal list-inside bg-gray-800/50 rounded-lg p-3">
                   <li>Go to <a href="https://github.com/settings/tokens" target="_blank" rel="noreferrer"
                      className="text-altera-teal hover:underline">github.com/settings/tokens</a></li>
@@ -356,7 +347,7 @@ export default function SetupWizard({ onDone }: Props) {
                   type={showGh ? 'text' : 'password'}
                   value={githubVal}
                   onChange={(e) => setGithubVal(e.target.value)}
-                  placeholder={mcpConfig?.githubPat ? 'Override PAT' : 'Paste GitHub PAT'}
+                  placeholder={mcpConfig?.hasGithubPat ? 'Override PAT' : 'Paste GitHub PAT'}
                   className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm
                              font-mono text-gray-200 focus:outline-none focus:border-altera-teal pr-9"
                 />
@@ -389,8 +380,8 @@ export default function SetupWizard({ onDone }: Props) {
                 Paste a DA ID, SNOW task, or TFS work item number in the Triage page to get started.
               </p>
               <p className="text-xs text-gray-600">
-                Your PATs are stored only in this browser on this machine for this user profile.
-                On the same VM and user login, you will not be asked again unless PATs are cleared.
+                For enterprise security, PATs are not persisted in browser storage.
+                Preferred path is local bridge server-managed credentials from VS Code mcp.json.
               </p>
               <button onClick={onDone}
                 className="w-full bg-altera-blue hover:bg-altera-blue/80 text-white py-2.5 rounded-lg text-sm font-medium mt-2">
