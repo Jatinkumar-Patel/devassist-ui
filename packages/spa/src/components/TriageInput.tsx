@@ -20,6 +20,7 @@ const PLACEHOLDERS = [
 export default function TriageInput({ onSubmit, loading }: Props) {
   const [value, setValue] = useState('');
   const [registry, setRegistry] = useState<ProductRegistry | null>(null);
+  const [registryError, setRegistryError] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState('');
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [productsOpen, setProductsOpen] = useState(false);
@@ -27,7 +28,9 @@ export default function TriageInput({ onSubmit, loading }: Props) {
   const [listening, setListening] = useState(false);
   const [scopeOpen, setScopeOpen] = useState<boolean>(() => localStorage.getItem('devassist-card-scope-open') !== '0');
   const [inputOpen, setInputOpen] = useState<boolean>(() => localStorage.getItem('devassist-card-input-open') !== '0');
+  const [placeholderExample] = useState(() => PLACEHOLDERS[Math.floor(Math.random() * PLACEHOLDERS.length)]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const productsMenuRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
 
   const detected = value.trim() ? detectInput(value) : null;
@@ -49,23 +52,50 @@ export default function TriageInput({ onSubmit, loading }: Props) {
     setVoiceSupported(true);
   }, []);
 
+  const hydrateRegistry = async () => {
+    try {
+      setRegistryError(null);
+      const r = await loadRegistry();
+      setRegistry(r);
+      if (r.groups?.length) {
+        const firstGroup = r.groups[0];
+        setSelectedGroupId(firstGroup.id);
+        setSelectedProductIds(firstGroup.productIds ?? []);
+      } else {
+        // If no groups are configured, default to all products.
+        setSelectedProductIds((r.products ?? []).map((p) => p.id));
+      }
+    } catch (e: any) {
+      setRegistry(null);
+      setRegistryError(e?.message ?? 'Unable to load product registry.');
+    }
+  };
+
   useEffect(() => {
-    loadRegistry()
-      .then((r) => {
-        setRegistry(r);
-        if (r.groups?.length) {
-          const firstGroup = r.groups[0];
-          setSelectedGroupId(firstGroup.id);
-          setSelectedProductIds(firstGroup.productIds ?? []);
-        } else {
-          // If no groups are configured, default to all products.
-          setSelectedProductIds((r.products ?? []).map((p) => p.id));
-        }
-      })
-      .catch(() => {
-        setRegistry(null);
-      });
+    void hydrateRegistry();
   }, []);
+
+  useEffect(() => {
+    if (!productsOpen) return;
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (!productsMenuRef.current) return;
+      if (!productsMenuRef.current.contains(event.target as Node)) {
+        setProductsOpen(false);
+      }
+    };
+
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setProductsOpen(false);
+    };
+
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onEscape);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onEscape);
+    };
+  }, [productsOpen]);
 
   const availableProducts = useMemo(() => registry?.products ?? [], [registry]);
 
@@ -169,7 +199,7 @@ export default function TriageInput({ onSubmit, loading }: Props) {
                 </div>
                 <div>
                   <label className="block text-xs text-gray-300 mb-1.5">Products (multi-select)</label>
-                  <div className="relative">
+                  <div className="relative" ref={productsMenuRef}>
                     <button
                       type="button"
                       onClick={() => setProductsOpen((v) => !v)}
@@ -246,6 +276,23 @@ export default function TriageInput({ onSubmit, loading }: Props) {
         </div>
       )}
 
+      {!registry && registryError && (
+        <div className="glass-panel rounded-2xl p-3 sm:p-4 space-y-3 border border-yellow-700/40 bg-yellow-950/10">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-yellow-200">Product Scope</p>
+            <button
+              type="button"
+              onClick={() => void hydrateRegistry()}
+              className="text-xs px-2.5 py-1 rounded-md border border-yellow-400/40 bg-yellow-500/10 text-yellow-100 hover:bg-yellow-500/20"
+            >
+              Retry load
+            </button>
+          </div>
+          <p className="text-xs text-yellow-200/90">{registryError}</p>
+          <p className="text-xs text-yellow-100/80">You can still run analysis; product auto-routing will be attempted after DA fetch.</p>
+        </div>
+      )}
+
       <div className="glass-panel rounded-2xl p-3 sm:p-4 space-y-3">
         <div className="flex items-center justify-between gap-2">
           <p className="text-sm font-semibold text-white">Analysis Input</p>
@@ -267,7 +314,7 @@ export default function TriageInput({ onSubmit, loading }: Props) {
                   ref={inputRef}
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
-                  placeholder={`Paste a work item ID, e.g. ${PLACEHOLDERS[Math.floor(Math.random() * PLACEHOLDERS.length)]}`}
+                  placeholder={`Paste a work item ID, e.g. ${placeholderExample}`}
                   className="w-full bg-slate-950/70 border border-white/15 rounded-2xl px-4 py-4 pr-28
                              text-gray-100 placeholder-gray-500 focus:outline-none focus:border-cyan-400
                              focus:ring-1 focus:ring-cyan-400 text-base"

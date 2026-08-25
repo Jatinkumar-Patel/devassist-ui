@@ -8,8 +8,29 @@ const SNOW_BASE = 'https://servicenowviewer.allscripts.com/api/SNData';
 
 /** Double-decode: SNOW viewer returns a JSON-stringified JSON string */
 function snowDecode(raw: string): unknown {
-  const outer = JSON.parse(raw.trim());
-  return typeof outer === 'string' ? JSON.parse(outer) : outer;
+  const text = raw.trim();
+
+  const parseCandidate = (candidate: string): unknown => {
+    const outer = JSON.parse(candidate);
+    return typeof outer === 'string' ? JSON.parse(outer) : outer;
+  };
+
+  try {
+    return parseCandidate(text);
+  } catch {
+    // Some viewer responses include wrapper/trailing noise; recover by extracting the JSON envelope.
+    const firstBrace = text.search(/[\[{]/);
+    const lastObj = text.lastIndexOf('}');
+    const lastArr = text.lastIndexOf(']');
+    const lastBrace = Math.max(lastObj, lastArr);
+
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      const sliced = text.slice(firstBrace, lastBrace + 1);
+      return parseCandidate(sliced);
+    }
+
+    throw new Error('Unable to decode SNOW payload');
+  }
 }
 
 function snowFetch(url: string): Promise<string> {
