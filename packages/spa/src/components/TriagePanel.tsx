@@ -46,10 +46,38 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
   const bridgeUrl = useSettingsStore((s) => s.bridgeUrl);
   const { adoItem, snowTask, product, error, currentPhase, clarityGaps, attachments, artifactLedger } = session;
   if (error) {
+    const message = friendlyErrorMessage(error, bridgeUrl);
+    const isAuthError = /\b401\b|Authentication failed/i.test(message);
+
     return (
-      <div className="rounded-lg border border-red-800 bg-red-950/30 p-4 flex items-start gap-3">
-        <AlertTriangle size={16} className="text-red-400 mt-0.5 shrink-0" />
-        <p className="text-red-300 text-sm">{friendlyErrorMessage(error, bridgeUrl)}</p>
+      <div className="rounded-lg border border-red-800 bg-red-950/30 p-4 space-y-3">
+        <div className="flex items-start gap-3">
+          <AlertTriangle size={16} className="text-red-400 mt-0.5 shrink-0" />
+          <p className="text-red-300 text-sm">{message}</p>
+        </div>
+        <div className="flex flex-wrap gap-2 pl-7">
+          {isAuthError ? (
+            <a
+              href="#/settings"
+              className="text-xs px-3 py-1.5 rounded-md border border-red-600/70 text-red-100 hover:bg-red-900/40"
+            >
+              Open Settings to update PAT
+            </a>
+          ) : (
+            <a
+              href="#/settings"
+              className="text-xs px-3 py-1.5 rounded-md border border-gray-600 text-gray-200 hover:bg-gray-800"
+            >
+              Open Settings
+            </a>
+          )}
+          <button
+            onClick={() => window.location.reload()}
+            className="text-xs px-3 py-1.5 rounded-md border border-gray-600 text-gray-200 hover:bg-gray-800"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
