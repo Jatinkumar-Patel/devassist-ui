@@ -138,12 +138,14 @@ export default function TriagePage() {
   const activeSession = sessions.find((s) => s.id === active);
 
   const handleSubmit = useCallback(async (raw: string, selectedProductIds: string[]) => {
-    if (!adoPat) {
-      alert('Set your Azure DevOps PAT in Settings first.');
+    const preview = newSession(raw);
+    if (preview.workItemId && !adoPat) {
+      alert('Set your Azure DevOps PAT in Settings first for DA/TFS work items. TASK/INC/CS can run without ADO PAT.');
       return;
     }
+
     setLoading(true);
-    let s = newSession(raw);
+    let s = preview;
     upsert(s);
 
     try {
