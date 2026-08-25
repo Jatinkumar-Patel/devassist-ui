@@ -19,6 +19,41 @@ const VERDICT_STYLE: Record<string, { icon: React.ReactNode; color: string }> = 
   'NEED MORE INFO':   { icon: <HelpCircle size={14} />,   color: 'text-gray-400 border-gray-700 bg-gray-800' },
 };
 
+function normalizeEvidenceValue(v?: string): string {
+  const text = String(v ?? '').trim();
+  return text && text !== 'null' && text !== 'undefined' ? text : '-';
+}
+
+function formatSnowEvidence(evidence: string[]): string[] {
+  if (!evidence.length) return [];
+
+  const joined = evidence.join('\n');
+  const looksLikeAuditBlob = joined.includes('"fieldname"') && joined.includes('"newvalue"');
+  if (!looksLikeAuditBlob) {
+    return evidence.map((line) => line.trim()).filter(Boolean).slice(0, 12);
+  }
+
+  const pattern = /"fieldname"\s*:\s*\{[^}]*?"display_value"\s*:\s*"([^"]*)"[\s\S]*?"oldvalue"\s*:\s*\{[^}]*?"display_value"\s*:\s*"([^"]*)"[\s\S]*?"newvalue"\s*:\s*\{[^}]*?"display_value"\s*:\s*"([^"]*)"[\s\S]*?"sys_created_on"\s*:\s*\{[^}]*?"display_value"\s*:\s*"([^"]*)"[\s\S]*?"user"\s*:\s*\{[^}]*?"display_value"\s*:\s*"([^"]*)"/g;
+  const rows: string[] = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(joined)) !== null && rows.length < 10) {
+    const [, field, oldValue, newValue, when, user] = match;
+    rows.push(
+      `${normalizeEvidenceValue(field)}: ${normalizeEvidenceValue(oldValue)} -> ${normalizeEvidenceValue(newValue)} | ${normalizeEvidenceValue(user)} | ${normalizeEvidenceValue(when)}`
+    );
+  }
+
+  if (rows.length > 0) return rows;
+
+  // Fallback for partially malformed payloads: keep only compact meaningful fragments.
+  return joined
+    .split('\n')
+    .map((line) => line.replace(/[{}\[\]"]+/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter((line) => /fieldname|newvalue|oldvalue|priority|updated_by|updated_on/i.test(line))
+    .slice(0, 10);
+}
+
 export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
   const { githubPat } = useSettingsStore();
   const [running, setRunning] = useState(false);
@@ -74,6 +109,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
   }
 
   const verdictStyle = VERDICT_STYLE[analysis.verdict ?? 'NEED MORE INFO'] ?? VERDICT_STYLE['NEED MORE INFO'];
+  const snowEvidenceRows = formatSnowEvidence(analysis.snowEvidence);
 
   const copyL2 = () => {
     if (analysis.l2Draft) {
@@ -104,33 +140,37 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
       </div>
 
       {/* Reasoning chain */}
-      <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-3 text-sm">
-        {analysis.snowEvidence.length > 0 && (
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">SNOW Evidence</p>
-            <pre className="text-xs text-gray-400 font-mono leading-relaxed max-h-56 overflow-auto rounded border border-gray-800 bg-gray-950/60 p-2 whitespace-pre">
-{analysis.snowEvidence.map((e) => `- ${e}`).join('\n')}
-            </pre>
-          </div>
+      <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-4 text-sm">
+        {snowEvidenceRows.length > 0 && (
+          <section className="space-y-2">
+            <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">SNOW Evidence</p>
+            <div className="analysis-scroll max-h-60 rounded border border-gray-800 bg-gray-950/70 p-2">
+              <pre className="text-xs text-gray-300 font-mono leading-relaxed whitespace-pre">
+{snowEvidenceRows.map((e) => `- ${e}`).join('\n')}
+              </pre>
+            </div>
+          </section>
         )}
 
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Code Analysis</p>
-          <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap leading-relaxed">{analysis.codeAnalysis}</pre>
-        </div>
+        <section className="space-y-2">
+          <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Code Analysis</p>
+          <div className="analysis-scroll max-h-56 rounded border border-gray-800 bg-gray-950/70 p-2">
+            <pre className="text-xs text-gray-300 font-mono leading-relaxed whitespace-pre-wrap">{analysis.codeAnalysis}</pre>
+          </div>
+        </section>
 
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Gap</p>
-          <p className="text-xs text-gray-300">{analysis.gap}</p>
-        </div>
+        <section className="space-y-2">
+          <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Gap</p>
+          <p className="text-sm text-gray-200 leading-relaxed">{analysis.gap}</p>
+        </section>
 
         {analysis.blindSpots.length > 0 && (
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide flex items-center gap-1">
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold text-yellow-300 uppercase tracking-wide flex items-center gap-1">
               <AlertTriangle size={10} /> Blind Spots
             </p>
             {analysis.blindSpots.map((b, i) => (
-              <p key={i} className="text-xs text-yellow-500/80">- {b}</p>
+              <p key={i} className="text-xs text-yellow-200/90 leading-relaxed">- {b}</p>
             ))}
           </div>
         )}

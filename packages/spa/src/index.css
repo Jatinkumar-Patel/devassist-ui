@@ -45,9 +45,10 @@
     }
   }
 
-  ::-webkit-scrollbar { @apply w-1.5; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track { @apply bg-gray-900; }
   ::-webkit-scrollbar-thumb { @apply bg-gray-600 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-gray-500; }
 }
 
 @layer components {
@@ -56,5 +57,10 @@
     border: 1px solid var(--card-border);
     box-shadow: 0 18px 40px rgba(2, 8, 23, 0.35);
     backdrop-filter: blur(10px);
+  }
+
+  .analysis-scroll {
+    overflow: auto;
+    scrollbar-gutter: stable both-edges;
   }
 }
