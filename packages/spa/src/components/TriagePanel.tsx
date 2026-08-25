@@ -98,66 +98,88 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
     );
   }
 
-  if (!adoItem) return null;
-
-  const fields = adoItem.fields;
-  const snowNum = fields['Allscripts.Field.IncidentTaskID'];
+  const fields = adoItem?.fields;
+  const snowNum = fields?.['Allscripts.Field.IncidentTaskID'];
 
   return (
     <div className="space-y-4">
       {/* Compact header */}
       <div className="rounded-lg border border-gray-700 bg-gray-900 p-3">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <span className="text-xs text-gray-500 font-mono">
-              {fields['System.WorkItemType']} #{adoItem.id}
-              {snowNum && (
-                <>
-                  {' · '}
-                  <a href={snowTaskUrl(String(snowNum))} target="_blank" rel="noreferrer"
-                     className="text-altera-teal hover:text-white">{String(snowNum)}</a>
-                  {session.snowTaskTable && <span className="text-gray-600 ml-1">({session.snowTaskTable})</span>}
-                </>
-              )}
-            </span>
-            <h2 className="text-gray-100 font-semibold mt-0.5 leading-snug text-sm">
-              {fields['System.Title']}
-            </h2>
-          </div>
-          <a href={workItemUrl(adoItem.id)} target="_blank" rel="noreferrer"
-             className="text-altera-teal hover:text-white shrink-0 mt-1">
-            <ExternalLink size={13} />
-          </a>
-        </div>
-        <div className="flex flex-wrap gap-1.5 text-xs mt-2">
-          <Badge label="State" value={fields['System.State']} />
-          {fields['Allscripts.Field.SupportVersion'] && <Badge label="Release" value={String(fields['Allscripts.Field.SupportVersion'])} />}
-          {fields['Allscripts.Field.CustomerName']   && <Badge label="Customer" value={String(fields['Allscripts.Field.CustomerName'])} />}
-          {fields['Microsoft.VSTS.Common.Severity']  && <Badge label="Sev" value={String(fields['Microsoft.VSTS.Common.Severity'])} />}
-          {product && <Badge label="Product" value={product.displayName} />}
-          {clarityGaps !== undefined && (
-            clarityGaps.length === 0
-              ? <span className="bg-emerald-950 border border-emerald-800 rounded px-2 py-0.5 text-emerald-300">Clarity OK</span>
-              : <span className="bg-yellow-950 border border-yellow-800 rounded px-2 py-0.5 text-yellow-300">Gaps: {clarityGaps.length}</span>
-          )}
-        </div>
-        {(() => {
-          const title = fields['System.Title'] ?? '';
-          const ids = [...title.matchAll(/\b(CS\d{5,}|KB\d{4,}|PRB\d{5,}|INC\d{6,}|DA[-\s]?\d{6,})\b/gi)].map(m => m[1]);
-          if (!ids.length) return null;
-          return (
-            <div className="flex flex-wrap gap-1 text-xs mt-1.5">
-              <span className="text-gray-500">Linked:</span>
-              {ids.map(id => (
-                <span key={id} className="bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 font-mono text-altera-teal">{id}</span>
-              ))}
+        {adoItem && fields ? (
+          <>
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <span className="text-xs text-gray-500 font-mono">
+                  {fields['System.WorkItemType']} #{adoItem.id}
+                  {snowNum && (
+                    <>
+                      {' · '}
+                      <a href={snowTaskUrl(String(snowNum))} target="_blank" rel="noreferrer"
+                         className="text-altera-teal hover:text-white">{String(snowNum)}</a>
+                      {session.snowTaskTable && <span className="text-gray-600 ml-1">({session.snowTaskTable})</span>}
+                    </>
+                  )}
+                </span>
+                <h2 className="text-gray-100 font-semibold mt-0.5 leading-snug text-sm">
+                  {fields['System.Title']}
+                </h2>
+              </div>
+              <a href={workItemUrl(adoItem.id)} target="_blank" rel="noreferrer"
+                 className="text-altera-teal hover:text-white shrink-0 mt-1">
+                <ExternalLink size={13} />
+              </a>
             </div>
-          );
-        })()}
+            <div className="flex flex-wrap gap-1.5 text-xs mt-2">
+              <Badge label="State" value={fields['System.State']} />
+              {fields['Allscripts.Field.SupportVersion'] && <Badge label="Release" value={String(fields['Allscripts.Field.SupportVersion'])} />}
+              {fields['Allscripts.Field.CustomerName']   && <Badge label="Customer" value={String(fields['Allscripts.Field.CustomerName'])} />}
+              {fields['Microsoft.VSTS.Common.Severity']  && <Badge label="Sev" value={String(fields['Microsoft.VSTS.Common.Severity'])} />}
+              {product && <Badge label="Product" value={product.displayName} />}
+              {clarityGaps !== undefined && (
+                clarityGaps.length === 0
+                  ? <span className="bg-emerald-950 border border-emerald-800 rounded px-2 py-0.5 text-emerald-300">Clarity OK</span>
+                  : <span className="bg-yellow-950 border border-yellow-800 rounded px-2 py-0.5 text-yellow-300">Gaps: {clarityGaps.length}</span>
+              )}
+            </div>
+            {(() => {
+              const title = fields['System.Title'] ?? '';
+              const ids = [...title.matchAll(/\b(CS\d{5,}|KB\d{4,}|PRB\d{5,}|INC\d{6,}|DA[-\s]?\d{6,})\b/gi)].map(m => m[1]);
+              if (!ids.length) return null;
+              return (
+                <div className="flex flex-wrap gap-1 text-xs mt-1.5">
+                  <span className="text-gray-500">Linked:</span>
+                  {ids.map(id => (
+                    <span key={id} className="bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 font-mono text-altera-teal">{id}</span>
+                  ))}
+                </div>
+              );
+            })()}
+          </>
+        ) : (
+          <>
+            <div className="min-w-0">
+              <span className="text-xs text-gray-500 font-mono">
+                SNOW {session.inputType} · {session.inputRaw}
+              </span>
+              <h2 className="text-gray-100 font-semibold mt-0.5 leading-snug text-sm">
+                {snowVal((session.snowTask as any)?.short_description)
+                  || snowVal((session.snowIncident as any)?.short_description)
+                  || snowVal((session.snowCase as any)?.short_description)
+                  || 'SNOW session loaded'}
+              </h2>
+            </div>
+            <div className="flex flex-wrap gap-1.5 text-xs mt-2">
+              {session.snowTask && <Badge label="Task" value={snowVal((session.snowTask as any).number)} />}
+              {session.snowIncident && <Badge label="Incident" value={snowVal((session.snowIncident as any).number)} />}
+              {session.snowCase && <Badge label="Case" value={snowVal((session.snowCase as any).number)} />}
+              {product && <Badge label="Product" value={product.displayName} />}
+            </div>
+          </>
+        )}
       </div>
 
       {/* ROOT CAUSE ANALYSIS — primary section */}
-      {session.status === 'ready' && product && (
+      {session.status === 'ready' && adoItem && product && (
         <AnalysisPanel session={session} onAnalysisComplete={onAnalysisComplete} />
       )}
 
@@ -211,11 +233,11 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
                 ))}
               </div>
             </div>
-          ) : (
+          ) : adoItem ? (
             <div className="rounded-lg border border-yellow-800/50 bg-yellow-950/20 p-3 text-xs text-yellow-300">
-              No product match for "{fields['System.AreaPath']}"
+              No product match for "{fields?.['System.AreaPath']}"
             </div>
-          )}
+          ) : null}
 
           {snowTask && (
             <div className="rounded-lg border border-gray-700 bg-gray-900 p-3 space-y-2">
@@ -275,7 +297,7 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
             </div>
           )}
 
-          {(fields['System.Description'] || fields['Allscripts.Field.DevAssistDetail'] || fields['Allscripts.Field.WorkaroundInstructions']) && (
+          {adoItem && fields && (fields['System.Description'] || fields['Allscripts.Field.DevAssistDetail'] || fields['Allscripts.Field.WorkaroundInstructions']) && (
             <div className="rounded-lg border border-gray-700 bg-gray-900 p-3 space-y-2">
               <p className="text-xs font-medium text-gray-500">TFS fields</p>
               {fields['System.Description'] && (

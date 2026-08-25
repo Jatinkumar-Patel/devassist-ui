@@ -5,7 +5,7 @@ import TriagePanel from '../components/TriagePanel';
 import { detectInput } from '../lib/input-detector';
 import { loadRegistry, routeByAreaPath } from '../lib/product-registry';
 import { fetchWorkItem } from '../lib/ado-client';
-import { fetchSnowTask, fetchSnowWorkNotes, fetchSnowAttachments, fetchSnowCase, fetchSnowIncident, snowVal } from '../lib/snow-client';
+import { fetchSnowTask, fetchSnowWorkNotes, fetchSnowAttachments, fetchSnowCase, fetchSnowIncident, escalateSnowTask, snowVal } from '../lib/snow-client';
 import { matchPattern, runCodeSearch, buildSkillDrivenAssessment } from '../lib/analysis';
 import { fetchRelatedBugs, fetchTestCases } from '../lib/ado-client';
 import { searchCommits } from '../lib/github-client';
@@ -103,6 +103,19 @@ function buildSelectedScope(selectedProducts: Product[]): Product | undefined {
     skillPaths: selectedProducts.flatMap((p) => p.skillPaths ?? []),
     notes: `User-selected scope: ${selectedProducts.map((p) => p.displayName).join(', ')}`,
   };
+}
+
+function getIncidentCaseNumber(incident: any): string | undefined {
+  const candidates = [
+    snowVal(incident?.u_case_number),
+    snowVal(incident?.u_customer_case),
+    snowVal(incident?.['u_case_number.display_value']),
+    snowVal(incident?.['u_customer_case.display_value']),
+    snowVal(incident?.parent),
+    snowVal(incident?.['parent.number']),
+  ].filter(Boolean);
+
+  return candidates.find((v) => /^CS\d+$/i.test(v));
 }
 
 export default function TriagePage() {
@@ -227,6 +240,15 @@ export default function TriagePage() {
               s = { ...s, attachments };
             }
 
+            // Preferred path: use bridge escalation endpoint to fetch parent incident/case.
+            try {
+              const escalated = await escalateSnowTask(sysId);
+              if (escalated.incident) s = { ...s, snowIncident: escalated.incident as any };
+              if (escalated.case) s = { ...s, snowCase: escalated.case as any };
+            } catch {
+              // non-fatal fallback paths below
+            }
+
             // ── Escalation: Task → Incident → Case (per snow-viewer-api.md) ───
             // Escalate if the task has a linked incident field
             const incidentSysId = snowVal(taskRecord?.['incident']);
@@ -234,7 +256,19 @@ export default function TriagePage() {
               try {
                 const incResp = await fetchSnowIncident(incidentSysId);
                 const incRecord = Array.isArray(incResp?.result) ? incResp.result[0] : incResp?.result;
-                if (incRecord) s = { ...s, snowIncident: incRecord };
+                if (incRecord) {
+                  s = { ...s, snowIncident: incRecord };
+                  if (!s.snowCase) {
+                    const caseNum = getIncidentCaseNumber(incRecord);
+                    if (caseNum) {
+                      try {
+                        const caseResp = await fetchSnowCase(caseNum);
+                        const caseRecord = Array.isArray(caseResp?.result) ? caseResp.result[0] : caseResp?.result;
+                        if (caseRecord) s = { ...s, snowCase: caseRecord };
+                      } catch { /* non-fatal */ }
+                    }
+                  }
+                }
               } catch { /* non-fatal */ }
             }
 
@@ -250,6 +284,44 @@ export default function TriagePage() {
           }
         } catch {
           // Bridge offline or VPN — non-fatal, mark as degraded
+        }
+      }
+
+      // ── SNOW-only path: direct INC input ────────────────────────────────────
+      if (s.snowIncidentNumber) {
+        const incidentNumber = s.snowIncidentNumber;
+        s = phase(s, 'snow');
+        upsert(s);
+        try {
+          const incResp = await fetchSnowIncident(incidentNumber);
+          const incRecord = Array.isArray(incResp?.result) ? incResp.result[0] : incResp?.result;
+          if (incRecord) {
+            s = { ...s, snowIncident: incRecord };
+            const caseNum = getIncidentCaseNumber(incRecord);
+            if (caseNum) {
+              try {
+                const caseResp = await fetchSnowCase(caseNum);
+                const caseRecord = Array.isArray(caseResp?.result) ? caseResp.result[0] : caseResp?.result;
+                if (caseRecord) s = { ...s, snowCase: caseRecord };
+              } catch { /* non-fatal */ }
+            }
+          }
+        } catch {
+          // non-fatal degraded mode
+        }
+      }
+
+      // ── SNOW-only path: direct CS input ─────────────────────────────────────
+      if (s.snowCaseNumber) {
+        const caseNumber = s.snowCaseNumber;
+        s = phase(s, 'snow');
+        upsert(s);
+        try {
+          const caseResp = await fetchSnowCase(caseNumber);
+          const caseRecord = Array.isArray(caseResp?.result) ? caseResp.result[0] : caseResp?.result;
+          if (caseRecord) s = { ...s, snowCase: caseRecord };
+        } catch {
+          // non-fatal degraded mode
         }
       }
 
