@@ -56,11 +56,11 @@
     background: var(--card-bg);
     border: 1px solid var(--card-border);
     box-shadow: 0 18px 40px rgba(2, 8, 23, 0.35);
+    -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
   }
 
   .analysis-scroll {
     overflow: auto;
-    scrollbar-gutter: stable both-edges;
   }
 }
