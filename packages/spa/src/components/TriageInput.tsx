@@ -22,6 +22,7 @@ export default function TriageInput({ onSubmit, loading }: Props) {
   const [registry, setRegistry] = useState<ProductRegistry | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState('');
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [productsOpen, setProductsOpen] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [listening, setListening] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -66,6 +67,15 @@ export default function TriageInput({ onSubmit, loading }: Props) {
 
   const availableProducts = useMemo(() => registry?.products ?? [], [registry]);
 
+  const selectedProductLabel = useMemo(() => {
+    if (selectedProductIds.length === 0) return 'No products selected';
+    const selectedNames = availableProducts
+      .filter((p) => selectedProductIds.includes(p.id))
+      .map((p) => p.displayName);
+    if (selectedNames.length <= 2) return selectedNames.join(', ');
+    return `${selectedNames.slice(0, 2).join(', ')} +${selectedNames.length - 2} more`;
+  }, [availableProducts, selectedProductIds]);
+
   const groupOptions = useMemo(() => {
     const groups = registry?.groups ?? [];
     return [{ id: '', name: 'Custom selection' }, ...groups.map((g) => ({ id: g.id, name: g.name }))];
@@ -79,10 +89,11 @@ export default function TriageInput({ onSubmit, loading }: Props) {
     setSelectedProductIds(group.productIds.filter((id) => availableProducts.some((p) => p.id === id)));
   };
 
-  const updateProductsFromDropdown = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selected = Array.from(e.target.selectedOptions).map((o) => o.value);
+  const toggleProduct = (productId: string) => {
     setSelectedGroupId('');
-    setSelectedProductIds(selected);
+    setSelectedProductIds((prev) =>
+      prev.includes(productId) ? prev.filter((id) => id !== productId) : [...prev, productId]
+    );
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -125,17 +136,41 @@ export default function TriageInput({ onSubmit, loading }: Props) {
             </div>
             <div>
               <label className="block text-xs text-gray-300 mb-1.5">Products (multi-select)</label>
-              <select
-                multiple
-                size={Math.min(8, Math.max(5, availableProducts.length || 5))}
-                value={selectedProductIds}
-                onChange={updateProductsFromDropdown}
-                className="bg-slate-950/70 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-gray-100 w-full min-h-[180px]"
-              >
-                {availableProducts.map((p) => (
-                  <option key={p.id} value={p.id}>{p.displayName}</option>
-                ))}
-              </select>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setProductsOpen((v) => !v)}
+                  className="w-full bg-slate-950/70 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-gray-100 text-left flex items-center justify-between gap-3"
+                >
+                  <span className="truncate">{selectedProductLabel}</span>
+                  <span className="text-xs text-cyan-200 shrink-0">{selectedProductIds.length} selected</span>
+                </button>
+
+                {productsOpen && (
+                  <div className="absolute z-20 mt-2 w-full rounded-xl border border-white/15 bg-slate-950/95 shadow-2xl shadow-black/40 max-h-64 overflow-auto p-2 space-y-1">
+                    {availableProducts.map((p) => {
+                      const checked = selectedProductIds.includes(p.id);
+                      return (
+                        <label
+                          key={p.id}
+                          className={`flex items-center gap-2 rounded-lg px-2 py-2 cursor-pointer ${
+                            checked ? 'bg-cyan-500/15' : 'hover:bg-white/5'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleProduct(p.id)}
+                            className="h-4 w-4 accent-cyan-400"
+                          />
+                          <span className="text-sm text-gray-100 truncate flex-1">{p.displayName}</span>
+                          <span className="text-[10px] text-gray-400 font-mono">{p.id}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -147,6 +182,7 @@ export default function TriageInput({ onSubmit, loading }: Props) {
                 onClick={() => {
                   setSelectedGroupId('');
                   setSelectedProductIds(availableProducts.map((p) => p.id));
+                  setProductsOpen(false);
                 }}
                 className="text-cyan-300 hover:text-white"
               >
@@ -154,7 +190,11 @@ export default function TriageInput({ onSubmit, loading }: Props) {
               </button>
               <button
                 type="button"
-                onClick={() => { setSelectedGroupId(''); setSelectedProductIds([]); }}
+                onClick={() => {
+                  setSelectedGroupId('');
+                  setSelectedProductIds([]);
+                  setProductsOpen(false);
+                }}
                 className="text-gray-400 hover:text-gray-200"
               >
                 Clear
