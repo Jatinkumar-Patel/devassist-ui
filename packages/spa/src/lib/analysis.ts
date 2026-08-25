@@ -490,6 +490,69 @@ function parseJsonCandidates(raw: string): unknown[] {
   return out;
 }
 
+const NOISE_AUDIT_FIELDS = new Set([
+  'sys_updated_on',
+  'sys_updated_by',
+  'sys_created_on',
+  'sys_created_by',
+  'sys_mod_count',
+  'u_updated_on',
+  'u_updated_by',
+  'u_vsts_row_id',
+  'u_nct_internal_task',
+  'u_nct_internal_incident',
+  'u_nct_internal_case',
+]);
+
+function normalizeAuditFieldName(field: unknown): string {
+  return String(field ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+}
+
+function prettifyAuditField(field: string): string {
+  const map: Record<string, string> = {
+    state: 'State',
+    priority: 'Priority',
+    impact: 'Impact',
+    urgency: 'Urgency',
+    assigned_to: 'Assigned To',
+    assignment_group: 'Assignment Group',
+    short_description: 'Short Description',
+    description: 'Description',
+    close_notes: 'Close Notes',
+    work_notes: 'Work Notes',
+    comments: 'Comments',
+    incident: 'Incident',
+    parent: 'Parent',
+    u_case_number: 'Case Number',
+    u_customer_case: 'Customer Case',
+  };
+  if (map[field]) return map[field];
+
+  return field
+    .replace(/^u_/, '')
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function formatAuditValue(value: unknown): string {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (!text || text.toLowerCase() === 'null' || text.toLowerCase() === 'undefined') return '-';
+  if (text === 'JOURNAL FIELD ADDITION') return 'Note added';
+  return truncateEvidence(text, 150);
+}
+
+function isNoiseAuditField(fieldName: string): boolean {
+  if (NOISE_AUDIT_FIELDS.has(fieldName)) return true;
+  if (fieldName.startsWith('u_vsts_')) return true;
+  if (fieldName.startsWith('u_nct_')) return true;
+  return false;
+}
+
 function summarizeSnowWorkNotes(raw: string): string[] {
   const summaries: string[] = [];
 
@@ -500,15 +563,29 @@ function summarizeSnowWorkNotes(raw: string): string[] {
     // ServiceNow audit row shape: fieldname/newvalue/oldvalue/user/sys_created_on
     const auditRows = rows.filter((r: any) => r?.fieldname && (r?.newvalue || r?.oldvalue));
     if (auditRows.length > 0) {
-      for (const row of auditRows.slice(0, 8)) {
-        const field = row?.fieldname?.display_value ?? row?.fieldname?.value ?? row?.fieldname ?? 'field';
-        const oldVal = row?.oldvalue?.display_value ?? row?.oldvalue?.value ?? row?.oldvalue ?? '-';
-        const newVal = row?.newvalue?.display_value ?? row?.newvalue?.value ?? row?.newvalue ?? '-';
+      for (const row of auditRows) {
+        const rawField = row?.fieldname?.display_value ?? row?.fieldname?.value ?? row?.fieldname ?? 'field';
+        const fieldName = normalizeAuditFieldName(rawField);
+        if (isNoiseAuditField(fieldName)) continue;
+
+        const oldVal = formatAuditValue(row?.oldvalue?.display_value ?? row?.oldvalue?.value ?? row?.oldvalue);
+        const newVal = formatAuditValue(row?.newvalue?.display_value ?? row?.newvalue?.value ?? row?.newvalue);
         const user = row?.user?.display_value ?? row?.user?.value ?? row?.sys_created_by?.display_value ?? row?.sys_created_by ?? '';
         const when = row?.sys_created_on?.display_value ?? row?.sys_created_on?.value ?? row?.sys_created_on ?? '';
-        summaries.push(truncateEvidence(`${field}: ${oldVal} -> ${newVal}${user ? ` | ${user}` : ''}${when ? ` | ${when}` : ''}`));
+
+        if (oldVal === newVal) continue;
+
+        const label = prettifyAuditField(fieldName || 'field');
+        if (fieldName === 'work_notes' || fieldName === 'comments') {
+          const journalText = newVal === 'Note added' ? 'Note added' : newVal;
+          summaries.push(truncateEvidence(`${label}: ${journalText}${user ? ` | ${user}` : ''}${when ? ` | ${when}` : ''}`));
+        } else {
+          summaries.push(truncateEvidence(`${label}: ${oldVal} -> ${newVal}${user ? ` | ${user}` : ''}${when ? ` | ${when}` : ''}`));
+        }
+
+        if (summaries.length >= 8) break;
       }
-      return summaries;
+      if (summaries.length > 0) return summaries;
     }
   }
 
