@@ -15,9 +15,28 @@ function snowDecode(raw: string): unknown {
     return typeof outer === 'string' ? JSON.parse(outer) : outer;
   };
 
+  const parseEscapedStringEnvelope = (candidate: string): unknown => {
+    // Some responses are quoted JSON strings that contain escaped CR/LF and quotes.
+    // Example shape: "{\r\n  \"result\": [...] }"
+    const unwrapped = candidate.replace(/^"|"$/g, '');
+    const normalized = unwrapped
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\n/g, '\n')
+      .replace(/\\t/g, '\t')
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, '\\');
+    return JSON.parse(normalized);
+  };
+
   try {
     return parseCandidate(text);
   } catch {
+    try {
+      return parseEscapedStringEnvelope(text);
+    } catch {
+      // Continue to wrapper/trailing-noise recovery.
+    }
+
     // Some viewer responses include wrapper/trailing noise; recover by extracting the JSON envelope.
     const firstBrace = text.search(/[\[{]/);
     const lastObj = text.lastIndexOf('}');
@@ -26,7 +45,11 @@ function snowDecode(raw: string): unknown {
 
     if (firstBrace >= 0 && lastBrace > firstBrace) {
       const sliced = text.slice(firstBrace, lastBrace + 1);
-      return parseCandidate(sliced);
+      try {
+        return parseCandidate(sliced);
+      } catch {
+        return parseEscapedStringEnvelope(sliced);
+      }
     }
 
     throw new Error('Unable to decode SNOW payload');
@@ -37,6 +60,37 @@ function snowFetch(url: string): Promise<string> {
   return execPowerShell(
     `(Invoke-WebRequest -Uri '${url}' -UseDefaultCredentials -UseBasicParsing).Content`
   );
+}
+
+function escapePsSingleQuoted(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
+async function snowFetchDecoded(url: string): Promise<unknown> {
+  const escapedUrl = escapePsSingleQuoted(url);
+  const json = await execPowerShell(
+    `$raw = (Invoke-WebRequest -Uri '${escapedUrl}' -UseDefaultCredentials -UseBasicParsing).Content; ` +
+    `$parsed = $raw | ConvertFrom-Json; ` +
+    `if ($parsed -is [string]) { $parsed = $parsed | ConvertFrom-Json }; ` +
+    `$parsed | ConvertTo-Json -Depth 100`
+  );
+  const cleaned = json.replace(/^\uFEFF/, '').trim();
+  const withoutControlChars = cleaned.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ' ');
+
+  try {
+    return JSON.parse(withoutControlChars);
+  } catch {
+    const firstBrace = withoutControlChars.search(/[\[{]/);
+    const lastObj = withoutControlChars.lastIndexOf('}');
+    const lastArr = withoutControlChars.lastIndexOf(']');
+    const lastBrace = Math.max(lastObj, lastArr);
+
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      return JSON.parse(withoutControlChars.slice(firstBrace, lastBrace + 1));
+    }
+
+    throw new Error('Unable to parse SNOW decoded payload');
+  }
 }
 
 // GET /api/snow/task/:number — auto-detects incident_task vs sc_task
@@ -98,9 +152,23 @@ snowRouter.get('/attachment/:attachmentSysId', async (req: Request, res: Respons
 // GET /api/snow/incident/:number — fetch incident (INC…)
 snowRouter.get('/incident/:number', async (req: Request, res: Response) => {
   const { number } = req.params;
-  const url = `${SNOW_BASE}/GetTableJSON/?tablename=incident&sysparm_query=number=${number.toUpperCase()}`;
+  const fields = [
+    'sys_id',
+    'number',
+    'state',
+    'short_description',
+    'description',
+    'priority',
+    'assigned_to',
+    'assignment_group',
+    'parent',
+    'u_case_number',
+    'u_customer_case',
+    'opened_at',
+  ].join(',');
+  const url = `${SNOW_BASE}/GetTableJSON/?tablename=incident&sysparm_query=number=${number.toUpperCase()}&sysparm_fields=${fields}`;
   try {
-    return res.json(snowDecode(await snowFetch(url)));
+    return res.json(await snowFetchDecoded(url));
   } catch (err: any) {
     return res.status(502).json({ error: err.message });
   }
@@ -109,9 +177,20 @@ snowRouter.get('/incident/:number', async (req: Request, res: Response) => {
 // GET /api/snow/case/:number — fetch client case (CS…)
 snowRouter.get('/case/:number', async (req: Request, res: Response) => {
   const { number } = req.params;
-  const url = `${SNOW_BASE}/GetTableJSON/?tablename=sn_customerservice_case&sysparm_query=number=${number.toUpperCase()}`;
+  const fields = [
+    'sys_id',
+    'number',
+    'state',
+    'short_description',
+    'description',
+    'priority',
+    'assigned_to',
+    'assignment_group',
+    'opened_at',
+  ].join(',');
+  const url = `${SNOW_BASE}/GetTableJSON/?tablename=sn_customerservice_case&sysparm_query=number=${number.toUpperCase()}&sysparm_fields=${fields}`;
   try {
-    return res.json(snowDecode(await snowFetch(url)));
+    return res.json(await snowFetchDecoded(url));
   } catch (err: any) {
     return res.status(502).json({ error: err.message });
   }
@@ -124,23 +203,48 @@ snowRouter.get('/escalate/:taskSysId', async (req: Request, res: Response) => {
     const taskUrl = `${SNOW_BASE}/GetTableJSON/?tablename=incident_task` +
       `&sysparm_query=sys_id=${taskSysId}` +
       `&sysparm_fields=sys_id,number,incident,incident.number,incident.sys_id`;
-    const taskData = snowDecode(await snowFetch(taskUrl)) as { result?: any[] };
+    const taskData = await snowFetchDecoded(taskUrl) as { result?: any[] };
     const task = taskData?.result?.[0];
     if (!task) return res.json({ incident: null, case: null });
 
     const incSysId = task['incident.sys_id']?.value ?? task['incident']?.value;
     if (!incSysId) return res.json({ incident: null, case: null });
 
-    const incData = snowDecode(
-      await snowFetch(`${SNOW_BASE}/GetTableJSON/?tablename=incident&sysparm_query=sys_id=${incSysId}`)
+    const incFields = [
+      'sys_id',
+      'number',
+      'state',
+      'short_description',
+      'description',
+      'priority',
+      'assigned_to',
+      'assignment_group',
+      'parent',
+      'u_case_number',
+      'u_customer_case',
+      'opened_at',
+    ].join(',');
+    const incData = await snowFetchDecoded(
+      `${SNOW_BASE}/GetTableJSON/?tablename=incident&sysparm_query=sys_id=${incSysId}&sysparm_fields=${incFields}`
     ) as { result?: any[] };
     const incident = incData?.result?.[0] ?? null;
 
     let clientCase = null;
     const caseNum = incident?.['u_case_number']?.value ?? incident?.['u_customer_case']?.value;
     if (caseNum) {
-      const caseData = snowDecode(
-        await snowFetch(`${SNOW_BASE}/GetTableJSON/?tablename=sn_customerservice_case&sysparm_query=number=${caseNum}`)
+      const caseFields = [
+        'sys_id',
+        'number',
+        'state',
+        'short_description',
+        'description',
+        'priority',
+        'assigned_to',
+        'assignment_group',
+        'opened_at',
+      ].join(',');
+      const caseData = await snowFetchDecoded(
+        `${SNOW_BASE}/GetTableJSON/?tablename=sn_customerservice_case&sysparm_query=number=${caseNum}&sysparm_fields=${caseFields}`
       ) as { result?: any[] };
       clientCase = caseData?.result?.[0] ?? null;
     }
