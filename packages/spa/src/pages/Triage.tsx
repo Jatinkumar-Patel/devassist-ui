@@ -32,6 +32,46 @@ function phase(s: TriageSession, p: SessionPhase): TriageSession {
   return { ...s, currentPhase: p };
 }
 
+function isLocalBridgeUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.hostname === 'localhost' || u.hostname === '127.0.0.1';
+  } catch {
+    return false;
+  }
+}
+
+function bridgeHelpMessage(bridgeUrl: string): string {
+  if (window.location.protocol === 'https:' && isLocalBridgeUrl(bridgeUrl)) {
+    return `Cannot reach local bridge (${bridgeUrl}) from HTTPS due browser security. Open the app from bridge URL ${bridgeUrl} and retry.`;
+  }
+  return `Bridge is unreachable at ${bridgeUrl}. Start bridge with "npx @jatinkumar-patel/devassist-bridge" and check VPN connectivity.`;
+}
+
+async function ensureBridgeReachable(bridgeUrl: string): Promise<void> {
+  try {
+    const res = await fetch(`${bridgeUrl}/api/status`, { signal: AbortSignal.timeout(2500) });
+    if (!res.ok) throw new Error('Bridge status endpoint returned non-OK');
+  } catch {
+    throw new Error(bridgeHelpMessage(bridgeUrl));
+  }
+}
+
+function toUserFacingError(err: unknown, bridgeUrl: string): string {
+  const message = err instanceof Error ? err.message : String(err);
+
+  if (/Failed to fetch|NetworkError|Load failed/i.test(message)) {
+    return bridgeHelpMessage(bridgeUrl);
+  }
+  if (/\b401\b/.test(message)) {
+    return 'Authentication failed (401). Update your Azure DevOps PAT in Settings and retry.';
+  }
+  if (/\b403\b/.test(message)) {
+    return 'Access denied (403). Verify PAT scopes (Work Items Read, Code Read) and permissions.';
+  }
+  return message;
+}
+
 function buildSelectedScope(selectedProducts: Product[]): Product | undefined {
   if (selectedProducts.length === 0) return undefined;
   if (selectedProducts.length === 1) return selectedProducts[0];
@@ -80,6 +120,8 @@ export default function TriagePage() {
     upsert(s);
 
     try {
+      await ensureBridgeReachable(bridgeUrl);
+
       const registry = await loadRegistry();
       const selectedProducts = selectedProductIds.length > 0
         ? registry.products.filter((p) => selectedProductIds.includes(p.id))
@@ -263,11 +305,11 @@ export default function TriagePage() {
 
       upsert({ ...s, currentPhase: 'done', status: 'ready' });
     } catch (err: any) {
-      upsert({ ...s, status: 'error', error: err.message });
+      upsert({ ...s, status: 'error', error: toUserFacingError(err, bridgeUrl) });
     } finally {
       setLoading(false);
     }
-  }, [adoPat, upsert]);
+  }, [adoPat, bridgeUrl, githubPat, upsert]);
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-5 sm:gap-7 items-start">
