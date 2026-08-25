@@ -317,10 +317,13 @@ export default function TriagePage() {
       <aside className="space-y-5 xl:sticky xl:top-24">
         <div className="glass-panel rounded-2xl p-3 sm:p-4 space-y-2">
           <h3 className="text-sm font-semibold text-white">Quick Start (End Users)</h3>
-          <p className="text-xs text-gray-300">Run this in PowerShell and keep it open:</p>
-          <pre className="text-xs font-mono text-cyan-200 bg-gray-950/70 border border-white/10 rounded-lg p-2 overflow-x-auto">
-            npx --yes degit Jatinkumar-Patel/devassist-ui devassist-ui; Set-Location devassist-ui; npm install; npm run bridge
-          </pre>
+          <p className="text-xs text-gray-300">Run one command below and keep that terminal open:</p>
+          <div className="text-xs font-mono text-cyan-200 bg-gray-950/70 border border-white/10 rounded-lg p-2 overflow-x-auto space-y-2">
+            <p className="text-[11px] text-gray-400 font-sans">Command Prompt (cmd)</p>
+            <p className="break-all">npx --yes degit Jatinkumar-Patel/devassist-ui devassist-ui && cd devassist-ui && npm install && npm run bridge</p>
+            <p className="text-[11px] text-gray-400 font-sans">PowerShell</p>
+            <p className="break-all">npx --yes degit Jatinkumar-Patel/devassist-ui devassist-ui; Set-Location devassist-ui; npm install; npm run bridge</p>
+          </div>
           <p className="text-xs text-gray-400">Then open:</p>
           <a
             href="https://jatinkumar-patel.github.io/devassist-ui/#/triage"

@@ -93,9 +93,12 @@ export default function SettingsPage() {
           <p className="text-xs font-medium text-gray-400 flex items-center gap-1.5">
             <Terminal size={12} /> Start the bridge on your machine
           </p>
-          <pre className="text-xs font-mono text-altera-teal bg-gray-950 rounded p-2 overflow-x-auto">
-            npx --yes degit Jatinkumar-Patel/devassist-ui devassist-ui; Set-Location devassist-ui; npm install; npm run bridge
-          </pre>
+          <div className="text-xs font-mono text-altera-teal bg-gray-950 rounded p-2 overflow-x-auto space-y-2">
+            <p className="text-[11px] text-gray-400 font-sans">Command Prompt (cmd)</p>
+            <p className="break-all">npx --yes degit Jatinkumar-Patel/devassist-ui devassist-ui && cd devassist-ui && npm install && npm run bridge</p>
+            <p className="text-[11px] text-gray-400 font-sans">PowerShell</p>
+            <p className="break-all">npx --yes degit Jatinkumar-Patel/devassist-ui devassist-ui; Set-Location devassist-ui; npm install; npm run bridge</p>
+          </div>
           <p className="text-xs text-gray-600">
             Runs a local server that proxies SNOW (Windows NTLM) and ADO calls.
             Must be running for SNOW data and ADO triage to work.

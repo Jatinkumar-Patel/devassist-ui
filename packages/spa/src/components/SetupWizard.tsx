@@ -144,8 +144,15 @@ export default function SetupWizard({ onDone }: Props) {
               </p>
               <div className="space-y-2">
                 <p className="text-xs text-gray-500 font-medium">End-user start (no repo clone):</p>
-                <div className="bg-gray-950 rounded-lg p-3 font-mono text-sm text-altera-teal border border-gray-800">
-                  npx --yes degit Jatinkumar-Patel/devassist-ui devassist-ui; Set-Location devassist-ui; npm install; npm run bridge
+                <div className="bg-gray-950 rounded-lg p-3 border border-gray-800 space-y-2">
+                  <p className="text-[11px] text-gray-400">Command Prompt (cmd)</p>
+                  <div className="font-mono text-sm text-altera-teal break-all">
+                    npx --yes degit Jatinkumar-Patel/devassist-ui devassist-ui && cd devassist-ui && npm install && npm run bridge
+                  </div>
+                  <p className="text-[11px] text-gray-400">PowerShell</p>
+                  <div className="font-mono text-sm text-altera-teal break-all">
+                    npx --yes degit Jatinkumar-Patel/devassist-ui devassist-ui; Set-Location devassist-ui; npm install; npm run bridge
+                  </div>
                 </div>
               </div>
               <p className="text-xs text-gray-600">
