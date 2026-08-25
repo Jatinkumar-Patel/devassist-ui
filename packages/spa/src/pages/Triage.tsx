@@ -108,7 +108,19 @@ export default function TriagePage() {
   const { adoPat, githubPat, bridgeUrl } = useSettingsStore();
   const { sessions, active, upsert } = useTriageStore();
   const installCmds = getBridgeInstallCommands();
+  const [quickStartOpen, setQuickStartOpen] = useState<boolean>(() => {
+    const saved = localStorage.getItem('devassist-quickstart-open');
+    return saved !== '0';
+  });
   const [loading, setLoading] = useState(false);
+
+  const toggleQuickStart = () => {
+    setQuickStartOpen((prev) => {
+      const next = !prev;
+      localStorage.setItem('devassist-quickstart-open', next ? '1' : '0');
+      return next;
+    });
+  };
 
   const activeSession = sessions.find((s) => s.id === active);
 
@@ -318,23 +330,36 @@ export default function TriagePage() {
       {/* Left: input + session list */}
       <aside className="space-y-5 xl:sticky xl:top-24">
         <div className="glass-panel rounded-2xl p-3 sm:p-4 space-y-2">
-          <h3 className="text-sm font-semibold text-white">Quick Start (End Users)</h3>
-          <p className="text-xs text-gray-300">Run one command below and keep that terminal open:</p>
-          <div className="text-xs font-mono text-cyan-200 bg-gray-950/70 border border-white/10 rounded-lg p-2 overflow-x-auto space-y-2">
-            <p className="text-[11px] text-gray-400 font-sans">Command Prompt (cmd)</p>
-            <p className="break-all">{installCmds.cmd}</p>
-            <p className="text-[11px] text-gray-400 font-sans">PowerShell</p>
-            <p className="break-all">{installCmds.powershell}</p>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-white">Quick Start (End Users)</h3>
+            <button
+              type="button"
+              onClick={toggleQuickStart}
+              className="text-xs px-2 py-1 rounded-md border border-white/20 text-gray-200 hover:bg-white/10"
+            >
+              {quickStartOpen ? 'Collapse' : 'Open'}
+            </button>
           </div>
-          <p className="text-xs text-gray-400">Then open:</p>
-          <a
-            href="https://jatinkumar-patel.github.io/devassist-ui/#/triage"
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs text-cyan-300 hover:text-cyan-200 break-all"
-          >
-            https://jatinkumar-patel.github.io/devassist-ui/#/triage
-          </a>
+          {quickStartOpen && (
+            <>
+              <p className="text-xs text-gray-300">Run one command below and keep that terminal open:</p>
+              <div className="text-xs font-mono text-cyan-200 bg-gray-950/70 border border-white/10 rounded-lg p-2 overflow-x-auto space-y-2">
+                <p className="text-[11px] text-gray-400 font-sans">Command Prompt (cmd)</p>
+                <p className="break-all">{installCmds.cmd}</p>
+                <p className="text-[11px] text-gray-400 font-sans">PowerShell</p>
+                <p className="break-all">{installCmds.powershell}</p>
+              </div>
+              <p className="text-xs text-gray-400">Then open:</p>
+              <a
+                href="https://jatinkumar-patel.github.io/devassist-ui/#/triage"
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-cyan-300 hover:text-cyan-200 break-all"
+              >
+                https://jatinkumar-patel.github.io/devassist-ui/#/triage
+              </a>
+            </>
+          )}
         </div>
 
         <TriageInput onSubmit={handleSubmit} loading={loading} />
