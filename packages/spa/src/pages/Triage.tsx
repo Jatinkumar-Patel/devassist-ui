@@ -315,6 +315,23 @@ export default function TriagePage() {
     <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-5 sm:gap-7 items-start">
       {/* Left: input + session list */}
       <aside className="space-y-5 xl:sticky xl:top-24">
+        <div className="glass-panel rounded-2xl p-3 sm:p-4 space-y-2">
+          <h3 className="text-sm font-semibold text-white">Quick Start (End Users)</h3>
+          <p className="text-xs text-gray-300">Run this in PowerShell and keep it open:</p>
+          <pre className="text-xs font-mono text-cyan-200 bg-gray-950/70 border border-white/10 rounded-lg p-2 overflow-x-auto">
+            npx @jatinkumar-patel/devassist-bridge
+          </pre>
+          <p className="text-xs text-gray-400">Then open:</p>
+          <a
+            href="https://jatinkumar-patel.github.io/devassist-ui/#/triage"
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-cyan-300 hover:text-cyan-200 break-all"
+          >
+            https://jatinkumar-patel.github.io/devassist-ui/#/triage
+          </a>
+        </div>
+
         <TriageInput onSubmit={handleSubmit} loading={loading} />
 
         {sessions.length > 0 && (
