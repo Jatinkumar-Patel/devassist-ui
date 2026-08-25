@@ -26,12 +26,12 @@ export default function App() {
   }, [adoPat, githubPat]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-950">
+    <div className="min-h-screen flex flex-col">
       {!wizardDone && (
         <SetupWizard onDone={() => { setWizardDone(true); navigate('/triage'); }} />
       )}
       <NavBar />
-      <main className="flex-1 container mx-auto px-3 sm:px-4 py-4 sm:py-6 max-w-7xl">
+      <main className="flex-1 container mx-auto px-3 sm:px-5 py-4 sm:py-7 max-w-7xl">
         <Routes>
           <Route path="/" element={<Navigate to="/triage" replace />} />
           <Route path="/triage" element={<TriagePage />} />

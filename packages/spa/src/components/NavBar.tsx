@@ -10,10 +10,10 @@ const links = [
 
 export default function NavBar() {
   return (
-    <header className="bg-altera-dark border-b border-gray-800 px-3 sm:px-4 py-3">
+    <header className="sticky top-0 z-30 px-3 sm:px-4 py-3 border-b border-white/10 bg-slate-950/70 backdrop-blur-md">
       <div className="container mx-auto max-w-7xl flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center justify-between sm:justify-start gap-4 sm:gap-6 min-w-0">
-          <span className="text-altera-teal font-bold text-base sm:text-lg tracking-tight shrink-0">
+          <span className="font-extrabold text-base sm:text-lg tracking-tight shrink-0 bg-gradient-to-r from-cyan-300 via-sky-300 to-blue-400 bg-clip-text text-transparent">
             DevAssist
           </span>
           <nav className="flex gap-1 overflow-x-auto no-scrollbar -mx-1 px-1">
@@ -22,10 +22,10 @@ export default function NavBar() {
                 key={to}
                 to={to}
                 className={({ isActive }) =>
-                  `flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded text-xs sm:text-sm whitespace-nowrap transition-colors ${
+                  `flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm whitespace-nowrap transition-colors ${
                     isActive
-                      ? 'bg-altera-blue text-white'
-                      : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
+                      ? 'bg-gradient-to-r from-sky-600 to-blue-700 text-white shadow-md shadow-sky-900/40'
+                      : 'text-gray-300 hover:text-white hover:bg-white/10'
                   }`
                 }
               >
