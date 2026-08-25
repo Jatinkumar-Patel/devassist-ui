@@ -270,22 +270,22 @@ export default function TriagePage() {
   }, [adoPat, upsert]);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4 sm:gap-6">
+    <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-5 sm:gap-7 items-start">
       {/* Left: input + session list */}
-      <aside className="space-y-4">
+      <aside className="space-y-5 xl:sticky xl:top-24">
         <TriageInput onSubmit={handleSubmit} loading={loading} />
 
         {sessions.length > 0 && (
-          <div className="space-y-1">
-            <p className="text-xs text-gray-600 px-1">Recent</p>
+          <div className="glass-panel rounded-2xl p-3 space-y-2">
+            <p className="text-xs text-gray-400 px-1 font-medium">Recent</p>
             {sessions.map((s) => (
               <button
                 key={s.id}
                 onClick={() => useTriageStore.getState().setActive(s.id)}
-                className={`w-full text-left px-3 py-2 rounded text-xs transition-colors ${
+                className={`w-full text-left px-3 py-2.5 rounded-xl text-xs transition-colors border ${
                   s.id === active
-                    ? 'bg-gray-800 text-gray-100'
-                    : 'text-gray-400 hover:bg-gray-900 hover:text-gray-200'
+                    ? 'bg-sky-600/20 border-sky-300/40 text-gray-100'
+                    : 'border-white/10 text-gray-300 hover:bg-white/5 hover:text-gray-100'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -319,9 +319,12 @@ export default function TriagePage() {
             }
           />
         ) : (
-          <div className="flex flex-col items-center justify-center h-64 text-gray-600 text-sm space-y-2">
-            <p>Paste a DA ID, SNOW number, or TFS work item ID above.</p>
-            <p className="text-xs">Supports: DA 9358329 · INC1234567 · TASK0001234 · CS7654321 · 9358329</p>
+          <div className="glass-panel rounded-2xl p-8 sm:p-10 min-h-[340px] flex flex-col items-center justify-center text-center text-gray-300 space-y-3">
+            <h2 className="text-xl sm:text-2xl font-semibold text-white">Start Smart Triage</h2>
+            <p className="text-sm text-gray-300 max-w-xl">
+              Select product scope on the left, enter a DA/SNOW/TFS identifier, then run Analyze to generate findings.
+            </p>
+            <p className="text-xs text-gray-400">Supports: DA 9358329 · INC1234567 · TASK0001234 · CS7654321 · 9358329</p>
           </div>
         )}
       </section>
