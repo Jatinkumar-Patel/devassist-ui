@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Eye, EyeOff, Check, AlertCircle, Terminal, RefreshCw } from 'lucide-react';
+import { Eye, EyeOff, Check, AlertCircle, Terminal, RefreshCw, ChevronDown } from 'lucide-react';
 import { useSettingsStore, ORG_DEFAULTS } from '../store/settings';
 import { getBridgeInstallCommands } from '../lib/bridge-install';
 
@@ -109,8 +109,9 @@ export default function SettingsPage() {
               type="button"
               onClick={toggleBridgeCard}
               className="text-xs px-2.5 py-1 rounded-md border border-cyan-500/70 bg-cyan-500/15 text-cyan-200 hover:bg-cyan-500/25 font-medium"
+              aria-label={bridgeCardOpen ? 'Collapse bridge setup card' : 'Expand bridge setup card'}
             >
-              {bridgeCardOpen ? 'Collapse' : 'Expand'}
+              <ChevronDown size={14} className={`transition-transform ${bridgeCardOpen ? '' : '-rotate-90'}`} />
             </button>
           </div>
           {bridgeCardOpen && (

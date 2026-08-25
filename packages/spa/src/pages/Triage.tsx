@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { ChevronDown } from 'lucide-react';
 import TriageInput from '../components/TriageInput';
 import TriagePanel from '../components/TriagePanel';
 import { detectInput } from '../lib/input-detector';
@@ -348,8 +349,9 @@ export default function TriagePage() {
               type="button"
               onClick={toggleQuickStart}
               className="text-xs px-2.5 py-1 rounded-md border border-cyan-400/70 bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 font-medium"
+              aria-label={quickStartOpen ? 'Collapse quick start card' : 'Expand quick start card'}
             >
-              {quickStartOpen ? 'Collapse' : 'Expand'}
+              <ChevronDown size={14} className={`transition-transform ${quickStartOpen ? '' : '-rotate-90'}`} />
             </button>
           </div>
           {quickStartOpen && (
@@ -384,8 +386,9 @@ export default function TriagePage() {
                 type="button"
                 onClick={toggleRecent}
                 className="text-xs px-2.5 py-1 rounded-md border border-cyan-400/70 bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 font-medium"
+                aria-label={recentOpen ? 'Collapse recent card' : 'Expand recent card'}
               >
-                {recentOpen ? 'Collapse' : 'Expand'}
+                <ChevronDown size={14} className={`transition-transform ${recentOpen ? '' : '-rotate-90'}`} />
               </button>
             </div>
             {recentOpen && sessions.map((s) => (

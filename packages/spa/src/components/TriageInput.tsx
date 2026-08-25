@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Loader2, Mic, MicOff } from 'lucide-react';
+import { Search, Loader2, Mic, MicOff, ChevronDown } from 'lucide-react';
 import { detectInput } from '../lib/input-detector';
 import { loadRegistry } from '../lib/product-registry';
 import type { ProductRegistry } from '../types';
@@ -145,8 +145,9 @@ export default function TriageInput({ onSubmit, loading }: Props) {
               type="button"
               onClick={toggleScopeOpen}
               className="text-xs px-2.5 py-1 rounded-md border border-cyan-400/70 bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 font-medium"
+              aria-label={scopeOpen ? 'Collapse product scope card' : 'Expand product scope card'}
             >
-              {scopeOpen ? 'Collapse' : 'Expand'}
+              <ChevronDown size={14} className={`transition-transform ${scopeOpen ? '' : '-rotate-90'}`} />
             </button>
           </div>
 
@@ -251,8 +252,9 @@ export default function TriageInput({ onSubmit, loading }: Props) {
             type="button"
             onClick={toggleInputOpen}
             className="text-xs px-2.5 py-1 rounded-md border border-cyan-400/70 bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 font-medium"
+            aria-label={inputOpen ? 'Collapse analysis input card' : 'Expand analysis input card'}
           >
-            {inputOpen ? 'Collapse' : 'Expand'}
+            <ChevronDown size={14} className={`transition-transform ${inputOpen ? '' : '-rotate-90'}`} />
           </button>
         </div>
 
