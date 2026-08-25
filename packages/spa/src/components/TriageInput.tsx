@@ -122,6 +122,7 @@ export default function TriageInput({ onSubmit, loading }: Props) {
   const toggleScopeOpen = () => {
     setScopeOpen((prev) => {
       const next = !prev;
+      if (!next) setProductsOpen(false);
       localStorage.setItem('devassist-card-scope-open', next ? '1' : '0');
       return next;
     });
@@ -179,7 +180,7 @@ export default function TriageInput({ onSubmit, loading }: Props) {
                     </button>
 
                     {productsOpen && (
-                      <div className="absolute z-20 mt-2 w-full rounded-xl border border-white/15 bg-slate-950/95 shadow-2xl shadow-black/40 max-h-64 overflow-auto p-2 space-y-1">
+                      <div className="mt-2 w-full rounded-xl border border-white/15 bg-slate-950/95 shadow-2xl shadow-black/40 max-h-64 overflow-auto p-2 space-y-1">
                         {availableProducts.map((p) => {
                           const checked = selectedProductIds.includes(p.id);
                           return (
