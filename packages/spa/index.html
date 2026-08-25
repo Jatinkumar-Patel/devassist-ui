@@ -5,6 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DevAssist</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      // GitHub Pages SPA fallback: rewrite /?/route back to a clean route before React boots.
+      (function (location) {
+        if (location.search[1] === '/') {
+          var decoded = location.search
+            .slice(1)
+            .split('&')
+            .map(function (s) { return s.replace(/~and~/g, '&'); })
+            .join('?');
+          window.history.replaceState(null, '', location.pathname.slice(0, -1) + decoded + location.hash);
+        }
+      })(window.location);
+    </script>
   </head>
   <body class="bg-gray-950 text-gray-100">
     <div id="root"></div>

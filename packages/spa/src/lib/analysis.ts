@@ -1,4 +1,5 @@
 import type { AdoWorkItem, Product, TriageAnalysis } from '../types';
+import { bridgeApi, getBridgeUrl } from './bridge-url';
 
 // ── Pattern definitions from areas/sunrise-mobile/analysis-playbook.md ───────
 
@@ -149,7 +150,7 @@ export function matchPatternAny(adoItem: AdoWorkItem): Pattern | null {
   // Require 2+ keyword hits — single product-name match is not enough
   return bestScore >= 2 ? best : null;
 }
-const BRIDGE = (): string => (window as any).__BRIDGE_URL__ ?? 'http://localhost:7447';
+const BRIDGE = (): string => getBridgeUrl();
 
 export async function runCodeSearch(
   githubPat: string,
@@ -170,7 +171,7 @@ export async function runCodeSearch(
       const q = encodeURIComponent(`${seed} ${repoQ}`);
       // Proxy through bridge to avoid CORS — bridge forwards with Bearer token
       const res = await fetch(
-        `${BRIDGE()}/api/gh-search/code?q=${q}&per_page=10`,
+        bridgeApi(`/api/gh-search/code?q=${q}&per_page=10`),
         { headers: { 'X-GitHub-Token': githubPat } }
       );
       if (!res.ok) continue;
@@ -400,7 +401,7 @@ export async function buildSkillDrivenAssessment(
   topSeeds: Record<string, number> | undefined,
   codeHits: CodeHit[]
 ): Promise<TriageAnalysis> {
-  const BRIDGE = (window as any).__BRIDGE_URL__ ?? 'http://localhost:7447';
+  const bridge = BRIDGE();
   const f = adoItem.fields;
   const areaPath = String(f['System.AreaPath'] ?? '').toLowerCase();
   const areaId = areaPath.includes('mobilex') ? 'sunrise-mobile'
@@ -429,7 +430,7 @@ export async function buildSkillDrivenAssessment(
 
   if (areaId) {
     try {
-      const r = await fetch(`${BRIDGE}/api/skills/area/${areaId}`, { signal: AbortSignal.timeout(4000) });
+      const r = await fetch(`${bridge}/api/skills/area/${areaId}`, { signal: AbortSignal.timeout(4000) });
       if (r.ok) {
         const data = await r.json() as { files: Record<string, string> };
         if (data.files['analysis-playbook.md']) playbook = parsePlaybook(data.files['analysis-playbook.md']);

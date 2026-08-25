@@ -1,4 +1,4 @@
-const BRIDGE = (): string => (window as any).__BRIDGE_URL__ ?? 'http://localhost:7447';
+import { bridgeApi } from './bridge-url';
 const GH_API = 'https://api.github.com';
 export interface CommitHit {
   sha: string;
@@ -11,7 +11,7 @@ export interface CommitHit {
 export async function searchCommits(githubPat: string, repo: string, keywords: string[]): Promise<CommitHit[]> {
   const q = encodeURIComponent(`repo:${repo} ${keywords.slice(0, 3).join(' ')}`);
   const res = await fetch(
-    `${BRIDGE()}/api/gh-search/commits?q=${q}&per_page=10`,
+    bridgeApi(`/api/gh-search/commits?q=${q}&per_page=10`),
     { headers: { 'X-GitHub-Token': githubPat }, signal: AbortSignal.timeout(5000) }
   );
   if (!res.ok) return [];

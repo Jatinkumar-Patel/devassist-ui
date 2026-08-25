@@ -61,8 +61,8 @@ export default function RegistryPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex gap-1">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div className="flex gap-1 flex-wrap">
           <TabBtn active={activeTab === "products"} onClick={() => setActiveTab("products")}><Package size={12}/> Products ({registry.products.length})</TabBtn>
           <TabBtn active={activeTab === "groups"} onClick={() => setActiveTab("groups")}><Users size={12}/> Groups ({registry.groups?.length ?? 0})</TabBtn>
         </div>
@@ -110,7 +110,7 @@ function ProductEditor({ product, onSave, saving }: { product: Product; onSave: 
   return (
     <div className="space-y-4">
       <Section title="Core fields">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="ID (slug)" value={p.id} onChange={v => set("id", v)} mono placeholder="e.g. shm"/>
           <Field label="Display name" value={p.displayName} onChange={v => set("displayName", v)} placeholder="Secure Health Messaging"/>
           <Field label="Area path prefix" value={p.areaPathPrefix} onChange={v => set("areaPathPrefix", v)} mono placeholder="SR\SCM\Ambulatory\SHM" fullWidth/>
@@ -210,7 +210,7 @@ function RepoListEditor({ repos, onChange }: { repos: RepoRef[]; onChange: (v: R
             <button onClick={() => del(i)} className="text-gray-600 hover:text-red-400"><Trash2 size={13}/></button>
           </div>
           {/* Row 1: owner / repo / primary */}
-          <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-center">
             <div><label className="block text-xs text-gray-600 mb-0.5">Owner</label>
               <input value={r.owner} onChange={e => upd(i, "owner", e.target.value)} className={inp + " font-mono"}/>
             </div>
@@ -222,7 +222,7 @@ function RepoListEditor({ repos, onChange }: { repos: RepoRef[]; onChange: (v: R
             </label>
           </div>
           {/* Row 2: GitHub URL / version file */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div><label className="block text-xs text-gray-600 mb-0.5">GitHub URL (override, optional)</label>
               <input value={r.githubUrl ?? ""} onChange={e => upd(i, "githubUrl", e.target.value)}
                 placeholder={`https://github.com/${r.owner}/${r.repo}`}
@@ -269,7 +269,7 @@ function MtmListEditor({ plans, onChange }: { plans: MtmPlan[]; onChange: (v: Mt
   return (
     <div className="space-y-2">
       {plans.map((m, i) => (
-        <div key={i} className="grid grid-cols-[80px_1fr_100px_1fr_auto] gap-2 items-center">
+        <div key={i} className="grid grid-cols-1 sm:grid-cols-[80px_1fr_100px_1fr_auto] gap-2 items-center">
           <input type="number" value={m.id} onChange={e => upd(i, "id", parseInt(e.target.value)||0)} placeholder="Plan ID" className={inp}/>
           <input value={m.name} onChange={e => upd(i, "name", e.target.value)} placeholder="Plan name" className={inp}/>
           <input value={m.adoProject} onChange={e => upd(i, "adoProject", e.target.value)} placeholder="Project" className={inp}/>
@@ -303,7 +303,7 @@ const inp = "bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs text
 
 function Field({ label, value, onChange, placeholder, mono, fullWidth }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean; fullWidth?: boolean }) {
   return (
-    <div className={fullWidth ? "col-span-2" : ""}>
+    <div className={fullWidth ? "sm:col-span-2" : ""}>
       <label className="block text-xs text-gray-500 mb-1">{label}</label>
       <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={`${inp} ${mono ? "font-mono" : ""}`}/>
     </div>

@@ -10,7 +10,7 @@ import { fetchRelatedBugs, fetchTestCases } from '../lib/ado-client';
 import { searchCommits } from '../lib/github-client';
 import { useSettingsStore } from '../store/settings';
 import { useTriageStore } from '../store/triage';
-import type { TriageSession, SessionPhase } from '../types';
+import type { TriageSession, SessionPhase, Product } from '../types';
 
 function newSession(raw: string): TriageSession {
   const { type, id } = detectInput(raw);
@@ -32,6 +32,37 @@ function phase(s: TriageSession, p: SessionPhase): TriageSession {
   return { ...s, currentPhase: p };
 }
 
+function buildSelectedScope(selectedProducts: Product[]): Product | undefined {
+  if (selectedProducts.length === 0) return undefined;
+  if (selectedProducts.length === 1) return selectedProducts[0];
+
+  const repoMap = new Map<string, Product['repos'][number]>();
+  selectedProducts.forEach((p) => {
+    p.repos.forEach((r) => {
+      const key = `${r.owner}/${r.repo}`.toLowerCase();
+      if (!repoMap.has(key)) repoMap.set(key, r);
+    });
+  });
+
+  const primary = selectedProducts[0];
+  const allPrefixes = selectedProducts
+    .flatMap((p) => [p.areaPathPrefix, ...(p.areaPathPrefixes ?? [])])
+    .filter(Boolean);
+
+  return {
+    id: `selected-${selectedProducts.map((p) => p.id).join('-')}`,
+    displayName: `${selectedProducts.length} selected products`,
+    areaPathPrefix: primary.areaPathPrefix,
+    areaPathPrefixes: Array.from(new Set(allPrefixes)),
+    snowProduct: selectedProducts.map((p) => p.snowProduct).join(' / '),
+    snowTaskTable: primary.snowTaskTable,
+    repos: Array.from(repoMap.values()),
+    mtmPlans: selectedProducts.flatMap((p) => p.mtmPlans),
+    skillPaths: selectedProducts.flatMap((p) => p.skillPaths ?? []),
+    notes: `User-selected scope: ${selectedProducts.map((p) => p.displayName).join(', ')}`,
+  };
+}
+
 export default function TriagePage() {
   const { adoPat, githubPat, bridgeUrl } = useSettingsStore();
   const { sessions, active, upsert } = useTriageStore();
@@ -39,7 +70,7 @@ export default function TriagePage() {
 
   const activeSession = sessions.find((s) => s.id === active);
 
-  const handleSubmit = useCallback(async (raw: string) => {
+  const handleSubmit = useCallback(async (raw: string, selectedProductIds: string[]) => {
     if (!adoPat) {
       alert('Set your Azure DevOps PAT in Settings first.');
       return;
@@ -50,6 +81,14 @@ export default function TriagePage() {
 
     try {
       const registry = await loadRegistry();
+      const selectedProducts = selectedProductIds.length > 0
+        ? registry.products.filter((p) => selectedProductIds.includes(p.id))
+        : [];
+      const selectedScope = buildSelectedScope(selectedProducts);
+      if (selectedScope) {
+        s = { ...s, product: selectedScope };
+        upsert(s);
+      }
 
       // ── Phase 0c: Read DA from ADO ───────────────────────────────────────────
       if (s.workItemId) {
@@ -57,7 +96,8 @@ export default function TriagePage() {
         upsert(s);
         const adoItem = await fetchWorkItem(s.workItemId!, adoPat);
         const areaPath = adoItem.fields['System.AreaPath'] ?? '';
-        const product = routeByAreaPath(areaPath, registry, adoItem.fields['System.Title']);
+        const autoProduct = routeByAreaPath(areaPath, registry, adoItem.fields['System.Title']);
+        const product = selectedScope ?? autoProduct;
         s = { ...s, adoItem, product };
 
         // ── Phase 0d: Route + derive SNOW task number from DA field ───────────
@@ -230,7 +270,7 @@ export default function TriagePage() {
   }, [adoPat, upsert]);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4 sm:gap-6">
       {/* Left: input + session list */}
       <aside className="space-y-4">
         <TriageInput onSubmit={handleSubmit} loading={loading} />
@@ -270,7 +310,7 @@ export default function TriagePage() {
       </aside>
 
       {/* Right: triage panel */}
-      <section>
+      <section className="min-w-0">
         {activeSession ? (
           <TriagePanel
             session={activeSession}

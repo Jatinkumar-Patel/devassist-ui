@@ -2,6 +2,7 @@
 import { FileSearch, Loader2, ChevronDown, AlertTriangle, AlertCircle, Lock, Activity, Code2, ExternalLink } from 'lucide-react';
 import type { SnowTask } from '../types';
 import { snowVal } from '../lib/snow-client';
+import { bridgeApi } from '../lib/bridge-url';
 
 interface LogHit {
   file: string;
@@ -50,8 +51,6 @@ const SEVERITY_COLOR = {
   medium:   'border-yellow-700 bg-yellow-950/20 text-yellow-300',
 };
 
-const BRIDGE = (): string => (window as any).__BRIDGE_URL__ ?? 'http://localhost:7447';
-
 export default function LogAnalysisPanel({ snowTask, autoResult, onResult }: Props) {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<LogAnalysisResult | null>(autoResult ?? null);
@@ -64,7 +63,7 @@ export default function LogAnalysisPanel({ snowTask, autoResult, onResult }: Pro
     setRunning(true);
     setError('');
     try {
-      const r = await fetch(`${BRIDGE()}/api/log-analysis/${sysId}`);
+      const r = await fetch(bridgeApi(`/api/log-analysis/${sysId}`));
       if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
       const data: LogAnalysisResult = await r.json();
       setResult(data);

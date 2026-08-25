@@ -32,7 +32,10 @@ export const useSettingsStore = create<SettingsState>()(
       setGithubPat:  (githubPat) => set({ githubPat }),
       setOpenaiKey:  (openaiKey) => set({ openaiKey }),
       setBridgeUrl:  (bridgeUrl) => set({ bridgeUrl }),
-      clearPats: () => set({ adoPat: '', githubPat: '', openaiKey: '' }),
+      clearPats: () => {
+        localStorage.removeItem('devassist-setup-done');
+        set({ adoPat: '', githubPat: '', openaiKey: '' });
+      },
     }),
     {
       name: 'devassist-settings',

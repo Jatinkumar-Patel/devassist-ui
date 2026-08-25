@@ -1,47 +1,46 @@
-const BRIDGE = (): string =>
-  (window as any).__BRIDGE_URL__ ?? 'http://localhost:7447';
+import { bridgeApi } from './bridge-url';
 
 export async function fetchSnowTask(number: string) {
-  const res = await fetch(`${BRIDGE()}/api/snow/task/${encodeURIComponent(number)}`);
+  const res = await fetch(bridgeApi(`/api/snow/task/${encodeURIComponent(number)}`));
   if (!res.ok) throw new Error(`SNOW task ${res.status}: ${await res.text()}`);
   return res.json();
 }
 
 export async function fetchSnowWorkNotes(sysId: string) {
-  const res = await fetch(`${BRIDGE()}/api/snow/worknotes/${encodeURIComponent(sysId)}`);
+  const res = await fetch(bridgeApi(`/api/snow/worknotes/${encodeURIComponent(sysId)}`));
   if (!res.ok) throw new Error(`SNOW work notes ${res.status}: ${await res.text()}`);
   return res.json();
 }
 
 export async function fetchSnowIncident(number: string) {
-  const res = await fetch(`${BRIDGE()}/api/snow/incident/${encodeURIComponent(number)}`);
+  const res = await fetch(bridgeApi(`/api/snow/incident/${encodeURIComponent(number)}`));
   if (!res.ok) throw new Error(`SNOW incident ${res.status}: ${await res.text()}`);
   return res.json();
 }
 
 export async function fetchSnowCase(number: string) {
-  const res = await fetch(`${BRIDGE()}/api/snow/case/${encodeURIComponent(number)}`);
+  const res = await fetch(bridgeApi(`/api/snow/case/${encodeURIComponent(number)}`));
   if (!res.ok) throw new Error(`SNOW case ${res.status}: ${await res.text()}`);
   return res.json();
 }
 
 /** List attachment metadata — use fetchSnowAttachment() to download the binary */
 export async function fetchSnowAttachments(sysId: string) {
-  const res = await fetch(`${BRIDGE()}/api/snow/attachments/${encodeURIComponent(sysId)}`);
+  const res = await fetch(bridgeApi(`/api/snow/attachments/${encodeURIComponent(sysId)}`));
   if (!res.ok) throw new Error(`Attachments ${res.status}: ${await res.text()}`);
   return res.json();
 }
 
 /** Download a single attachment by its attachment sys_id (NOT the record sys_id) */
 export async function downloadSnowAttachment(attachmentSysId: string): Promise<Blob> {
-  const res = await fetch(`${BRIDGE()}/api/snow/attachment/${encodeURIComponent(attachmentSysId)}`);
+  const res = await fetch(bridgeApi(`/api/snow/attachment/${encodeURIComponent(attachmentSysId)}`));
   if (!res.ok) throw new Error(`Attachment download ${res.status}`);
   return res.blob();
 }
 
 /** Escalate Task → Incident → Case when the task is thin (few notes / no logs) */
 export async function escalateSnowTask(taskSysId: string) {
-  const res = await fetch(`${BRIDGE()}/api/snow/escalate/${encodeURIComponent(taskSysId)}`);
+  const res = await fetch(bridgeApi(`/api/snow/escalate/${encodeURIComponent(taskSysId)}`));
   if (!res.ok) throw new Error(`Escalate ${res.status}: ${await res.text()}`);
   return res.json() as Promise<{ incident: SnowRecord | null; case: SnowRecord | null }>;
 }

@@ -1,9 +1,10 @@
-﻿import { useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { ClipboardCopy, Code2, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Wrench, Lightbulb, Sparkles, GitCommit, Bug, TestTube } from 'lucide-react';
 import type { TriageAnalysis, TriageSession } from '../types';
 import { matchPattern, runCodeSearch, buildSkillDrivenAssessment } from '../lib/analysis';
 import { useSettingsStore } from '../store/settings';
 import { snowVal } from '../lib/snow-client';
+import { getBridgeUrl } from '../lib/bridge-url';
 
 interface Props {
   session: TriageSession;
@@ -51,7 +52,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
   if (!analysis) {
     return (
       <div className="rounded-lg border border-gray-700 bg-gray-900/50 p-4 space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <p className="text-sm font-medium text-gray-300 flex items-center gap-1.5">
             <Code2 size={14} /> Root Cause Analysis
           </p>
@@ -59,10 +60,10 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
             onClick={runAnalysis}
             disabled={running}
             className="flex items-center gap-2 bg-altera-blue hover:bg-altera-blue/80 disabled:opacity-50
-                       text-white px-3 py-1.5 rounded text-xs font-medium"
+                       text-white px-3 py-1.5 rounded text-xs font-medium w-full sm:w-auto justify-center"
           >
             {running ? <Loader2 size={12} className="animate-spin" /> : <Code2 size={12} />}
-            {running ? 'Analyzingâ€¦' : 'Analyze'}
+            {running ? 'Analyzing...' : 'Analyze'}
           </button>
         </div>
         <p className="text-xs text-gray-600">
@@ -86,7 +87,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
     <div className="space-y-3">
       {/* Verdict */}
       <div className={`rounded-lg border p-4 space-y-3 ${verdictStyle.color}`}>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div className="flex items-center gap-2 font-bold text-sm">
             {verdictStyle.icon}
             Assessment: {analysis.verdict}
@@ -108,7 +109,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           <div className="space-y-1">
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">SNOW Evidence</p>
             {analysis.snowEvidence.map((e, i) => (
-              <p key={i} className="text-xs text-gray-400 font-mono leading-relaxed">â€¢ {e}</p>
+              <p key={i} className="text-xs text-gray-400 font-mono leading-relaxed">- {e}</p>
             ))}
           </div>
         )}
@@ -129,7 +130,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
               <AlertTriangle size={10} /> Blind Spots
             </p>
             {analysis.blindSpots.map((b, i) => (
-              <p key={i} className="text-xs text-yellow-500/80">â€¢ {b}</p>
+              <p key={i} className="text-xs text-yellow-500/80">- {b}</p>
             ))}
           </div>
         )}
@@ -226,7 +227,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
       {/* L2 draft — human-gated, never auto-posted */}
       {analysis.l2Draft && (
         <div className="rounded-lg border border-altera-blue/40 bg-altera-blue/10 p-4 space-y-2">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <p className="text-xs font-medium text-altera-teal">L2 Commentary Draft (review before posting)</p>
             <button onClick={copyL2}
               className="flex items-center gap-1 text-xs text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 px-2 py-1 rounded">
@@ -236,7 +237,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono leading-relaxed max-h-48 overflow-auto">
             {analysis.l2Draft}
           </pre>
-          <p className="text-xs text-gray-600">âš  Human-gated â€” paste into DA field <code>Allscripts.Field.CommentaryforL2</code> after review. Never auto-posted.</p>
+          <p className="text-xs text-gray-600">Warning: Human-gated - paste into DA field <code>Allscripts.Field.CommentaryforL2</code> after review. Never auto-posted.</p>
         </div>
       )}
 
@@ -259,15 +260,15 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
   const [aiSource, setAiSource] = useState<string | null>(null);
   const [ollamaOk, setOllamaOk] = useState<boolean | null>(null);
 
-  const BRIDGE = (window as any).__BRIDGE_URL__ ?? 'http://localhost:7447';
+  const BRIDGE = getBridgeUrl();
 
   // Check which AI backend is available on mount
-  useState(() => {
+  useEffect(() => {
     fetch(`${BRIDGE}/api/ai-analyze/status`, { signal: AbortSignal.timeout(2000) })
       .then(r => r.ok ? r.json() : null)
       .then((d: { ollama?: boolean; ollamaModels?: string[] } | null) => setOllamaOk(d?.ollama ?? false))
       .catch(() => setOllamaOk(false));
-  });
+  }, [BRIDGE]);
 
   const canRun = ollamaOk || !!(openaiKey || githubPat);
 
@@ -332,7 +333,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
   return (
     <div className="rounded-lg border border-purple-800/40 bg-purple-950/20 p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <p className="text-xs font-medium text-purple-300 flex items-center gap-1.5">
             <Sparkles size={13} /> AI Assessment
           </p>
@@ -344,7 +345,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
           )}
           {aiSource && <span className="text-xs text-gray-500">{sourceLabel[aiSource] ?? aiSource}</span>}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {result && (
             <button onClick={copyResult}
               className="flex items-center gap-1 text-xs text-gray-400 hover:text-white border border-gray-700 px-2 py-1 rounded">
@@ -352,7 +353,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
             </button>
           )}
           <button onClick={runAi} disabled={running || !canRun}
-            className="flex items-center gap-1.5 text-xs bg-purple-900/60 hover:bg-purple-900/90 disabled:opacity-40 border border-purple-600 text-purple-100 px-3 py-1.5 rounded font-medium">
+            className="flex items-center justify-center gap-1.5 text-xs bg-purple-900/60 hover:bg-purple-900/90 disabled:opacity-40 border border-purple-600 text-purple-100 px-3 py-1.5 rounded font-medium w-full sm:w-auto">
             {running ? <><Loader2 size={11} className="animate-spin"/> Asking AI...</>
             : result  ? <><Sparkles size={11}/> Re-run</>
             : <><Sparkles size={11}/> Ask AI</>}
@@ -364,7 +365,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
         <div className="text-xs text-yellow-600 space-y-1">
           <p>No AI available. Options:</p>
           <p>• <strong className="text-yellow-400">Free & local</strong>: Install <a href="https://ollama.com" target="_blank" rel="noreferrer" className="underline">Ollama</a>, then run: <code className="bg-gray-800 px-1 rounded">ollama pull llama3.2</code></p>
-          <p>• <strong className="text-yellow-400">OpenAI key</strong>: Add in <a href="/settings" className="underline text-yellow-400">Settings</a></p>
+          <p>• <strong className="text-yellow-400">OpenAI key</strong>: Add in <a href={`${import.meta.env.BASE_URL}settings`} className="underline text-yellow-400">Settings</a></p>
         </div>
       )}
       {error && <p className="text-xs text-red-400 font-mono whitespace-pre-wrap">Error: {error}</p>}

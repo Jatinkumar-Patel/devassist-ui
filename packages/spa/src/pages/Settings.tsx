@@ -2,6 +2,13 @@ import { useState } from 'react';
 import { Eye, EyeOff, Check, AlertCircle, Terminal, RefreshCw } from 'lucide-react';
 import { useSettingsStore, ORG_DEFAULTS } from '../store/settings';
 
+interface DiagnosticResult {
+  key: 'bridge' | 'snow' | 'ado' | 'github';
+  label: string;
+  ok: boolean;
+  details: string;
+}
+
 export default function SettingsPage() {
   const { adoPat, githubPat, openaiKey, bridgeUrl, setAdoPat, setGithubPat, setOpenaiKey, setBridgeUrl, clearPats } = useSettingsStore();
 
@@ -12,7 +19,7 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-xl space-y-8">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <h1 className="text-gray-100 font-semibold text-xl">Settings</h1>
         <button onClick={reRunWizard}
           className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 border border-gray-700 hover:border-gray-500 px-3 py-1.5 rounded-lg">
@@ -31,7 +38,7 @@ export default function SettingsPage() {
           hint="Scopes needed: Work Items (Read) · Code (Read)"
           value={adoPat}
           onChange={setAdoPat}
-          testUrl={`${ORG_DEFAULTS.bridgeUrl}/api/ado/_apis/connectionData?api-version=7.0`}
+          testUrl={`${bridgeUrl}/api/ado/_apis/projects?api-version=6.0`}
           testAuth={(v) => `Basic ${btoa(`:${v}`)}`}
         />
         <PatField
@@ -95,7 +102,133 @@ export default function SettingsPage() {
           </p>
         </div>
       </section>
+
+      <EnvironmentDiagnostics bridgeUrl={bridgeUrl} adoPat={adoPat} githubPat={githubPat} />
     </div>
+  );
+}
+
+function EnvironmentDiagnostics({ bridgeUrl, adoPat, githubPat }: { bridgeUrl: string; adoPat: string; githubPat: string }) {
+  const [running, setRunning] = useState(false);
+  const [results, setResults] = useState<DiagnosticResult[]>([]);
+  const [lastRun, setLastRun] = useState<string>('');
+
+  const runDiagnostics = async () => {
+    setRunning(true);
+    const out: DiagnosticResult[] = [];
+
+    try {
+      const statusRes = await fetch(`${bridgeUrl}/api/status`, { signal: AbortSignal.timeout(4000) });
+      if (statusRes.ok) {
+        const status = await statusRes.json() as { version?: string; snowAuth?: string };
+        out.push({
+          key: 'bridge',
+          label: 'Bridge',
+          ok: true,
+          details: `Online${status.version ? ` (v${status.version})` : ''}`,
+        });
+        out.push({
+          key: 'snow',
+          label: 'SNOW',
+          ok: status.snowAuth === 'ok',
+          details: status.snowAuth === 'ok' ? 'Windows auth ready' : `Bridge reported: ${status.snowAuth ?? 'unknown'}`,
+        });
+      } else {
+        out.push({ key: 'bridge', label: 'Bridge', ok: false, details: `HTTP ${statusRes.status}` });
+        out.push({ key: 'snow', label: 'SNOW', ok: false, details: 'Bridge unavailable' });
+      }
+    } catch {
+      out.push({ key: 'bridge', label: 'Bridge', ok: false, details: 'Unreachable (check URL / process)' });
+      out.push({ key: 'snow', label: 'SNOW', ok: false, details: 'Bridge unavailable' });
+    }
+
+    if (adoPat.trim()) {
+      try {
+        const token = btoa(`:${adoPat.trim()}`);
+        const adoRes = await fetch(`${bridgeUrl}/api/ado/_apis/projects?api-version=6.0`, {
+          headers: { Authorization: `Basic ${token}` },
+          signal: AbortSignal.timeout(6000),
+        });
+        out.push({
+          key: 'ado',
+          label: 'ADO',
+          ok: adoRes.ok,
+          details: adoRes.ok ? 'PAT valid' : `HTTP ${adoRes.status}`,
+        });
+      } catch {
+        out.push({ key: 'ado', label: 'ADO', ok: false, details: 'Request failed (VPN/network/bridge)' });
+      }
+    } else {
+      out.push({ key: 'ado', label: 'ADO', ok: false, details: 'PAT missing in Settings' });
+    }
+
+    if (githubPat.trim()) {
+      try {
+        const ghRes = await fetch('https://api.github.com/user', {
+          headers: { Authorization: `Bearer ${githubPat.trim()}` },
+          signal: AbortSignal.timeout(6000),
+        });
+        out.push({
+          key: 'github',
+          label: 'GitHub',
+          ok: ghRes.ok,
+          details: ghRes.ok ? 'PAT valid' : `HTTP ${ghRes.status}`,
+        });
+      } catch {
+        out.push({ key: 'github', label: 'GitHub', ok: false, details: 'Request failed (network/proxy)' });
+      }
+    } else {
+      out.push({ key: 'github', label: 'GitHub', ok: false, details: 'PAT missing (optional)' });
+    }
+
+    setResults(out);
+    setLastRun(new Date().toLocaleString());
+    setRunning(false);
+  };
+
+  const allOk = results.length > 0 && results.every(r => r.ok || (r.key === 'github' && r.details.includes('optional')));
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Environment Diagnostics</h2>
+        <button
+          onClick={runDiagnostics}
+          disabled={running}
+          className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500 disabled:opacity-50"
+        >
+          {running ? 'Running...' : 'Run diagnostics'}
+        </button>
+      </div>
+
+      <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-3">
+        {results.length === 0 && (
+          <p className="text-xs text-gray-600">
+            Run diagnostics to verify this machine is ready: Bridge, SNOW, ADO, and GitHub.
+          </p>
+        )}
+
+        {results.map((r) => (
+          <div key={r.key} className="flex items-start justify-between gap-3 border-b border-gray-800 last:border-0 pb-2 last:pb-0">
+            <div>
+              <p className={`text-xs font-medium ${r.ok ? 'text-emerald-400' : 'text-red-400'}`}>
+                {r.label}: {r.ok ? 'OK' : 'FAIL'}
+              </p>
+              <p className="text-xs text-gray-500">{r.details}</p>
+            </div>
+          </div>
+        ))}
+
+        {results.length > 0 && (
+          <div className="pt-1">
+            <p className={`text-xs font-medium ${allOk ? 'text-emerald-400' : 'text-yellow-500'}`}>
+              {allOk ? 'System ready on this machine.' : 'Action needed before full analysis can run.'}
+            </p>
+            {lastRun && <p className="text-xs text-gray-600">Last run: {lastRun}</p>}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -132,7 +265,7 @@ function PatField({ label, hint, value, onChange, testUrl, testAuth }: PatFieldP
   return (
     <div className="space-y-1.5">
       <label className="text-xs text-gray-400">{label}</label>
-      <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
           <input
             type={show ? 'text' : 'password'}
@@ -154,7 +287,7 @@ function PatField({ label, hint, value, onChange, testUrl, testAuth }: PatFieldP
           type="button"
           onClick={test}
           disabled={!value || testState === 'testing'}
-          className={`px-3 py-2 rounded text-xs font-medium border transition-colors
+          className={`px-3 py-2 rounded text-xs font-medium border transition-colors w-full sm:w-auto
             ${testState === 'ok'   ? 'border-emerald-700 text-emerald-400 bg-emerald-950/30' :
               testState === 'fail' ? 'border-red-700 text-red-400 bg-red-950/30' :
               'border-gray-700 text-gray-400 hover:border-gray-500 disabled:opacity-40'}`}

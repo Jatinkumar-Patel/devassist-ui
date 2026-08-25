@@ -5,6 +5,13 @@ export const adoRouter = Router();
 
 const ADO_BASE = 'https://alm-prod-app1.rd.allscripts.com/tfs/boc_projects';
 
+function serverSideAdoAuthHeader(): string | null {
+  const pat = process.env.AZURE_DEVOPS_PAT?.trim();
+  if (!pat) return null;
+  const token = Buffer.from(`:${pat}`, 'utf-8').toString('base64');
+  return `Basic ${token}`;
+}
+
 // Proxy ADO REST calls to avoid CORS issues with on-prem TFS
 // Authorization header is forwarded from the SPA (PAT as Basic auth)
 adoRouter.use('*', (req: Request, res: Response) => {
@@ -12,9 +19,10 @@ adoRouter.use('*', (req: Request, res: Response) => {
   const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
   const targetUrl = `${ADO_BASE}${adoPath}${query}`;
 
-  const authHeader = req.headers['authorization'];
+  const incomingAuth = req.headers['authorization'];
+  const authHeader = (typeof incomingAuth === 'string' ? incomingAuth : null) ?? serverSideAdoAuthHeader();
   if (!authHeader) {
-    return res.status(401).json({ error: 'Missing Authorization header (ADO PAT required)' });
+    return res.status(401).json({ error: 'Missing Authorization header and no server-side AZURE_DEVOPS_PAT configured' });
   }
 
   const options = {

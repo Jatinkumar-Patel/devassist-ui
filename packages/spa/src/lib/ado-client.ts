@@ -1,9 +1,7 @@
+import { bridgeApi } from './bridge-url';
+
 const ADO_ORG = 'https://alm-prod-app1.rd.allscripts.com/tfs/boc_projects';
 const API_VER = '7.0';
-
-// All ADO calls go through the local bridge to avoid CORS with on-prem TFS
-const BRIDGE = (): string =>
-  (window as any).__BRIDGE_URL__ ?? 'http://localhost:7447';
 
 function adoHeaders(pat: string): HeadersInit {
   const token = btoa(`:${pat}`);
@@ -14,7 +12,7 @@ function adoHeaders(pat: string): HeadersInit {
 }
 
 export async function fetchWorkItem(id: number, pat: string) {
-  const url = `${BRIDGE()}/api/ado/SR/_apis/wit/workitems/${id}?$expand=all&api-version=${API_VER}`;
+  const url = bridgeApi(`/api/ado/SR/_apis/wit/workitems/${id}?$expand=all&api-version=${API_VER}`);
   const res = await fetch(url, { headers: adoHeaders(pat) });
   if (!res.ok) throw new Error(`ADO ${res.status}: ${await res.text()}`);
   return res.json();
@@ -26,7 +24,7 @@ export async function searchCode(
   repos: string[]
 ): Promise<unknown> {
   // ADO code search REST endpoint
-  const url = `${BRIDGE()}/api/ado/_apis/search/codesearchresults?api-version=7.1-preview.1`;
+  const url = bridgeApi('/api/ado/_apis/search/codesearchresults?api-version=7.1-preview.1');
   const body = {
     searchText: query,
     $skip: 0,
@@ -44,7 +42,7 @@ export async function searchCode(
 }
 
 export async function fetchMtmTestPlan(planId: number, pat: string) {
-  const url = `${BRIDGE()}/api/ado/SR/_apis/testplan/plans/${planId}?api-version=${API_VER}`;
+  const url = bridgeApi(`/api/ado/SR/_apis/testplan/plans/${planId}?api-version=${API_VER}`);
   const res = await fetch(url, { headers: adoHeaders(pat) });
   if (!res.ok) throw new Error(`MTM ${res.status}: ${await res.text()}`);
   return res.json();
@@ -63,7 +61,7 @@ export interface RelatedItem {
 }
 
 async function runWiql(pat: string, query: string): Promise<number[]> {
-  const url = `${BRIDGE()}/api/ado/SR/_apis/wit/wiql?api-version=7.0`;
+  const url = bridgeApi('/api/ado/SR/_apis/wit/wiql?api-version=7.0');
   const res = await fetch(url, {
     method: 'POST',
     headers: adoHeaders(pat),
@@ -78,7 +76,7 @@ async function runWiql(pat: string, query: string): Promise<number[]> {
 async function fetchItemsBatch(ids: number[], pat: string): Promise<RelatedItem[]> {
   if (!ids.length) return [];
   const fields = 'System.Id,System.Title,System.State,System.WorkItemType';
-  const url = `${BRIDGE()}/api/ado/SR/_apis/wit/workItems?ids=${ids.join(',')}&fields=${fields}&api-version=7.0`;
+  const url = bridgeApi(`/api/ado/SR/_apis/wit/workItems?ids=${ids.join(',')}&fields=${fields}&api-version=7.0`);
   const res = await fetch(url, { headers: adoHeaders(pat), signal: AbortSignal.timeout(6000) });
   if (!res.ok) return [];
   const data = await res.json() as { value?: Array<{ id: number; fields: Record<string, string> }> };

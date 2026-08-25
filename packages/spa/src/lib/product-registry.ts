@@ -1,17 +1,21 @@
 import type { ProductRegistry, Product } from '../types';
-
-const BRIDGE = (): string => (window as any).__BRIDGE_URL__ ?? 'http://localhost:7447';
+import { bridgeApi } from './bridge-url';
 
 let registry: ProductRegistry | null = null;
+
+function staticRegistryUrl(): string {
+  const base = (import.meta as any).env?.BASE_URL ?? '/';
+  return `${base.replace(/\/$/, '')}/config/product-registry.json`;
+}
 
 export async function loadRegistry(): Promise<ProductRegistry> {
   if (registry) return registry;
   // Try bridge first (user's saved copy), fall back to static file
   try {
-    const res = await fetch(`${BRIDGE()}/api/registry`, { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(bridgeApi('/api/registry'), { signal: AbortSignal.timeout(3000) });
     if (res.ok) { registry = await res.json() as ProductRegistry; return registry; }
   } catch { /* bridge offline */ }
-  const res = await fetch('/config/product-registry.json');
+  const res = await fetch(staticRegistryUrl());
   if (!res.ok) throw new Error(`Failed to load product registry: ${res.status}`);
   registry = await res.json() as ProductRegistry;
   return registry;
@@ -22,7 +26,7 @@ export function invalidateRegistry() {
 }
 
 export async function saveRegistry(data: ProductRegistry): Promise<void> {
-  const res = await fetch(`${BRIDGE()}/api/registry`, {
+  const res = await fetch(bridgeApi('/api/registry'), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),

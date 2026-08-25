@@ -18,14 +18,20 @@ interface ServerOptions {
 export function createServer({ spaOrigin }: ServerOptions) {
   const app = express();
 
+  const allowedExactOrigins = new Set([
+    spaOrigin,
+    'https://jatinkumar-patel.github.io',
+  ]);
+
+  const isLocalhostOrigin = (origin: string) => /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
+
   app.use(cors({
-    // Allow GitHub Pages origin + local dev
-    origin: [
-      spaOrigin,
-      'https://jatinkumar-patel.github.io',
-      'http://localhost:5173',
-      'http://localhost:7447',
-    ],
+    // Allow GitHub Pages + local dev SPA on any localhost port.
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true); // non-browser clients (curl, tools)
+      if (allowedExactOrigins.has(origin) || isLocalhostOrigin(origin)) return callback(null, true);
+      return callback(new Error(`Origin not allowed by CORS: ${origin}`));
+    },
     credentials: false,
   }));
   app.use(express.json());
@@ -46,7 +52,11 @@ export function createServer({ spaOrigin }: ServerOptions) {
   app.use(express.static(spaPath));
   app.get('*', (_req: Request, res: Response) => {
     res.sendFile(path.join(spaPath, 'index.html'), (err) => {
-      if (err) res.status(404).json({ error: 'SPA not found — run npm run build in packages/spa' });
+      if (err) {
+        res.status(404).json({
+          error: 'SPA not found. From repo root run: npm run build (or npm run bridge, which now builds automatically).',
+        });
+      }
     });
   });
 

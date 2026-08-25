@@ -3,10 +3,18 @@ import https from 'https';
 
 export const ghSearchRouter = Router();
 
+function resolveGithubToken(req: Request): string | null {
+  const fromHeader = req.headers['x-github-token'];
+  if (typeof fromHeader === 'string' && fromHeader.trim()) return fromHeader.trim();
+  const fromEnv = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+  if (typeof fromEnv === 'string' && fromEnv.trim()) return fromEnv.trim();
+  return null;
+}
+
 // Proxy GitHub API search — browser can't call api.github.com from localhost (CORS)
 ghSearchRouter.get('/code', (req: Request, res: Response) => {
-  const token = req.headers['x-github-token'] as string;
-  if (!token) return res.status(401).json({ error: 'Missing X-GitHub-Token header' });
+  const token = resolveGithubToken(req);
+  if (!token) return res.status(401).json({ error: 'Missing X-GitHub-Token header and no server-side GITHUB_PERSONAL_ACCESS_TOKEN configured' });
 
   const q = req.query.q as string;
   const perPage = req.query.per_page ?? '10';
@@ -34,8 +42,8 @@ ghSearchRouter.get('/code', (req: Request, res: Response) => {
 
 // Commit search — requires Accept: application/vnd.github.cloak-preview
 ghSearchRouter.get('/commits', (req: Request, res: Response) => {
-  const token = req.headers['x-github-token'] as string;
-  if (!token) return res.status(401).json({ error: 'Missing X-GitHub-Token header' });
+  const token = resolveGithubToken(req);
+  if (!token) return res.status(401).json({ error: 'Missing X-GitHub-Token header and no server-side GITHUB_PERSONAL_ACCESS_TOKEN configured' });
 
   const q = req.query.q as string;
   const perPage = req.query.per_page ?? '10';

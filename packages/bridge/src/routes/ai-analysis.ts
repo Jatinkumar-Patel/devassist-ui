@@ -123,7 +123,7 @@ function callGitHubModels(pat: string, messages: object[]): Promise<string> {
   const scriptFile = `${os.tmpdir()}\\devassist-ai-${ts}.ps1`;
 
   // Write body to temp file — avoids all PS string-escaping issues
-  fs.writeFileSync(bodyFile, JSON.stringify({ model: MODEL, messages, temperature: 0.1, max_tokens: 1200 }), 'utf-8');
+  fs.writeFileSync(bodyFile, JSON.stringify({ model: MODEL_GH, messages, temperature: 0.1, max_tokens: 1200 }), 'utf-8');
 
   // Write full PS script to a .ps1 file — run with -File so newlines are preserved
   const script = `

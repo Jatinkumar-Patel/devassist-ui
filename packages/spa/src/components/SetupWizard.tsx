@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CheckCircle2, ExternalLink, Eye, EyeOff, Wifi, Wand2 } from 'lucide-react';
 import { useSettingsStore } from '../store/settings';
+import { getBridgeUrl } from '../lib/bridge-url';
 
 interface Props {
   onDone: () => void;
@@ -17,6 +18,7 @@ interface McpConfig {
 
 export default function SetupWizard({ onDone }: Props) {
   const { setAdoPat, setGithubPat } = useSettingsStore();
+  const bridgeBase = getBridgeUrl();
   const [step, setStep] = useState<Step>('bridge');
   const [adoVal, setAdoVal]       = useState('');
   const [githubVal, setGithubVal] = useState('');
@@ -28,17 +30,21 @@ export default function SetupWizard({ onDone }: Props) {
   const [mcpConfig, setMcpConfig] = useState<McpConfig | null>(null);
 
   // After bridge connects, fetch mcp.json PATs automatically
-  const loadMcpConfig = async () => {
+  const loadMcpConfig = async (): Promise<McpConfig | null> => {
     try {
-      const r = await fetch('http://localhost:7447/api/mcp-config', { signal: AbortSignal.timeout(3000) });
+      const r = await fetch(`${bridgeBase}/api/mcp-config`, { signal: AbortSignal.timeout(3000) });
       if (r.ok) {
         const cfg: McpConfig = await r.json();
         setMcpConfig(cfg);
         // Pre-fill inputs if PATs found
         if (cfg.adoPat)    setAdoVal(cfg.adoPat);
         if (cfg.githubPat) setGithubVal(cfg.githubPat);
+        return cfg;
       }
-    } catch { /* bridge offline — handled elsewhere */ }
+      return null;
+    } catch {
+      return null;
+    }
   };
 
   const checkBridge = async () => {
@@ -46,16 +52,29 @@ export default function SetupWizard({ onDone }: Props) {
     // If on HTTPS (GitHub Pages), bridge calls are blocked by mixed-content policy.
     // Redirect to the bridge's local HTTP URL which serves the same app.
     if (window.location.protocol === 'https:') {
-      window.location.href = 'http://localhost:7447';
+      window.location.href = bridgeBase;
       return;
     }
     try {
-      const r = await fetch('http://localhost:7447/api/status', { signal: AbortSignal.timeout(3000) });
+      const r = await fetch(`${bridgeBase}/api/status`, { signal: AbortSignal.timeout(3000) });
       const ok = r.ok;
       setBridgeOk(ok);
       if (ok) {
-        await loadMcpConfig();
-        setTimeout(() => setStep('ado-pat'), 600);
+        const cfg = await loadMcpConfig();
+        const ado = cfg?.adoPat?.trim() ?? '';
+        const gh = cfg?.githubPat?.trim() ?? '';
+
+        if (ado) setAdoPat(ado);
+        if (gh) setGithubPat(gh);
+
+        if (ado && gh) {
+          localStorage.setItem('devassist-setup-done', '1');
+          setTimeout(() => setStep('done'), 300);
+        } else if (!ado) {
+          setTimeout(() => setStep('ado-pat'), 600);
+        } else {
+          setTimeout(() => setStep('github-pat'), 600);
+        }
       }
     } catch {
       setBridgeOk(false);
@@ -65,16 +84,17 @@ export default function SetupWizard({ onDone }: Props) {
   };
 
   const testAdoPat = async () => {
-    if (!adoVal) return;
+    const pat = adoVal.trim();
+    if (!pat) return;
     setTesting(true);
     try {
-      const r = await fetch('http://localhost:7447/api/ado/_apis/connectionData?api-version=7.0', {
-        headers: { Authorization: `Basic ${btoa(`:${adoVal}`)}` },
+      const r = await fetch(`${bridgeBase}/api/ado/_apis/projects?api-version=6.0`, {
+        headers: { Authorization: `Basic ${btoa(`:${pat}`)}` },
         signal: AbortSignal.timeout(5000),
       });
       setAdoOk(r.ok);
       if (r.ok) {
-        setAdoPat(adoVal);
+        setAdoPat(pat);
         setTimeout(() => setStep('github-pat'), 600);
       }
     } catch {
@@ -84,8 +104,18 @@ export default function SetupWizard({ onDone }: Props) {
     }
   };
 
-  const finishGithub = () => {
-    if (githubVal) setGithubPat(githubVal);
+  const saveAdoAndContinue = () => {
+    const pat = adoVal.trim();
+    if (!pat) return;
+    setAdoPat(pat);
+    setStep('github-pat');
+  };
+
+  const saveGithubAndContinue = () => {
+    const pat = githubVal.trim();
+    if (!pat) return;
+    setGithubPat(pat);
+    localStorage.setItem('devassist-setup-done', '1');
     setStep('done');
   };
 
@@ -113,15 +143,9 @@ export default function SetupWizard({ onDone }: Props) {
                 Windows login. It runs on your machine — nothing is sent to any cloud.
               </p>
               <div className="space-y-2">
-                <p className="text-xs text-gray-500 font-medium">Run once to install:</p>
-                <div className="bg-gray-950 rounded-lg p-3 font-mono text-xs text-altera-teal border border-gray-800 space-y-1">
-                  <div>git clone https://github.com/Jatinkumar-Patel/devassist-ui.git</div>
-                  <div>cd devassist-ui</div>
-                  <div>npm install</div>
-                </div>
-                <p className="text-xs text-gray-500 font-medium">Run every session:</p>
+                <p className="text-xs text-gray-500 font-medium">End-user start (no repo clone):</p>
                 <div className="bg-gray-950 rounded-lg p-3 font-mono text-sm text-altera-teal border border-gray-800">
-                  npm run bridge:dev
+                  npx @jatinkumar-patel/devassist-bridge
                 </div>
               </div>
               <p className="text-xs text-gray-600">
@@ -138,12 +162,12 @@ export default function SetupWizard({ onDone }: Props) {
                     Browsers block connections from HTTPS pages to local HTTP servers.
                   </p>
                   <a
-                    href="http://localhost:7447"
+                    href={bridgeBase}
                     className="flex items-center justify-center gap-2 bg-altera-blue hover:bg-altera-blue/80
                                text-white px-4 py-2.5 rounded-lg text-sm font-medium w-full"
                   >
                     <Wifi size={14} />
-                    Open app at http://localhost:7447
+                    Open app at {bridgeBase}
                   </a>
                   <p className="text-xs text-gray-600 text-center">Bridge must be running first (see command above)</p>
                 </div>
@@ -169,6 +193,14 @@ export default function SetupWizard({ onDone }: Props) {
           {step === 'ado-pat' && (
             <>
               <h2 className="text-lg font-semibold text-gray-100">Azure DevOps PAT</h2>
+
+              {mcpConfig?.found === false && (
+                <div className="rounded-lg border border-amber-700/60 bg-amber-950/30 p-3">
+                  <p className="text-xs text-amber-200">
+                    Could not find PAT in VS Code mcp.json on this VM. Please enter your ADO PAT to continue.
+                  </p>
+                </div>
+              )}
 
               {/* Auto-detected from mcp.json */}
               {mcpConfig?.adoPat ? (
@@ -257,10 +289,18 @@ export default function SetupWizard({ onDone }: Props) {
             </>
           )}
 
-          {/* ── Step 3: GitHub PAT (optional) ───────────────────────────────── */}
+          {/* ── Step 3: GitHub PAT (required) ───────────────────────────────── */}
           {step === 'github-pat' && (
             <>
-              <h2 className="text-lg font-semibold text-gray-100">GitHub PAT <span className="text-gray-500 font-normal text-base">(optional)</span></h2>
+              <h2 className="text-lg font-semibold text-gray-100">GitHub PAT</h2>
+
+              {!mcpConfig?.githubPat && (
+                <div className="rounded-lg border border-amber-700/60 bg-amber-950/30 p-3">
+                  <p className="text-xs text-amber-200">
+                    Could not find GitHub PAT in VS Code mcp.json on this VM. Please enter your GitHub PAT to continue.
+                  </p>
+                </div>
+              )}
 
               {/* Auto-detected from mcp.json */}
               {mcpConfig?.githubPat ? (
@@ -274,7 +314,13 @@ export default function SetupWizard({ onDone }: Props) {
                       {'•'.repeat(12)}{mcpConfig.githubPat.slice(-4)}
                     </span>
                     <button
-                      onClick={() => { setGithubPat(mcpConfig.githubPat!); finishGithub(); }}
+                      onClick={() => {
+                        const pat = mcpConfig.githubPat!;
+                        setGithubVal(pat);
+                        setGithubPat(pat);
+                        localStorage.setItem('devassist-setup-done', '1');
+                        setStep('done');
+                      }}
                       className="bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded text-xs font-medium shrink-0"
                     >
                       Use it ✓
@@ -283,7 +329,7 @@ export default function SetupWizard({ onDone }: Props) {
                 </div>
               ) : (
                 <p className="text-sm text-gray-400">
-                  Used for code search in mapped repos. Skip if you only need SNOW + ADO triage.
+                  Required for repository code/commit search during triage.
                 </p>
               )}
 
@@ -301,7 +347,7 @@ export default function SetupWizard({ onDone }: Props) {
                   type={showGh ? 'text' : 'password'}
                   value={githubVal}
                   onChange={(e) => setGithubVal(e.target.value)}
-                  placeholder={mcpConfig?.githubPat ? 'Override PAT (optional)' : 'Paste GitHub PAT (or leave blank to skip)'}
+                  placeholder={mcpConfig?.githubPat ? 'Override PAT' : 'Paste GitHub PAT'}
                   className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm
                              font-mono text-gray-200 focus:outline-none focus:border-altera-teal pr-9"
                 />
@@ -312,9 +358,12 @@ export default function SetupWizard({ onDone }: Props) {
               </div>
 
               <div className="flex gap-3">
-                <button onClick={finishGithub}
-                  className="bg-altera-blue hover:bg-altera-blue/80 text-white px-4 py-2 rounded-lg text-sm font-medium">
-                  {githubVal ? 'Save & Finish' : 'Skip'}
+                <button
+                  onClick={saveGithubAndContinue}
+                  disabled={!githubVal.trim()}
+                  className="bg-altera-blue hover:bg-altera-blue/80 disabled:opacity-40 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                >
+                  Save & Continue
                 </button>
               </div>
             </>
@@ -331,8 +380,8 @@ export default function SetupWizard({ onDone }: Props) {
                 Paste a DA ID, SNOW task, or TFS work item number in the Triage page to get started.
               </p>
               <p className="text-xs text-gray-600">
-                Your PATs are stored only in this browser on this machine. To use DevAssist on
-                another machine, run the bridge there and re-enter your PATs in Settings.
+                Your PATs are stored only in this browser on this machine for this user profile.
+                On the same VM and user login, you will not be asked again unless PATs are cleared.
               </p>
               <button onClick={onDone}
                 className="w-full bg-altera-blue hover:bg-altera-blue/80 text-white py-2.5 rounded-lg text-sm font-medium mt-2">
@@ -340,16 +389,19 @@ export default function SetupWizard({ onDone }: Props) {
               </button>
             </>
           )}
-        </div>
 
-        {/* Skip link — for returning users who already have PATs */}
-        {step !== 'done' && (
-          <div className="px-6 pb-4 text-center">
-            <button onClick={onDone} className="text-xs text-gray-600 hover:text-gray-400">
-              Already set up — skip wizard
-            </button>
-          </div>
-        )}
+          {step === 'ado-pat' && (
+            <div className="flex gap-3">
+              <button
+                onClick={saveAdoAndContinue}
+                disabled={!adoVal.trim()}
+                className="bg-altera-blue hover:bg-altera-blue/80 disabled:opacity-40 text-white px-4 py-2 rounded-lg text-sm font-medium"
+              >
+                Save & Continue
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
