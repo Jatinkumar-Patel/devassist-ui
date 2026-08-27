@@ -8,23 +8,32 @@ const SNOW_BASE = 'https://servicenowviewer.allscripts.com/api/SNData';
 
 /** Double-decode: SNOW viewer returns a JSON-stringified JSON string */
 function snowDecode(raw: string): unknown {
-  const text = raw.trim();
+  const stripControlChars = (s: string) =>
+    s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ' ');
+
+  // Strip bad control chars from the raw text BEFORE any JSON parse attempt
+  const text = stripControlChars(raw.trim());
 
   const parseCandidate = (candidate: string): unknown => {
     const outer = JSON.parse(candidate);
-    return typeof outer === 'string' ? JSON.parse(outer) : outer;
+    if (typeof outer === 'string') {
+      return JSON.parse(stripControlChars(outer));
+    }
+    return outer;
   };
 
   const parseEscapedStringEnvelope = (candidate: string): unknown => {
     // Some responses are quoted JSON strings that contain escaped CR/LF and quotes.
     // Example shape: "{\r\n  \"result\": [...] }"
     const unwrapped = candidate.replace(/^"|"$/g, '');
-    const normalized = unwrapped
-      .replace(/\\r\\n/g, '\n')
-      .replace(/\\n/g, '\n')
-      .replace(/\\t/g, '\t')
-      .replace(/\\"/g, '"')
-      .replace(/\\\\/g, '\\');
+    const normalized = stripControlChars(
+      unwrapped
+        .replace(/\\r\\n/g, '\n')
+        .replace(/\\n/g, '\n')
+        .replace(/\\t/g, '\t')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\')
+    );
     return JSON.parse(normalized);
   };
 
