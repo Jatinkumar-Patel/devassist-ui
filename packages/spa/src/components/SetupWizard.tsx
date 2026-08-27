@@ -33,18 +33,22 @@ function CopyableCommand({ label, value }: { label: string; value: string }) {
   };
 
   return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] text-gray-400">{label}</p>
+    <div className="rounded-lg border border-white/10 bg-gray-950 overflow-hidden">
+      <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-white/5 border-b border-white/10">
+        <span className="text-[11px] text-gray-400 font-medium">{label}</span>
         <button
           type="button"
           onClick={copy}
-          className="text-[11px] px-2 py-1 rounded border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500"
+          className={`shrink-0 text-[11px] px-2.5 py-1 rounded font-medium transition-colors ${
+            copied
+              ? 'bg-emerald-700/60 text-emerald-200 border border-emerald-600/50'
+              : 'bg-gray-700 hover:bg-gray-600 text-gray-200 border border-gray-600'
+          }`}
         >
-          {copied ? 'Copied' : 'Copy'}
+          {copied ? '✓ Copied' : 'Copy'}
         </button>
       </div>
-      <div className="font-mono text-sm text-altera-teal break-all">{value}</div>
+      <pre className="px-3 py-2.5 text-xs text-cyan-300 font-mono overflow-x-auto whitespace-pre leading-relaxed">{value}</pre>
     </div>
   );
 }
@@ -173,29 +177,34 @@ export default function SetupWizard({ onDone }: Props) {
               </p>
 
               {/* ── Phase A: First-time install ───────────────────── */}
-              <div className="rounded-lg border border-blue-700/50 bg-blue-950/30 p-4 space-y-3">
-                <p className="text-xs font-semibold text-blue-300 uppercase tracking-wide">Step 1 — Install once (new machine)</p>
-                <p className="text-[11px] text-gray-400">Open a terminal, paste one of these commands and press Enter. Safe from any folder including System32.</p>
-                <div className="bg-gray-950 rounded-lg p-3 border border-gray-800 space-y-3">
+              <div className="rounded-lg border border-blue-700/50 bg-blue-950/30 p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] font-bold shrink-0">1</span>
+                  <p className="text-xs font-semibold text-blue-300">Install bridge once (new machine)</p>
+                </div>
+                <p className="text-[11px] text-gray-400 ml-7">Open a terminal, paste one command and press Enter. Safe from any folder including System32.</p>
+                <div className="space-y-2">
                   <CopyableCommand label="PowerShell (recommended)" value={installCmds.powershell} />
                   <CopyableCommand label="Command Prompt (cmd)" value={installCmds.cmd} />
                 </div>
                 <p className="text-[11px] text-gray-500">
                   Node.js ≥ 18 required —{' '}
                   <a href="https://nodejs.org" target="_blank" rel="noreferrer" className="text-altera-teal hover:underline">download here</a>.
-                  Clones the repo to <span className="font-mono">%USERPROFILE%\source\{installCmds.localFolder}</span> and starts bridge.
+                  Clones the repo to <code className="text-[10px] bg-gray-800 px-1 rounded">%USERPROFILE%\source\devassist-ui</code>
                 </p>
               </div>
 
               {/* ── Phase B: Register auto-start ───────────────────── */}
-              <div className="rounded-lg border border-emerald-700/50 bg-emerald-950/30 p-4 space-y-3">
-                <p className="text-xs font-semibold text-emerald-300 uppercase tracking-wide">Step 2 — Register auto-start (run after Step 1)</p>
-                <p className="text-[11px] text-gray-400">
-                  After Step 1 completes, paste this command to register the bridge as a Windows auto-start task.
-                  After this, the bridge starts automatically at login — <strong className="text-gray-200">you never need to run any command again</strong>.
+              <div className="rounded-lg border border-emerald-700/50 bg-emerald-950/30 p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-bold shrink-0">2</span>
+                  <p className="text-xs font-semibold text-emerald-300">Register auto-start — run once after Step 1</p>
+                </div>
+                <p className="text-[11px] text-gray-400 ml-7">
+                  Bridge auto-starts at every Windows login — <strong className="text-gray-200">you never need to run any command again</strong>.
                 </p>
-                <div className="bg-gray-950 rounded-lg p-3 border border-gray-800 space-y-3">
-                  <CopyableCommand label="Register auto-start — PowerShell (run once after Step 1)" value={installCmds.autoStartPowershell} />
+                <div className="space-y-2">
+                  <CopyableCommand label="Register auto-start — PowerShell" value={installCmds.autoStartPowershell} />
                   <CopyableCommand label="Register auto-start — Command Prompt" value={installCmds.autoStartCmd} />
                 </div>
                 <p className="text-[11px] text-gray-500">
@@ -205,10 +214,13 @@ export default function SetupWizard({ onDone }: Props) {
               </div>
 
               {/* ── Phase C: Bookmark URL ───────────────────── */}
-              <div className="rounded-lg border border-altera-teal/40 bg-altera-teal/10 p-4 space-y-2">
-                <p className="text-xs font-semibold text-altera-teal uppercase tracking-wide">Step 3 — Bookmark this URL</p>
-                <p className="text-[11px] text-gray-400">After auto-start is registered, this is the only URL you need. Share it with your team.</p>
-                <CopyableCommand label="App URL (bookmark this)" value={installCmds.appUrl} />
+              <div className="rounded-lg border border-cyan-700/50 bg-cyan-950/30 p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-cyan-600 text-white text-[10px] font-bold shrink-0">3</span>
+                  <p className="text-xs font-semibold text-cyan-300">Bookmark this URL — share with your team</p>
+                </div>
+                <p className="text-[11px] text-gray-400 ml-7">This is the only URL everyone needs. Open it in any browser after the bridge is running.</p>
+                <CopyableCommand label="App URL" value={installCmds.appUrl} />
               </div>
 
               {window.location.protocol === 'https:' ? (

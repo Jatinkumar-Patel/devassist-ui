@@ -222,18 +222,22 @@ function CopyableCommand({ label, value }: { label: string; value: string }) {
   };
 
   return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] text-gray-400 font-sans">{label}</p>
+    <div className="rounded-lg border border-white/10 bg-gray-950 overflow-hidden">
+      <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-white/5 border-b border-white/10">
+        <span className="text-[11px] text-gray-400 font-medium font-sans">{label}</span>
         <button
           type="button"
           onClick={copy}
-          className="text-[11px] px-2 py-1 rounded border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 font-sans"
+          className={`shrink-0 text-[11px] px-2.5 py-1 rounded font-medium font-sans transition-colors ${
+            copied
+              ? 'bg-emerald-700/60 text-emerald-200 border border-emerald-600/50'
+              : 'bg-gray-700 hover:bg-gray-600 text-gray-200 border border-gray-600'
+          }`}
         >
-          {copied ? 'Copied' : 'Copy'}
+          {copied ? '✓ Copied' : 'Copy'}
         </button>
       </div>
-      <p className="break-all">{value}</p>
+      <pre className="px-3 py-2.5 text-xs text-cyan-300 font-mono overflow-x-auto whitespace-pre leading-relaxed">{value}</pre>
     </div>
   );
 }
