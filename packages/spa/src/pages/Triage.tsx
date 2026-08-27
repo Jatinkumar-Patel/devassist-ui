@@ -679,46 +679,91 @@ export default function TriagePage() {
       }
       s = { ...s, clarityGaps: gaps };
 
-      // ── Phase 2+: Artifacts ledger (skeleton — full analysis is manual/AI) ───
-      s = phase(s, 'artifacts');
-      upsert(s);
-      const analyzed = s.attachments?.map((a) => ({
-        source: `TASK ${s.snowTaskNumber ?? ''}`,
-        file: snowVal(a.file_name),
-        type: snowVal(a.content_type),
-        finding: '— pending review',
-      })) ?? [];
-      s = {
-        ...s,
-        artifactLedger: {
-          analyzed,
-          notAnalyzed: [],
-          coverageTimeframe: analyzed.length > 0 ? 'pending review' : 'no attachments',
-          coverageSubject: 'pending review',
-        },
-      };
+      // ── Phase 2: Auto log scan — download + grep all SNOW attachments ──────
+      // Run against TASK sysId first, then also INCIDENT + CASE sysIds
+      // so attachments at any level of the chain are captured.
+      const snowSysId        = s.snowTask     ? snowVal(s.snowTask.sys_id)          : '';
+      const incidentSysId2   = s.snowIncident ? snowVal((s.snowIncident as any).sys_id) : '';
+      const caseSysId2       = s.snowCase     ? snowVal((s.snowCase as any).sys_id)    : '';
 
-      // ── Phase 2: Auto log scan — download + grep SNOW attachments ────────────
-      const snowSysId = s.snowTask ? snowVal(s.snowTask.sys_id) : '';
-      if (snowSysId) {
+      const sysIdsToScan = [...new Set([snowSysId, incidentSysId2, caseSysId2].filter(Boolean))];
+
+      if (sysIdsToScan.length) {
         s = phase(s, 'artifacts');
         upsert(s);
-        try {
-          const logResp = await fetch(`${bridgeUrl}/api/log-analysis/${snowSysId}`);
-          if (logResp.ok) {
-            const logData = await logResp.json();
-            // Store log hits on the snowTask so AnalysisPanel and AI can use them
-            s = {
-              ...s,
-              snowTask: {
-                ...s.snowTask!,
-                _logHits: logData.hits ?? [],
-                _topSeeds: logData.topSeeds ?? {},
-                _logAnalysis: logData,
-              },
-            };
+
+        const allLogData: Record<string, any> = {};
+        await Promise.allSettled(sysIdsToScan.map(async (sid) => {
+          try {
+            const logResp = await fetch(`${bridgeUrl}/api/log-analysis/${sid}`);
+            if (logResp.ok) allLogData[sid] = await logResp.json();
+          } catch { /* bridge offline — non-fatal */ }
+        }));
+
+        // Merge all hits — primary sysId first
+        const primaryLogData = allLogData[snowSysId] ?? Object.values(allLogData)[0];
+        const allHits = Object.values(allLogData).flatMap((d: any) => d.hits ?? []);
+        const allTopSeeds: Record<string, number> = {};
+        for (const d of Object.values(allLogData) as any[]) {
+          for (const [k, v] of Object.entries(d.topSeeds ?? {})) {
+            allTopSeeds[k] = ((allTopSeeds[k] ?? 0) as number) + (v as number);
           }
-        } catch { /* bridge offline — non-fatal */ }
+        }
+
+        if (primaryLogData || allHits.length) {
+          const mergedLogAnalysis = { ...primaryLogData, hits: allHits.slice(0, 200), topSeeds: allTopSeeds };
+          s = {
+            ...s,
+            snowTask: s.snowTask ? {
+              ...s.snowTask,
+              _logHits: allHits,
+              _topSeeds: allTopSeeds,
+              _logAnalysis: mergedLogAnalysis,
+            } : s.snowTask,
+          };
+        }
+
+        // ── Update artifact ledger with real findings ─────────────────────────
+        const hitsByFile: Record<string, string[]> = {};
+        for (const h of allHits as any[]) {
+          if (!hitsByFile[h.file]) hitsByFile[h.file] = [];
+          hitsByFile[h.file].push(`[${h.category}] ${h.text.slice(0, 120)}`);
+        }
+        const analyzedFiles = s.attachments?.map((a) => {
+          const fname = snowVal(a.file_name);
+          const fileHits = hitsByFile[fname] ?? [];
+          return {
+            source: `TASK ${s.snowTaskNumber ?? ''}`,
+            file: fname,
+            type: snowVal(a.content_type),
+            finding: fileHits.length
+              ? `${fileHits.length} hit(s): ${fileHits.slice(0, 2).join(' | ').slice(0, 200)}`
+              : 'No pattern matches',
+          };
+        }) ?? [];
+
+        // Also add any files analyzed from incident/case that weren't in the task attachment list
+        for (const [fname, hits] of Object.entries(hitsByFile)) {
+          if (!analyzedFiles.find((a) => a.file === fname)) {
+            analyzedFiles.push({
+              source: 'INC/CS',
+              file: fname,
+              type: '',
+              finding: `${hits.length} hit(s): ${hits.slice(0, 2).join(' | ').slice(0, 200)}`,
+            });
+          }
+        }
+
+        const totalHits = allHits.length;
+        s = {
+          ...s,
+          artifactLedger: {
+            analyzed: analyzedFiles,
+            notAnalyzed: Object.values(allLogData).flatMap((d: any) => d.skipped ?? []),
+            coverageTimeframe: totalHits > 0 ? `${totalHits} log matches across ${sysIdsToScan.length} record(s)` : analyzedFiles.length > 0 ? 'scanned — no matches' : 'no attachments',
+            coverageSubject: totalHits > 0 ? `Errors: ${(allTopSeeds['ERROR'] ?? 0) + (allTopSeeds['FATAL'] ?? 0)} | Warnings: ${allTopSeeds['WARNING'] ?? 0} | Timeouts: ${allTopSeeds['Timeout'] ?? 0}` : 'no log hits',
+          },
+        };
       }
 
       // ── Phase 3/4: Auto root cause analysis ──────────────────────────────────

@@ -178,6 +178,34 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
         )}
       </div>
 
+      {/* SNOW chain — Task → Incident → Case, always visible when any SNOW data present */}
+      {(session.snowTask || session.snowIncident || session.snowCase) && session.status === 'ready' && (
+        <div className="rounded-lg border border-gray-700 bg-gray-900 p-3 space-y-2">
+          <p className="text-xs font-semibold text-gray-400 mb-1">SNOW chain</p>
+          {session.snowTask && (
+            <SnowRecord
+              label="Task"
+              record={session.snowTask as any}
+              tableUrl={snowTaskUrl(snowVal((session.snowTask as any).number))}
+            />
+          )}
+          {session.snowIncident && (
+            <SnowRecord
+              label="Incident"
+              record={session.snowIncident as any}
+              tableUrl={snowTaskUrl(snowVal((session.snowIncident as any).number))}
+            />
+          )}
+          {session.snowCase && (
+            <SnowRecord
+              label="Case"
+              record={session.snowCase as any}
+              tableUrl={snowTaskUrl(snowVal((session.snowCase as any).number))}
+            />
+          )}
+        </div>
+      )}
+
       {/* ROOT CAUSE ANALYSIS — primary section */}
       {session.status === 'ready' && adoItem && product && (
         <AnalysisPanel session={session} onAnalysisComplete={onAnalysisComplete} />
@@ -272,26 +300,9 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
                   <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal((snowTask as any).u_dev_assist_detail)}</p>
                 </Collapsible>
               )}
-              {!!snowTask['_workNotes'] && (
-                <Collapsible label="Work notes">
-                  <pre className="text-xs font-mono text-gray-400 whitespace-pre-wrap max-h-64 overflow-auto">
-                    {JSON.stringify(snowTask['_workNotes'], null, 2)}
-                  </pre>
-                </Collapsible>
-              )}
               {snowVal(snowTask.close_notes) && (
                 <Collapsible label="Close notes">
                   <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal(snowTask.close_notes)}</p>
-                </Collapsible>
-              )}
-              {session.snowIncident && (
-                <Collapsible label={`Incident — ${snowVal((session.snowIncident as any).number)}`}>
-                  <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal((session.snowIncident as any).short_description)}</p>
-                </Collapsible>
-              )}
-              {session.snowCase && (
-                <Collapsible label={`Case — ${snowVal((session.snowCase as any).number)}`}>
-                  <p className="text-xs text-gray-400 whitespace-pre-wrap">{snowVal((session.snowCase as any).short_description)}</p>
                 </Collapsible>
               )}
             </div>
@@ -342,6 +353,70 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
           )}
         </div>
       </details>
+    </div>
+  );
+}
+
+function SnowRecord({ label, record, tableUrl }: { label: string; record: any; tableUrl: string }) {
+  const num   = snowVal(record.number);
+  const state = snowVal(record.state);
+  const desc  = snowVal(record.short_description);
+  const fullDesc = snowVal(record.description);
+  const priority = snowVal(record.priority);
+  const assignedTo = snowVal(record.assigned_to);
+  const openedAt = snowVal(record.opened_at)?.slice(0, 10);
+
+  // Work notes: comes back as array of note objects or raw string
+  const rawNotes = record._workNotes;
+  const noteLines: string[] = [];
+  if (rawNotes) {
+    if (Array.isArray(rawNotes)) {
+      for (const n of rawNotes.slice(0, 10)) {
+        const who = snowVal(n.created_by ?? n.sys_created_by ?? '');
+        const when = snowVal(n.sys_created_on ?? n.created_on ?? '').slice(0, 10);
+        const value = snowVal(n.value ?? n.work_notes ?? n.comments ?? '');
+        if (value) noteLines.push(`[${when}] ${who}: ${value.slice(0, 200)}`);
+      }
+    } else if (typeof rawNotes === 'string') {
+      noteLines.push(...rawNotes.split('\n').filter(Boolean).slice(0, 10));
+    } else if (typeof rawNotes === 'object') {
+      const entries = Object.entries(rawNotes as object).slice(0, 6);
+      for (const [k, v] of entries) {
+        noteLines.push(`${k}: ${String(v).slice(0, 150)}`);
+      }
+    }
+  }
+
+  return (
+    <div className="rounded border border-gray-800 bg-gray-950/50 p-2.5 space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{label}</span>
+          <span className="font-mono text-xs text-altera-teal">{num}</span>
+          {state  && <span className="text-[11px] text-gray-400 bg-gray-800 rounded px-1.5">{state}</span>}
+          {priority && <span className="text-[11px] text-yellow-400 bg-yellow-950/40 border border-yellow-900/50 rounded px-1.5">P{priority}</span>}
+          {assignedTo && <span className="text-[11px] text-gray-500">{assignedTo}</span>}
+          {openedAt   && <span className="text-[11px] text-gray-600">{openedAt}</span>}
+        </div>
+        <a href={tableUrl} target="_blank" rel="noreferrer" className="text-altera-teal hover:text-white shrink-0">
+          <ExternalLink size={11} />
+        </a>
+      </div>
+      {desc && <p className="text-xs text-gray-300">{desc}</p>}
+      {fullDesc && fullDesc !== desc && (
+        <Collapsible label="Full description">
+          <p className="text-xs text-gray-400 whitespace-pre-wrap">{fullDesc.slice(0, 800)}</p>
+        </Collapsible>
+      )}
+      {noteLines.length > 0 && (
+        <Collapsible label={`Work notes (${noteLines.length})`}>
+          <div className="space-y-1">
+            {noteLines.map((n, i) => (
+              <p key={i} className="text-xs text-gray-400 whitespace-pre-wrap border-b border-gray-800 pb-1 last:border-0">{n}</p>
+            ))}
+          </div>
+        </Collapsible>
+      )}
     </div>
   );
 }
