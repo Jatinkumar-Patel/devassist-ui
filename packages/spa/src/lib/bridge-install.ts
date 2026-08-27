@@ -27,7 +27,10 @@ export function getBridgeInstallCommands(): {
   powershell: string;
   cmdDaily: string;
   powershellDaily: string;
+  autoStartPowershell: string;
+  autoStartCmd: string;
   verifyUrl: string;
+  appUrl: string;
   repoSlug: string;
   localFolder: string;
 } {
@@ -54,12 +57,42 @@ export function getBridgeInstallCommands(): {
     `elseif (Test-Path "${localFolder}") { npx --yes degit ${repoSlug} "${localFolder}" --force; Set-Location "${localFolder}"; npm install; npm run bridge } ` +
     `else { npx --yes degit ${repoSlug} "${localFolder}"; Set-Location "${localFolder}"; npm install; npm run bridge }`;
 
+  // ── Auto-start via Windows Task Scheduler ─────────────────────────────────
+  // Run once after first-time install. Bridge will start automatically at every Windows login.
+  // No admin required — registers task for current user only.
+  const bridgeFolder = `$env:USERPROFILE\\source\\${localFolder}`;
+  const autoStartPowershell = [
+    // 1. Ensure the repo is installed first
+    `$f="${bridgeFolder}";`,
+    `if (-not (Test-Path "$f\\node_modules")) { Write-Error "Run the first-time install command first, then register auto-start."; exit 1 };`,
+    // 2. Register Task Scheduler task
+    `$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c cd /d \\"$f\\" && npm run bridge >> \\"$env:USERPROFILE\\devassist-bridge.log\\" 2>&1";`,
+    `$trigger = New-ScheduledTaskTrigger -AtLogOn;`,
+    `$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0 -RestartCount 5 -RestartInterval (New-TimeSpan -Minutes 2);`,
+    `Register-ScheduledTask -TaskName 'DevAssist Bridge' -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null;`,
+    // 3. Start it now without waiting for reboot
+    `Start-ScheduledTask -TaskName 'DevAssist Bridge';`,
+    `Write-Host 'Auto-start registered and bridge started. Open https://${repoSlug.split('/')[0]}.github.io/${localFolder}/#/triage in your browser.'`,
+  ].join(' ');
+
+  // cmd equivalent (registers via schtasks.exe)
+  const autoStartCmd = [
+    `schtasks /create /tn "DevAssist Bridge"`,
+    `/tr "cmd /c cd /d \\"%USERPROFILE%\\source\\${localFolder}\\" && npm run bridge >> \\"%USERPROFILE%\\devassist-bridge.log\\" 2>&1"`,
+    `/sc ONLOGON /ru "%USERNAME%" /f`,
+    `&& schtasks /run /tn "DevAssist Bridge"`,
+    `&& echo Auto-start registered. Bridge started.`,
+  ].join(' ');
+
   return {
     cmd,
     powershell,
     cmdDaily,
     powershellDaily,
+    autoStartPowershell,
+    autoStartCmd,
     verifyUrl: 'http://localhost:7447/api/status',
+    appUrl: `https://jatinkumar-patel.github.io/${localFolder}/#/triage`,
     repoSlug,
     localFolder,
   };

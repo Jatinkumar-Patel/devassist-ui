@@ -62,7 +62,6 @@ export default function SetupWizard({ onDone }: Props) {
   const [bridgeOk, setBridgeOk]   = useState<boolean | null>(null);
   const [testing, setTesting]     = useState(false);
   const [mcpConfig, setMcpConfig] = useState<McpConfig | null>(null);
-  const [showFirstTime, setShowFirstTime] = useState(false);
 
   // After bridge connects, fetch mcp.json PATs automatically
   const loadMcpConfig = async (): Promise<McpConfig | null> => {
@@ -166,55 +165,55 @@ export default function SetupWizard({ onDone }: Props) {
           {/* ── Step 1: Bridge ──────────────────────────────────────────────── */}
           {step === 'bridge' && (
             <>
-              <h2 className="text-lg font-semibold text-gray-100">Start the local bridge</h2>
+              <h2 className="text-lg font-semibold text-gray-100">Set up the local bridge</h2>
               <p className="text-sm text-gray-400">
-                The bridge is a tiny local server that connects to ServiceNow using your
-                Windows login. It runs on your machine — nothing is sent to any cloud.
+                The bridge is a tiny background service that connects to ServiceNow using your
+                Windows login. Do this <strong className="text-gray-200">once</strong> — it will start
+                automatically every time Windows starts. No daily commands needed.
               </p>
-              <div className="space-y-2">
-                <p className="text-xs text-gray-500 font-medium">Daily start:</p>
-                <div className="bg-gray-950 rounded-lg p-3 border border-gray-800 space-y-2">
-                  <CopyableCommand label="Daily start (cmd)" value={installCmds.cmdDaily} />
-                  <CopyableCommand label="Daily start (PowerShell)" value={installCmds.powershellDaily} />
+
+              {/* ── Phase A: First-time install ───────────────────── */}
+              <div className="rounded-lg border border-blue-700/50 bg-blue-950/30 p-4 space-y-3">
+                <p className="text-xs font-semibold text-blue-300 uppercase tracking-wide">Step 1 — Install once (new machine)</p>
+                <p className="text-[11px] text-gray-400">Open a terminal, paste one of these commands and press Enter. Safe from any folder including System32.</p>
+                <div className="bg-gray-950 rounded-lg p-3 border border-gray-800 space-y-3">
+                  <CopyableCommand label="PowerShell (recommended)" value={installCmds.powershell} />
+                  <CopyableCommand label="Command Prompt (cmd)" value={installCmds.cmd} />
                 </div>
+                <p className="text-[11px] text-gray-500">
+                  Node.js ≥ 18 required —{' '}
+                  <a href="https://nodejs.org" target="_blank" rel="noreferrer" className="text-altera-teal hover:underline">download here</a>.
+                  Clones the repo to <span className="font-mono">%USERPROFILE%\source\{installCmds.localFolder}</span> and starts bridge.
+                </p>
               </div>
-              <div className="rounded-lg border border-gray-800 bg-gray-950/40 p-3 space-y-2">
-                <button
-                  type="button"
-                  onClick={() => setShowFirstTime((v) => !v)}
-                  className="w-full flex items-center justify-between gap-2 text-left text-xs text-gray-300 hover:text-white"
-                >
-                  <span>First-time setup or folder missing</span>
-                  <span className="text-gray-500">{showFirstTime ? 'Hide' : 'Show'}</span>
-                </button>
-                {showFirstTime && (
-                  <div className="space-y-2">
-                    <p className="text-[11px] text-gray-500">
-                      Safe from any folder, including System32. Also fixes <span className="font-mono text-amber-300">"destination not empty"</span> errors.
-                    </p>
-                    <div className="bg-gray-950 rounded-lg p-3 border border-gray-800 space-y-2">
-                      <CopyableCommand label="First time / folder exists or empty (cmd)" value={installCmds.cmd} />
-                      <CopyableCommand label="First time / folder exists or empty (PowerShell)" value={installCmds.powershell} />
-                    </div>
-                  </div>
-                )}
+
+              {/* ── Phase B: Register auto-start ───────────────────── */}
+              <div className="rounded-lg border border-emerald-700/50 bg-emerald-950/30 p-4 space-y-3">
+                <p className="text-xs font-semibold text-emerald-300 uppercase tracking-wide">Step 2 — Register auto-start (run after Step 1)</p>
+                <p className="text-[11px] text-gray-400">
+                  After Step 1 completes, paste this command to register the bridge as a Windows auto-start task.
+                  After this, the bridge starts automatically at login — <strong className="text-gray-200">you never need to run any command again</strong>.
+                </p>
+                <div className="bg-gray-950 rounded-lg p-3 border border-gray-800 space-y-3">
+                  <CopyableCommand label="Register auto-start — PowerShell (run once after Step 1)" value={installCmds.autoStartPowershell} />
+                  <CopyableCommand label="Register auto-start — Command Prompt" value={installCmds.autoStartCmd} />
+                </div>
+                <p className="text-[11px] text-gray-500">
+                  Registers a Windows Task Scheduler task for your user only (no admin needed).
+                  Log file: <span className="font-mono">%USERPROFILE%\devassist-bridge.log</span>
+                </p>
               </div>
-              <p className="text-xs text-gray-600">
-                Open a new terminal, paste the command above, and press Enter.
-                Node.js ≥ 18 required —{' '}
-                <a href="https://nodejs.org" target="_blank" rel="noreferrer"
-                   className="text-altera-teal hover:underline">download here</a>.
-              </p>
-              <p className="text-xs text-gray-500">
-                After command completes, verify bridge is running at <span className="font-mono">{installCmds.verifyUrl}</span>.
-              </p>
+
+              {/* ── Phase C: Bookmark URL ───────────────────── */}
+              <div className="rounded-lg border border-altera-teal/40 bg-altera-teal/10 p-4 space-y-2">
+                <p className="text-xs font-semibold text-altera-teal uppercase tracking-wide">Step 3 — Bookmark this URL</p>
+                <p className="text-[11px] text-gray-400">After auto-start is registered, this is the only URL you need. Share it with your team.</p>
+                <CopyableCommand label="App URL (bookmark this)" value={installCmds.appUrl} />
+              </div>
+
               {window.location.protocol === 'https:' ? (
-                <div className="rounded-lg border border-altera-teal/40 bg-altera-teal/10 p-4 space-y-3">
-                  <p className="text-sm text-altera-teal font-medium">✓ You're on GitHub Pages</p>
-                  <p className="text-xs text-gray-400">
-                    Once the bridge is running on your machine, open the app directly at the bridge URL.
-                    Browsers block connections from HTTPS pages to local HTTP servers.
-                  </p>
+                <div className="space-y-2 pt-1">
+                  <p className="text-[11px] text-gray-500 text-center">Already installed and auto-start registered? Click below.</p>
                   <a
                     href={bridgeBase}
                     className="flex items-center justify-center gap-2 bg-altera-blue hover:bg-altera-blue/80
@@ -223,7 +222,7 @@ export default function SetupWizard({ onDone }: Props) {
                     <Wifi size={14} />
                     Open app at {bridgeBase}
                   </a>
-                  <p className="text-xs text-gray-600 text-center">Bridge must be running first (see command above)</p>
+                  <p className="text-[11px] text-gray-600 text-center">This only works after the bridge is running</p>
                 </div>
               ) : (
                 <div className="flex items-center gap-3 pt-2">

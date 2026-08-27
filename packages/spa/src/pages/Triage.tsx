@@ -238,58 +238,43 @@ function CopyableCommand({ label, value }: { label: string; value: string }) {
   );
 }
 
-function FirstTimeCommands({ cmd, powershell }: { cmd: string; powershell: string }) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="rounded-lg border border-white/10 bg-white/5 p-2.5 space-y-2">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between gap-2 text-left text-xs text-gray-300 hover:text-white font-sans"
-      >
-        <span>First-time setup or folder missing</span>
-        <span className="text-gray-500">{open ? 'Hide' : 'Show'}</span>
-      </button>
-      {open && (
-        <div className="space-y-2">
-          <p className="text-[11px] text-gray-400 font-sans">Safe from any folder, including System32.</p>
-          <CopyableCommand label="First time / folder missing (cmd)" value={cmd} />
-          <CopyableCommand label="First time / folder missing (PowerShell)" value={powershell} />
-        </div>
-      )}
-    </div>
-  );
-}
-
 function BridgeOfflineBanner({ installCmds, bridgeUrl }: { installCmds: ReturnType<typeof getBridgeInstallCommands>; bridgeUrl: string }) {
   const isHttps = window.location.protocol === 'https:';
+  const [showManual, setShowManual] = useState(false);
 
   return (
     <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-4 space-y-3">
-      <div className="flex items-start gap-2">
-        <div className="flex-1 space-y-1">
-          <p className="text-sm text-amber-100 font-semibold">⚡ Bridge not running — start it first</p>
-          {isHttps && (
-            <p className="text-xs text-amber-200/80">
-              You're on GitHub Pages (HTTPS). The bridge runs on <strong>your local machine</strong>.
-              Run one of the commands below in a terminal, then click the link.
-            </p>
-          )}
+      <p className="text-sm text-amber-100 font-semibold">⚡ Bridge not running</p>
+
+      {/* ── Recommended: register auto-start so this never happens again ── */}
+      <div className="rounded-lg border border-emerald-700/60 bg-emerald-950/40 p-3 space-y-2">
+        <p className="text-[11px] font-semibold text-emerald-300">Permanent fix — register bridge as Windows auto-start (do once, never see this again):</p>
+        <div className="bg-gray-950/80 rounded-lg p-2 space-y-2 text-xs font-mono">
+          {/* First-time install */}
+          <CopyableCommand label="Step 1 — Install bridge once (PowerShell)" value={installCmds.powershell} />
+          <CopyableCommand label="Step 2 — Register auto-start (PowerShell, run after Step 1)" value={installCmds.autoStartPowershell} />
         </div>
+        <p className="text-[11px] text-gray-400">After Step 2: bridge auto-starts at Windows login. Just bookmark <span className="font-mono text-cyan-300">{installCmds.appUrl}</span></p>
       </div>
 
-      <div className="bg-gray-950/70 rounded-lg border border-white/10 p-3 space-y-3 text-xs font-mono">
-        <CopyableCommand label="Start bridge — PowerShell (paste &amp; run)" value={installCmds.powershellDaily} />
-        <CopyableCommand label="Start bridge — Command Prompt (cmd)" value={installCmds.cmdDaily} />
-        <FirstTimeCommands cmd={installCmds.cmd} powershell={installCmds.powershell} />
-      </div>
+      {/* ── Manual daily start fallback ── */}
+      <button
+        type="button"
+        onClick={() => setShowManual(v => !v)}
+        className="text-[11px] text-amber-200/70 hover:text-amber-200 underline"
+      >
+        {showManual ? 'Hide' : 'Already installed? Just start it for today instead'}
+      </button>
+      {showManual && (
+        <div className="bg-gray-950/70 rounded-lg border border-white/10 p-3 space-y-2 text-xs font-mono">
+          <CopyableCommand label="Start today — PowerShell" value={installCmds.powershellDaily} />
+          <CopyableCommand label="Start today — cmd" value={installCmds.cmdDaily} />
+        </div>
+      )}
 
-      {isHttps ? (
-        <div className="space-y-1.5">
-          <p className="text-[11px] text-amber-200/70">
-            After the bridge starts (watch for &quot;Bridge listening on port 7447&quot;), click:
-          </p>
+      {isHttps && (
+        <div className="space-y-1">
+          <p className="text-[11px] text-amber-200/60">After bridge starts, open the app here (not GitHub Pages):</p>
           <a
             href={bridgeUrl}
             className="inline-flex items-center gap-2 bg-amber-500/20 border border-amber-500/60 hover:bg-amber-500/30 text-amber-100 px-4 py-2 rounded-lg text-sm font-medium w-full justify-center"
@@ -298,10 +283,6 @@ function BridgeOfflineBanner({ installCmds, bridgeUrl }: { installCmds: ReturnTy
             Open app at {bridgeUrl}
           </a>
         </div>
-      ) : (
-        <p className="text-xs text-amber-200/70">
-          After the bridge starts, refresh this page.
-        </p>
       )}
     </div>
   );
@@ -801,36 +782,18 @@ export default function TriagePage() {
             <>
               {isLocalBridgeUrl(bridgeUrl) ? (
                 <>
-                  <p className="text-xs text-gray-300">Use Daily Start below, then keep that terminal open:</p>
-                  <div className="text-xs font-mono text-cyan-200 bg-gray-950/70 border border-white/10 rounded-lg p-2 overflow-x-auto space-y-2">
-                    <CopyableCommand label="Daily start (cmd)" value={installCmds.cmdDaily} />
-                    <CopyableCommand label="Daily start (PowerShell)" value={installCmds.powershellDaily} />
+                  <p className="text-xs text-gray-300 font-medium">New machine? Do these two steps once:</p>
+                  <div className="bg-gray-950/70 border border-white/10 rounded-lg p-2 space-y-2 text-xs font-mono">
+                    <CopyableCommand label="Step 1 — Install (PowerShell)" value={installCmds.powershell} />
+                    <CopyableCommand label="Step 2 — Register auto-start (PowerShell, after Step 1)" value={installCmds.autoStartPowershell} />
                   </div>
-                  <FirstTimeCommands cmd={installCmds.cmd} powershell={installCmds.powershell} />
-                  <p className="text-xs text-gray-400">Verify bridge: <span className="font-mono">{installCmds.verifyUrl}</span></p>
-                  <p className="text-xs text-gray-400">Then open:</p>
+                  <p className="text-[11px] text-emerald-300/80">After Step 2 — bridge starts automatically at every Windows login. No daily commands needed.</p>
+                  <p className="text-[11px] text-gray-400">Bookmark this URL and share with your team:</p>
                 </>
               ) : (
-                <p className="text-xs text-gray-300">This environment uses a managed bridge server. End users only need the URL below.</p>
+                <p className="text-xs text-gray-300">Managed bridge — end users only need the URL below.</p>
               )}
-              {window.location.protocol === 'https:' ? (
-                <a
-                  href={bridgeUrl}
-                  className="flex items-center gap-1.5 text-xs font-medium text-emerald-300 hover:text-emerald-200 break-all"
-                >
-                  <ExternalLink size={11}/>
-                  Open app at {bridgeUrl} (bridge must be running first)
-                </a>
-              ) : (
-                <a
-                  href="https://jatinkumar-patel.github.io/devassist-ui/#/triage"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs text-cyan-300 hover:text-cyan-200 break-all"
-                >
-                  https://jatinkumar-patel.github.io/devassist-ui/#/triage
-                </a>
-              )}
+              <CopyableCommand label="App URL (bookmark this)" value={installCmds.appUrl} />
             </>
           )}
         </div>
