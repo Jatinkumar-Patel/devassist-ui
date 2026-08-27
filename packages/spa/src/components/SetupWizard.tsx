@@ -48,7 +48,10 @@ function CopyableCommand({ label, value }: { label: string; value: string }) {
           {copied ? '✓ Copied' : 'Copy'}
         </button>
       </div>
-      <pre className="px-3 py-2.5 text-xs text-cyan-300 font-mono overflow-x-auto whitespace-pre leading-relaxed">{value}</pre>
+      <div className="relative">
+        <pre className="px-3 py-2.5 text-xs text-cyan-300 font-mono overflow-x-auto whitespace-pre leading-relaxed">{value}</pre>
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-gray-950 to-transparent" />
+      </div>
     </div>
   );
 }
@@ -152,8 +155,8 @@ export default function SetupWizard({ onDone }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-950/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-lg shadow-2xl">
+    <div className="fixed inset-0 bg-gray-950/90 backdrop-blur-sm z-50 flex items-start justify-center p-4 overflow-y-auto">
+      <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-2xl shadow-2xl my-auto">
 
         {/* Progress dots */}
         <div className="flex gap-2 justify-center pt-6 pb-2">
@@ -225,16 +228,16 @@ export default function SetupWizard({ onDone }: Props) {
 
               {window.location.protocol === 'https:' ? (
                 <div className="space-y-2 pt-1">
-                  <p className="text-[11px] text-gray-500 text-center">Already installed and auto-start registered? Click below.</p>
+                  <p className="text-[11px] text-gray-500 text-center">Done with Steps 1 &amp; 2? Click below to open your app.</p>
                   <a
                     href={bridgeBase}
                     className="flex items-center justify-center gap-2 bg-altera-blue hover:bg-altera-blue/80
                                text-white px-4 py-2.5 rounded-lg text-sm font-medium w-full"
                   >
                     <Wifi size={14} />
-                    Open app at {bridgeBase}
+                    Open my app (bridge must be running)
                   </a>
-                  <p className="text-[11px] text-gray-600 text-center">This only works after the bridge is running</p>
+                  <p className="text-[11px] text-gray-600 text-center">This opens your local bridge which serves the full app</p>
                 </div>
               ) : (
                 <div className="flex items-center gap-3 pt-2">

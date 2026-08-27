@@ -237,7 +237,10 @@ function CopyableCommand({ label, value }: { label: string; value: string }) {
           {copied ? '✓ Copied' : 'Copy'}
         </button>
       </div>
-      <pre className="px-3 py-2.5 text-xs text-cyan-300 font-mono overflow-x-auto whitespace-pre leading-relaxed">{value}</pre>
+      <div className="relative">
+        <pre className="px-3 py-2.5 text-xs text-cyan-300 font-mono overflow-x-auto whitespace-pre leading-relaxed">{value}</pre>
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-gray-950 to-transparent" />
+      </div>
     </div>
   );
 }
