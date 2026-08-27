@@ -32,7 +32,8 @@ interface LogAnalysisResult {
 }
 
 interface Props {
-  snowTask: SnowTask;
+  snowTask?: SnowTask | null;
+  snowTaskNumber?: string;
   autoResult?: LogAnalysisResult | null;
   onResult?: (hits: LogHit[], topSeeds: Record<string, number>) => void;
 }
@@ -51,12 +52,14 @@ const SEVERITY_COLOR = {
   medium:   'border-yellow-700 bg-yellow-950/20 text-yellow-300',
 };
 
-export default function LogAnalysisPanel({ snowTask, autoResult, onResult }: Props) {
+export default function LogAnalysisPanel({ snowTask, snowTaskNumber, autoResult, onResult }: Props) {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<LogAnalysisResult | null>(autoResult ?? null);
   const [error, setError] = useState('');
+  const [manualSysId, setManualSysId] = useState('');
 
-  const sysId = snowVal(snowTask.sys_id);
+  const autoSysId = snowTask ? snowVal(snowTask.sys_id) : '';
+  const sysId = autoSysId || manualSysId.trim();
 
   const analyze = async () => {
     if (!sysId) return;
@@ -77,17 +80,46 @@ export default function LogAnalysisPanel({ snowTask, autoResult, onResult }: Pro
 
   return (
     <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-medium text-gray-400 flex items-center gap-1.5">
-          <FileSearch size={13} /> Log Scan (Phase 2)
+          <FileSearch size={13} /> Log Scan
+          {snowTaskNumber && <span className="text-gray-600 font-mono">{snowTaskNumber}</span>}
+          {autoSysId && <span className="text-gray-600 font-mono text-[10px]">sysId: {autoSysId.slice(0, 8)}…</span>}
         </p>
         <button onClick={analyze} disabled={running || !sysId}
           className="flex items-center gap-1.5 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-40
                      border border-gray-600 text-gray-300 px-3 py-1.5 rounded font-medium">
           {running ? <Loader2 size={11} className="animate-spin" /> : <FileSearch size={11} />}
-          {running ? 'Analyzing logs…' : result ? 'Re-run' : 'Analyze logs'}
+          {running ? 'Analyzing…' : result ? 'Re-run' : 'Analyze logs'}
         </button>
       </div>
+
+      {/* Manual sysId entry when SNOW task not auto-fetched */}
+      {!autoSysId && (
+        <div className="rounded-lg border border-amber-800/50 bg-amber-950/20 p-3 space-y-2">
+          <p className="text-[11px] text-amber-300">
+            SNOW task not auto-fetched (task may be in an unlisted table or VPN issue).
+            Paste the SNOW record <strong>sys_id</strong> manually to run log analysis:
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={manualSysId}
+              onChange={(e) => setManualSysId(e.target.value)}
+              placeholder="e.g. 1a2b3c4d5e6f7890abcdef1234567890"
+              className="flex-1 bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs font-mono text-gray-200 placeholder-gray-600 focus:outline-none focus:border-cyan-600"
+            />
+            <button
+              onClick={analyze}
+              disabled={running || !manualSysId.trim()}
+              className="text-xs bg-cyan-800/50 hover:bg-cyan-700/60 border border-cyan-700/60 text-cyan-200 px-3 py-1 rounded disabled:opacity-40 font-medium"
+            >
+              {running ? 'Running…' : 'Run'}
+            </button>
+          </div>
+          <p className="text-[10px] text-gray-600">Find sys_id: open the SNOW task → right-click → Copy sys_id, or from the SNOW URL.</p>
+        </div>
+      )}
 
       {error && <p className="text-xs text-red-400">{error}</p>}
 

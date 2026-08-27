@@ -211,14 +211,17 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
         <AnalysisPanel session={session} onAnalysisComplete={onAnalysisComplete} />
       )}
 
-      {/* Log Scan */}
-      {session.status === 'ready' && snowTask && (
+      {/* Log Scan — always show; manual sysId entry if SNOW task not auto-fetched */}
+      {session.status === 'ready' && (
         <LogAnalysisPanel
-          snowTask={snowTask}
-          autoResult={(snowTask as any)._logAnalysis ?? null}
+          snowTask={snowTask ?? null}
+          snowTaskNumber={session.snowTaskNumber ?? snowVal((snowTask as any)?.number)}
+          autoResult={(snowTask as any)?._logAnalysis ?? null}
           onResult={(hits, topSeeds) => {
-            (snowTask as any)._logHits = hits;
-            (snowTask as any)._topSeeds = topSeeds;
+            if (snowTask) {
+              (snowTask as any)._logHits = hits;
+              (snowTask as any)._topSeeds = topSeeds;
+            }
           }}
         />
       )}

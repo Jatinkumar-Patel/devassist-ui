@@ -93,14 +93,16 @@ async function snowFetchDecoded(url: string): Promise<unknown> {
   }
 }
 
-// GET /api/snow/task/:number — auto-detects incident_task vs sc_task
+// GET /api/snow/task/:number — auto-detects across all known Allscripts task tables
 snowRouter.get('/task/:number', async (req: Request, res: Response) => {
   const { number } = req.params;
   if (!/^TASK\d+$/i.test(number)) {
     return res.status(400).json({ error: 'Expected TASK… number' });
   }
   const num = number.toUpperCase();
-  for (const table of ['incident_task', 'sc_task']) {
+  // Try all known Allscripts SNOW task tables in priority order
+  const tables = ['incident_task', 'sc_task', 'u_pltf_task', 'change_task', 'sc_req_item', 'sn_customerservice_task'];
+  for (const table of tables) {
     try {
       const url = `${SNOW_BASE}/GetTableJSON/?tablename=${table}&sysparm_query=number=${num}`;
       const decoded = snowDecode(await snowFetch(url)) as { result?: unknown[] };
@@ -108,7 +110,7 @@ snowRouter.get('/task/:number', async (req: Request, res: Response) => {
       if (records.length > 0) return res.json({ result: records, table });
     } catch { /* try next table */ }
   }
-  return res.status(404).json({ error: `Task ${num} not found in incident_task or sc_task` });
+  return res.status(404).json({ error: `Task ${num} not found in any known task table (tried: ${tables.join(', ')})` });
 });
 
 // GET /api/snow/worknotes/:sysId — work notes + comments (separate endpoint per skill)
