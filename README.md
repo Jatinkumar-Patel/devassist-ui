@@ -1,22 +1,31 @@
 # DevAssist UI
 
-DevAssist UI is a local triage assistant that runs two services:
-1. Bridge API on port `7447`
-2. SPA UI on port `5173`
+DevAssist UI supports two deployment modes:
+1. Static end-user app with a managed bridge server (recommended for enterprise rollout)
+2. Local developer mode with local bridge + local SPA
 
-## End-User Quick Start (Windows)
+## Enterprise End-User Mode (Static First)
 
-### Easiest way
-1. Double-click `start.bat` from the repo root.
-2. Wait for startup to finish.
-3. Open `http://localhost:5173/triage`.
+End users should only open the static app URL and should not need to run local commands.
 
-`start.bat` automatically:
-- verifies `npm` is installed,
-- runs `npm install` on first run,
-- starts the bridge and UI together.
+Requirements:
+1. Host SPA static assets (GitHub Pages or internal static host)
+2. Host a managed bridge API service in your network
+3. Configure `VITE_BRIDGE_URL` at build time to the managed bridge URL
 
-## Manual Start (Developer)
+Example build configuration:
+
+```powershell
+$env:VITE_BRIDGE_URL = "https://devassist-bridge.company.net"
+npm run build --workspace=packages/spa
+```
+
+Behavior:
+1. SPA uses `VITE_BRIDGE_URL` when provided
+2. If missing, SPA falls back to `http://localhost:7447`
+3. Triage page shows a clear bridge-unreachable banner when the bridge cannot be reached
+
+## Local Developer Mode
 
 From repo root:
 
@@ -25,7 +34,7 @@ npm install
 npm run dev
 ```
 
-Then open:
+Open:
 
 ```text
 http://localhost:5173/triage
@@ -33,20 +42,20 @@ http://localhost:5173/triage
 
 ## Bridge-Only Start (Auto Build)
 
-If you want to run the compiled bridge that serves the built SPA:
+To run the compiled bridge that serves built SPA assets:
 
 ```powershell
 npm run bridge
 ```
 
-This command now auto-builds both:
-- `packages/spa` (`dist` assets)
-- `packages/bridge` (`dist` runtime)
+This command auto-builds:
+1. `packages/spa` (`dist` assets)
+2. `packages/bridge` (`dist` runtime)
 
 ## Requirements
 
-- Node.js LTS (includes npm)
+1. Node.js LTS (includes npm)
 
 ## Stop the App
 
-Press `Ctrl+C` in the terminal running `npm run dev`.
+Press `Ctrl+C` in the terminal running `npm run dev` or `npm run bridge`.

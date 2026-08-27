@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react';
-import { ClipboardCopy, Code2, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Wrench, Lightbulb, Sparkles, GitCommit, Bug, TestTube } from 'lucide-react';
+import { ClipboardCopy, Code2, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Wrench, Lightbulb, Sparkles, GitCommit, Bug, TestTube, Mail } from 'lucide-react';
 import type { TriageAnalysis, TriageSession } from '../types';
 import { matchPattern, runCodeSearch, buildSkillDrivenAssessment } from '../lib/analysis';
 import { useSettingsStore } from '../store/settings';
@@ -54,10 +54,46 @@ function formatSnowEvidence(evidence: string[]): string[] {
     .slice(0, 10);
 }
 
+function buildAnalysisEmail(session: TriageSession, analysis: TriageAnalysis, snowEvidenceRows: string[]): string {
+  const title = session.adoItem?.fields['System.Title'] ?? 'Triage Analysis';
+  const workItemId = session.adoItem?.id;
+  const workItemType = session.adoItem?.fields['System.WorkItemType'] ?? 'Work Item';
+  const verdict = analysis.verdict ?? 'NEED MORE INFO';
+  const confidence = analysis.confidence ?? 'Low';
+  const subject = `${workItemType}${workItemId ? ` #${workItemId}` : ''} - ${verdict} (${confidence})`;
+
+  const evidenceBlock = snowEvidenceRows.length
+    ? snowEvidenceRows.slice(0, 6).map((x) => `- ${x}`).join('\n')
+    : '- No SNOW evidence captured';
+
+  const body = [
+    'DevAssist Analysis Summary',
+    '',
+    `Title: ${title}`,
+    `Verdict: ${verdict}`,
+    `Confidence: ${confidence}`,
+    '',
+    'Top Evidence:',
+    evidenceBlock,
+    '',
+    'Code Analysis:',
+    analysis.codeAnalysis.slice(0, 1200),
+    '',
+    'Gap / Recommendation:',
+    analysis.gap.slice(0, 1200),
+    '',
+    'Blind Spots:',
+    (analysis.blindSpots.length ? analysis.blindSpots : ['None']).map((x) => `- ${x}`).join('\n'),
+  ].join('\n');
+
+  return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
   const { githubPat } = useSettingsStore();
   const [running, setRunning] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   const { adoItem, product, snowTask, analysis } = session;
 
@@ -110,6 +146,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
 
   const verdictStyle = VERDICT_STYLE[analysis.verdict ?? 'NEED MORE INFO'] ?? VERDICT_STYLE['NEED MORE INFO'];
   const snowEvidenceRows = formatSnowEvidence(analysis.snowEvidence);
+  const emailHref = buildAnalysisEmail(session, analysis, snowEvidenceRows);
 
   const copyL2 = () => {
     if (analysis.l2Draft) {
@@ -119,8 +156,29 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
     }
   };
 
+  const panelShell = expanded
+    ? 'fixed inset-3 z-50 overflow-auto rounded-2xl border border-cyan-500/40 bg-slate-950 shadow-2xl shadow-black/60'
+    : 'space-y-3';
+
   return (
-    <div className="space-y-3">
+    <div className={panelShell}>
+      {expanded && (
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-white/10 bg-slate-950/95 px-4 py-3 backdrop-blur">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-cyan-300">Expanded comment view</p>
+            <p className="text-sm text-gray-300">Use this when you want the analysis and commentary draft in a larger page.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            className="text-xs px-3 py-1.5 rounded-lg border border-cyan-400/40 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20"
+          >
+            Collapse view
+          </button>
+        </div>
+      )}
+
+      <div className="space-y-3 p-0" style={expanded ? { padding: '1rem' } : undefined}>
       {/* Verdict */}
       <div className={`rounded-lg border p-4 space-y-3 ${verdictStyle.color}`}>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -128,13 +186,22 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
             {verdictStyle.icon}
             Assessment: {analysis.verdict}
           </div>
-          <span className={`text-xs px-2 py-0.5 rounded-full border ${
-            analysis.confidence === 'High'   ? 'border-emerald-700 text-emerald-400' :
-            analysis.confidence === 'Medium' ? 'border-yellow-700 text-yellow-400' :
-                                               'border-gray-700 text-gray-400'
-          }`}>
-            Confidence: {analysis.confidence}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`text-xs px-2 py-0.5 rounded-full border ${
+              analysis.confidence === 'High'   ? 'border-emerald-700 text-emerald-400' :
+              analysis.confidence === 'Medium' ? 'border-yellow-700 text-yellow-400' :
+                                                 'border-gray-700 text-gray-400'
+            }`}>
+              Confidence: {analysis.confidence}
+            </span>
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-200 hover:border-cyan-400/50 hover:text-white"
+            >
+              {expanded ? 'Collapse view' : 'Expand view'}
+            </button>
+          </div>
         </div>
         <pre className="text-xs opacity-80 whitespace-pre-wrap font-sans">{analysis.clientReported}</pre>
       </div>
@@ -269,10 +336,25 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
         <div className="rounded-lg border border-altera-blue/40 bg-altera-blue/10 p-4 space-y-2">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <p className="text-xs font-medium text-altera-teal">L2 Commentary Draft (review before posting)</p>
-            <button onClick={copyL2}
-              className="flex items-center gap-1 text-xs text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 px-2 py-1 rounded">
-              {copied ? <><CheckCircle2 size={11} className="text-emerald-400" /> Copied</> : <><ClipboardCopy size={11} /> Copy</>}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="flex items-center gap-1 text-xs text-gray-300 hover:text-white border border-gray-700 hover:border-gray-500 px-2 py-1 rounded"
+              >
+                {expanded ? 'Collapse view' : 'Expand view'}
+              </button>
+              <a
+                href={emailHref}
+                className="flex items-center gap-1 text-xs text-gray-300 hover:text-white border border-gray-700 hover:border-gray-500 px-2 py-1 rounded"
+              >
+                <Mail size={11} /> Share via Email
+              </a>
+              <button onClick={copyL2}
+                className="flex items-center gap-1 text-xs text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 px-2 py-1 rounded">
+                {copied ? <><CheckCircle2 size={11} className="text-emerald-400" /> Copied</> : <><ClipboardCopy size={11} /> Copy</>}
+              </button>
+            </div>
           </div>
           <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono leading-relaxed max-h-48 overflow-auto">
             {analysis.l2Draft}
@@ -287,6 +369,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
         {running ? <Loader2 size={11} className="animate-spin" /> : <Code2 size={11} />}
         Re-analyze
       </button>
+      </div>
     </div>
   );
 }

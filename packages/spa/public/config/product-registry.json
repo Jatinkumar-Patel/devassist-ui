@@ -8,10 +8,14 @@
       "snowProduct": "Sunrise Ambulatory Care",
       "snowTaskTable": "sc_task",
       "repos": [
-        { "key": "aimanager", "owner": "allscriptshealthcare", "repo": "plhlt-aimanager-npm", "required": true }
+        { "key": "shm", "owner": "allscriptshealthcare", "repo": "plhlt-shm-npm", "required": true }
       ],
       "mtmPlans": [],
-      "skillPath": ""
+      "skillPath": "",
+      "githubSkillPaths": [
+        "https://github.com/allscriptshealthcare/plhlt-shm-npm/tree/main/skills/devassist-triage/areas/shm",
+        "https://github.com/allscriptshealthcare/shared-skills/tree/main/skills/devassist-triage"
+      ]
     },
     {
       "id": "sunrise-mobile",
@@ -24,7 +28,11 @@
         { "key": "HWS",           "owner": "allscriptshealthcare", "repo": "sunrise-mobilewebservices", "required": true }
       ],
       "mtmPlans": [],
-      "skillPath": "skills/devassist-triage/areas/sunrise-mobile"
+      "skillPath": "skills/devassist-triage/areas/sunrise-mobile",
+      "githubSkillPaths": [
+        "https://github.com/allscriptshealthcare/plhlt-aimanager-npm/tree/main/skills/devassist-triage/areas/sunrise-mobile",
+        "https://github.com/allscriptshealthcare/shared-skills/tree/main/skills/devassist-triage"
+      ]
     },
     {
       "id": "aimanager",
@@ -36,7 +44,11 @@
         { "key": "aimanager", "owner": "allscriptshealthcare", "repo": "plhlt-aimanager-npm", "required": true }
       ],
       "mtmPlans": [],
-      "skillPath": ""
+      "skillPath": "",
+      "githubSkillPaths": [
+        "https://github.com/allscriptshealthcare/plhlt-aimanager-npm/tree/main/skills/devassist-triage/areas/aimanager",
+        "https://github.com/allscriptshealthcare/shared-skills/tree/main/skills/devassist-triage"
+      ]
     },
     {
       "id": "compass-scm",
@@ -46,7 +58,11 @@
       "snowTaskTable": "sc_task",
       "repos": [],
       "mtmPlans": [],
-      "skillPath": "skills/devassist-triage/areas/compass-scm"
+      "skillPath": "skills/devassist-triage/areas/compass-scm",
+      "githubSkillPaths": [
+        "https://github.com/allscriptshealthcare/plhlt-aimanager-npm/tree/main/skills/devassist-triage/areas/compass-scm",
+        "https://github.com/allscriptshealthcare/shared-skills/tree/main/skills/devassist-triage"
+      ]
     },
     {
       "id": "clindoc-scm",
@@ -58,7 +74,11 @@
         { "key": "POH-BusinessServices", "owner": "allscriptshealthcare", "repo": "POH-BusinessServices", "required": true }
       ],
       "mtmPlans": [],
-      "skillPath": "skills/devassist-triage/areas/clindoc-scm"
+      "skillPath": "skills/devassist-triage/areas/clindoc-scm",
+      "githubSkillPaths": [
+        "https://github.com/allscriptshealthcare/plhlt-aimanager-npm/tree/main/skills/devassist-triage/areas/clindoc-scm",
+        "https://github.com/allscriptshealthcare/shared-skills/tree/main/skills/devassist-triage"
+      ]
     },
     {
       "id": "schedule-webclient",
@@ -70,7 +90,11 @@
         { "key": "schedule-webclient", "owner": "allscriptshealthcare", "repo": "plhlt-schedule-webclient", "required": true }
       ],
       "mtmPlans": [],
-      "skillPath": ""
+      "skillPath": "",
+      "githubSkillPaths": [
+        "https://github.com/allscriptshealthcare/plhlt-aimanager-npm/tree/main/skills/devassist-triage/areas/schedule-webclient",
+        "https://github.com/allscriptshealthcare/shared-skills/tree/main/skills/devassist-triage"
+      ]
     }
   ]
 }

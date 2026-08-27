@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 
 // Org-level defaults — pre-configured, users never need to change these
 export const ORG_DEFAULTS = {
-  bridgeUrl: 'http://localhost:7447',
+  bridgeUrl: ((import.meta as any).env?.VITE_BRIDGE_URL as string | undefined)?.trim() || 'http://localhost:7447',
   adoBaseUrl: 'https://alm-prod-app1.rd.allscripts.com/tfs/boc_projects',
   snowViewerUrl: 'https://servicenowviewer.allscripts.com',
   registryUrl: '/config/product-registry.json',

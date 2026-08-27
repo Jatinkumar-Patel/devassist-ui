@@ -23,6 +23,19 @@ export interface ProductGroup {
   productIds: string[];
 }
 
+export interface ProductSkillRef {
+  path: string;
+  role: 'primary' | 'secondary';
+  enabled?: boolean;
+}
+
+export interface PastedSkillMdRef {
+  title: string;
+  content: string;
+  role: 'primary' | 'secondary';
+  enabled?: boolean;
+}
+
 export interface Product {
   id: string;
   displayName: string;
@@ -34,6 +47,10 @@ export interface Product {
   mtmPlans: MtmPlan[];
   skillPath?: string;           // legacy
   skillPaths?: string[];        // multiple local skill/MD file paths
+  localSkills?: ProductSkillRef[];   // explicit local skill file paths
+  githubSkillPaths?: string[];  // multiple GitHub paths for devassist skill files/folders
+  githubSkills?: ProductSkillRef[]; // prioritized GitHub skill paths
+  pastedSkillMd?: PastedSkillMdRef[]; // pasted markdown skill blocks
   docUrl?: string;
   localFolder?: string;         // local DA folder, e.g. C:\temp\DA#
   notes?: string;

@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { ChevronDown, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
+import { ChevronDown, PanelLeftClose, PanelLeftOpen, ExternalLink } from 'lucide-react';
 import TriageInput from '../components/TriageInput';
 import TriagePanel from '../components/TriagePanel';
 import { detectInput } from '../lib/input-detector';
@@ -76,7 +76,48 @@ function toUserFacingError(err: unknown, bridgeUrl: string): string {
 
 function buildSelectedScope(selectedProducts: Product[]): Product | undefined {
   if (selectedProducts.length === 0) return undefined;
-  if (selectedProducts.length === 1) return selectedProducts[0];
+
+  const normalizeSkillEntries = <T extends { role: 'primary' | 'secondary'; enabled?: boolean }>(entries: T[] | undefined, getKey: (entry: T) => string): T[] => {
+    const ordered = (entries ?? [])
+      .filter((entry) => entry.enabled !== false)
+      .filter((entry) => getKey(entry).trim())
+      .sort((a, b) => (a.role === b.role ? 0 : a.role === 'primary' ? -1 : 1));
+
+    const seen = new Set<string>();
+    return ordered.filter((entry) => {
+      const key = getKey(entry).trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
+  const normalizeProduct = (product: Product): Product => {
+    const githubSkills = normalizeSkillEntries(product.githubSkills ?? (product.githubSkillPaths ?? []).map((path, index) => ({
+      path,
+      role: index === 0 ? 'primary' as const : 'secondary' as const,
+      enabled: true,
+    })), (x) => x.path);
+
+    const localSkills = normalizeSkillEntries(product.localSkills ?? (product.skillPaths ?? []).map((path, index) => ({
+      path,
+      role: index === 0 ? 'primary' as const : 'secondary' as const,
+      enabled: true,
+    })), (x) => x.path);
+
+    const pastedSkillMd = normalizeSkillEntries(product.pastedSkillMd ?? [], (x) => `${x.title}\n${x.content}`);
+
+    return {
+      ...product,
+      githubSkills,
+      githubSkillPaths: githubSkills.map((x) => x.path),
+      localSkills,
+      skillPaths: localSkills.map((x) => x.path),
+      pastedSkillMd,
+    };
+  };
+
+  if (selectedProducts.length === 1) return normalizeProduct(selectedProducts[0]);
 
   const repoMap = new Map<string, Product['repos'][number]>();
   selectedProducts.forEach((p) => {
@@ -91,6 +132,10 @@ function buildSelectedScope(selectedProducts: Product[]): Product | undefined {
     .flatMap((p) => [p.areaPathPrefix, ...(p.areaPathPrefixes ?? [])])
     .filter(Boolean);
 
+  const githubSkillsOrdered = selectedProducts.flatMap((p) => normalizeProduct(p).githubSkills ?? []);
+  const localSkillsOrdered = selectedProducts.flatMap((p) => normalizeProduct(p).localSkills ?? []);
+  const pastedSkillMdOrdered = selectedProducts.flatMap((p) => normalizeProduct(p).pastedSkillMd ?? []);
+
   return {
     id: `selected-${selectedProducts.map((p) => p.id).join('-')}`,
     displayName: `${selectedProducts.length} selected products`,
@@ -100,7 +145,11 @@ function buildSelectedScope(selectedProducts: Product[]): Product | undefined {
     snowTaskTable: primary.snowTaskTable,
     repos: Array.from(repoMap.values()),
     mtmPlans: selectedProducts.flatMap((p) => p.mtmPlans),
-    skillPaths: selectedProducts.flatMap((p) => p.skillPaths ?? []),
+    skillPaths: localSkillsOrdered.map((x) => x.path),
+    localSkills: localSkillsOrdered,
+    githubSkills: githubSkillsOrdered,
+    githubSkillPaths: githubSkillsOrdered.map((x) => x.path),
+    pastedSkillMd: pastedSkillMdOrdered,
     notes: `User-selected scope: ${selectedProducts.map((p) => p.displayName).join(', ')}`,
   };
 }
@@ -159,6 +208,105 @@ function deriveSnowLinkedWorkItemId(...records: Array<any | undefined>): number 
   return undefined;
 }
 
+function CopyableCommand({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] text-gray-400 font-sans">{label}</p>
+        <button
+          type="button"
+          onClick={copy}
+          className="text-[11px] px-2 py-1 rounded border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 font-sans"
+        >
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <p className="break-all">{value}</p>
+    </div>
+  );
+}
+
+function FirstTimeCommands({ cmd, powershell }: { cmd: string; powershell: string }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/5 p-2.5 space-y-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between gap-2 text-left text-xs text-gray-300 hover:text-white font-sans"
+      >
+        <span>First-time setup or folder missing</span>
+        <span className="text-gray-500">{open ? 'Hide' : 'Show'}</span>
+      </button>
+      {open && (
+        <div className="space-y-2">
+          <p className="text-[11px] text-gray-400 font-sans">Safe from any folder, including System32.</p>
+          <CopyableCommand label="First time / folder missing (cmd)" value={cmd} />
+          <CopyableCommand label="First time / folder missing (PowerShell)" value={powershell} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BridgeOfflineBanner({ installCmds, bridgeUrl }: { installCmds: ReturnType<typeof getBridgeInstallCommands>; bridgeUrl: string }) {
+  const isHttps = window.location.protocol === 'https:';
+
+  return (
+    <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-4 space-y-3">
+      <div className="flex items-start gap-2">
+        <div className="flex-1 space-y-1">
+          <p className="text-sm text-amber-100 font-semibold">⚡ Bridge not running — start it first</p>
+          {isHttps && (
+            <p className="text-xs text-amber-200/80">
+              You're on GitHub Pages (HTTPS). The bridge runs on <strong>your local machine</strong>.
+              Run one of the commands below in a terminal, then click the link.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-gray-950/70 rounded-lg border border-white/10 p-3 space-y-3 text-xs font-mono">
+        <CopyableCommand label="Start bridge — PowerShell (paste &amp; run)" value={installCmds.powershellDaily} />
+        <CopyableCommand label="Start bridge — Command Prompt (cmd)" value={installCmds.cmdDaily} />
+        <FirstTimeCommands cmd={installCmds.cmd} powershell={installCmds.powershell} />
+      </div>
+
+      {isHttps ? (
+        <div className="space-y-1.5">
+          <p className="text-[11px] text-amber-200/70">
+            After the bridge starts (watch for &quot;Bridge listening on port 7447&quot;), click:
+          </p>
+          <a
+            href={bridgeUrl}
+            className="inline-flex items-center gap-2 bg-amber-500/20 border border-amber-500/60 hover:bg-amber-500/30 text-amber-100 px-4 py-2 rounded-lg text-sm font-medium w-full justify-center"
+          >
+            <ExternalLink size={14} />
+            Open app at {bridgeUrl}
+          </a>
+        </div>
+      ) : (
+        <p className="text-xs text-amber-200/70">
+          After the bridge starts, refresh this page.
+        </p>
+      )}
+    </div>
+  );
+}
+
 async function enrichSnowTaskArtifacts(s: TriageSession, taskRecord: any): Promise<TriageSession> {
   let next = { ...s, snowTask: taskRecord };
   const sysId = snowVal(taskRecord?.sys_id);
@@ -187,6 +335,7 @@ export default function TriagePage() {
   const { adoPat, githubPat, bridgeUrl } = useSettingsStore();
   const { sessions, active, upsert } = useTriageStore();
   const installCmds = getBridgeInstallCommands();
+  const [bridgeHint, setBridgeHint] = useState<string | null>(null);
   const [quickStartOpen, setQuickStartOpen] = useState<boolean>(() => {
     const saved = localStorage.getItem('devassist-quickstart-open');
     return saved !== '0';
@@ -224,6 +373,20 @@ export default function TriagePage() {
       return next;
     });
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const res = await fetch(`${bridgeUrl}/api/status`, { signal: AbortSignal.timeout(2500) });
+        if (!cancelled) setBridgeHint(res.ok ? null : bridgeHelpMessage(bridgeUrl));
+      } catch {
+        if (!cancelled) setBridgeHint(bridgeHelpMessage(bridgeUrl));
+      }
+    };
+    check();
+    return () => { cancelled = true; };
+  }, [bridgeUrl]);
 
   const activeSession = sessions.find((s) => s.id === active);
 
@@ -602,6 +765,10 @@ export default function TriagePage() {
 
   return (
     <div className="space-y-3">
+      {bridgeHint && (
+        <BridgeOfflineBanner installCmds={installCmds} bridgeUrl={bridgeUrl} />
+      )}
+
       <div className="flex items-center justify-end">
         <button
           type="button"
@@ -632,22 +799,38 @@ export default function TriagePage() {
           </div>
           {quickStartOpen && (
             <>
-              <p className="text-xs text-gray-300">Run one command below and keep that terminal open:</p>
-              <div className="text-xs font-mono text-cyan-200 bg-gray-950/70 border border-white/10 rounded-lg p-2 overflow-x-auto space-y-2">
-                <p className="text-[11px] text-gray-400 font-sans">Command Prompt (cmd)</p>
-                <p className="break-all">{installCmds.cmd}</p>
-                <p className="text-[11px] text-gray-400 font-sans">PowerShell</p>
-                <p className="break-all">{installCmds.powershell}</p>
-              </div>
-              <p className="text-xs text-gray-400">Then open:</p>
-              <a
-                href="https://jatinkumar-patel.github.io/devassist-ui/#/triage"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-cyan-300 hover:text-cyan-200 break-all"
-              >
-                https://jatinkumar-patel.github.io/devassist-ui/#/triage
-              </a>
+              {isLocalBridgeUrl(bridgeUrl) ? (
+                <>
+                  <p className="text-xs text-gray-300">Use Daily Start below, then keep that terminal open:</p>
+                  <div className="text-xs font-mono text-cyan-200 bg-gray-950/70 border border-white/10 rounded-lg p-2 overflow-x-auto space-y-2">
+                    <CopyableCommand label="Daily start (cmd)" value={installCmds.cmdDaily} />
+                    <CopyableCommand label="Daily start (PowerShell)" value={installCmds.powershellDaily} />
+                  </div>
+                  <FirstTimeCommands cmd={installCmds.cmd} powershell={installCmds.powershell} />
+                  <p className="text-xs text-gray-400">Verify bridge: <span className="font-mono">{installCmds.verifyUrl}</span></p>
+                  <p className="text-xs text-gray-400">Then open:</p>
+                </>
+              ) : (
+                <p className="text-xs text-gray-300">This environment uses a managed bridge server. End users only need the URL below.</p>
+              )}
+              {window.location.protocol === 'https:' ? (
+                <a
+                  href={bridgeUrl}
+                  className="flex items-center gap-1.5 text-xs font-medium text-emerald-300 hover:text-emerald-200 break-all"
+                >
+                  <ExternalLink size={11}/>
+                  Open app at {bridgeUrl} (bridge must be running first)
+                </a>
+              ) : (
+                <a
+                  href="https://jatinkumar-patel.github.io/devassist-ui/#/triage"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-cyan-300 hover:text-cyan-200 break-all"
+                >
+                  https://jatinkumar-patel.github.io/devassist-ui/#/triage
+                </a>
+              )}
             </>
           )}
         </div>

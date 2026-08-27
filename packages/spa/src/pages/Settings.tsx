@@ -97,7 +97,7 @@ export default function SettingsPage() {
             className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200
                        font-mono focus:outline-none focus:border-altera-teal"
           />
-          <p className="text-xs text-gray-600">Default: http://localhost:7447</p>
+          <p className="text-xs text-gray-600">Default comes from VITE_BRIDGE_URL for enterprise deployments; localhost is used when not configured.</p>
         </div>
 
         <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-2">

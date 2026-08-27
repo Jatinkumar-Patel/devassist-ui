@@ -19,6 +19,36 @@ interface McpConfig {
   adoOrgUrl: string | null;
 }
 
+function CopyableCommand({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] text-gray-400">{label}</p>
+        <button
+          type="button"
+          onClick={copy}
+          className="text-[11px] px-2 py-1 rounded border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500"
+        >
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <div className="font-mono text-sm text-altera-teal break-all">{value}</div>
+    </div>
+  );
+}
+
 export default function SetupWizard({ onDone }: Props) {
   const { setAdoPat, setGithubPat } = useSettingsStore();
   const bridgeBase = getBridgeUrl();
@@ -32,6 +62,7 @@ export default function SetupWizard({ onDone }: Props) {
   const [bridgeOk, setBridgeOk]   = useState<boolean | null>(null);
   const [testing, setTesting]     = useState(false);
   const [mcpConfig, setMcpConfig] = useState<McpConfig | null>(null);
+  const [showFirstTime, setShowFirstTime] = useState(false);
 
   // After bridge connects, fetch mcp.json PATs automatically
   const loadMcpConfig = async (): Promise<McpConfig | null> => {
@@ -141,23 +172,41 @@ export default function SetupWizard({ onDone }: Props) {
                 Windows login. It runs on your machine — nothing is sent to any cloud.
               </p>
               <div className="space-y-2">
-                <p className="text-xs text-gray-500 font-medium">End-user start (no repo clone):</p>
+                <p className="text-xs text-gray-500 font-medium">Daily start:</p>
                 <div className="bg-gray-950 rounded-lg p-3 border border-gray-800 space-y-2">
-                  <p className="text-[11px] text-gray-400">Command Prompt (cmd)</p>
-                  <div className="font-mono text-sm text-altera-teal break-all">
-                    {installCmds.cmd}
-                  </div>
-                  <p className="text-[11px] text-gray-400">PowerShell</p>
-                  <div className="font-mono text-sm text-altera-teal break-all">
-                    {installCmds.powershell}
-                  </div>
+                  <CopyableCommand label="Daily start (cmd)" value={installCmds.cmdDaily} />
+                  <CopyableCommand label="Daily start (PowerShell)" value={installCmds.powershellDaily} />
                 </div>
+              </div>
+              <div className="rounded-lg border border-gray-800 bg-gray-950/40 p-3 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setShowFirstTime((v) => !v)}
+                  className="w-full flex items-center justify-between gap-2 text-left text-xs text-gray-300 hover:text-white"
+                >
+                  <span>First-time setup or folder missing</span>
+                  <span className="text-gray-500">{showFirstTime ? 'Hide' : 'Show'}</span>
+                </button>
+                {showFirstTime && (
+                  <div className="space-y-2">
+                    <p className="text-[11px] text-gray-500">
+                      Safe from any folder, including System32. Also fixes <span className="font-mono text-amber-300">"destination not empty"</span> errors.
+                    </p>
+                    <div className="bg-gray-950 rounded-lg p-3 border border-gray-800 space-y-2">
+                      <CopyableCommand label="First time / folder exists or empty (cmd)" value={installCmds.cmd} />
+                      <CopyableCommand label="First time / folder exists or empty (PowerShell)" value={installCmds.powershell} />
+                    </div>
+                  </div>
+                )}
               </div>
               <p className="text-xs text-gray-600">
                 Open a new terminal, paste the command above, and press Enter.
                 Node.js ≥ 18 required —{' '}
                 <a href="https://nodejs.org" target="_blank" rel="noreferrer"
                    className="text-altera-teal hover:underline">download here</a>.
+              </p>
+              <p className="text-xs text-gray-500">
+                After command completes, verify bridge is running at <span className="font-mono">{installCmds.verifyUrl}</span>.
               </p>
               {window.location.protocol === 'https:' ? (
                 <div className="rounded-lg border border-altera-teal/40 bg-altera-teal/10 p-4 space-y-3">

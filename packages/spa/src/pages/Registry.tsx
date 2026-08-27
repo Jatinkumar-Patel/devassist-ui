@@ -1,12 +1,12 @@
 ﻿import { useEffect, useState } from "react";
 import { Package, GitBranch, TestTube2, Plus, Trash2, Save, ChevronDown, Folder, FileText, Users, CheckSquare, Square, RefreshCw } from "lucide-react";
 import { loadRegistry, saveRegistry, invalidateRegistry } from "../lib/product-registry";
-import type { ProductRegistry, Product, RepoRef, MtmPlan, ProductGroup } from "../types";
+import type { ProductRegistry, Product, RepoRef, MtmPlan, ProductGroup, ProductSkillRef, PastedSkillMdRef } from "../types";
 
 const EMPTY_PRODUCT: Product = {
   id: "", displayName: "", areaPathPrefix: "", snowProduct: "",
   snowTaskTable: "incident_task", repos: [], mtmPlans: [],
-  skillPaths: [], docUrl: "", localFolder: "", notes: "",
+  skillPaths: [], localSkills: [], githubSkillPaths: [], githubSkills: [], pastedSkillMd: [], docUrl: "", localFolder: "", notes: "",
 };
 
 export default function RegistryPage() {
@@ -105,8 +105,55 @@ export default function RegistryPage() {
 }
 
 function ProductEditor({ product, onSave, saving }: { product: Product; onSave: (p: Product) => void; saving: boolean }) {
-  const [p, setP] = useState<Product>({ ...product, skillPaths: product.skillPaths ?? (product.skillPath ? [product.skillPath] : []) });
+  const initialGithubSkills: ProductSkillRef[] =
+    product.githubSkills?.length
+      ? product.githubSkills
+      : (product.githubSkillPaths ?? []).map((path, index) => ({
+          path,
+          role: index === 0 ? 'primary' : 'secondary',
+          enabled: true,
+        }));
+
+  const initialLocalSkills: ProductSkillRef[] =
+    product.localSkills?.length
+      ? product.localSkills
+      : (product.skillPaths ?? []).map((path, index) => ({
+          path,
+          role: index === 0 ? 'primary' : 'secondary',
+          enabled: true,
+        }));
+
+  const initialPastedMd: PastedSkillMdRef[] =
+    product.pastedSkillMd?.length
+      ? product.pastedSkillMd
+      : [];
+
+  const [p, setP] = useState<Product>({
+    ...product,
+    skillPaths: product.skillPaths ?? (product.skillPath ? [product.skillPath] : []),
+    localSkills: initialLocalSkills,
+    githubSkillPaths: product.githubSkillPaths ?? [],
+    githubSkills: initialGithubSkills,
+    pastedSkillMd: initialPastedMd,
+  });
   const set = <K extends keyof Product>(k: K, v: Product[K]) => setP(prev => ({ ...prev, [k]: v }));
+
+  const saveProduct = () => {
+    const enabledLocalSkills = (p.localSkills ?? []).filter((x) => x.enabled !== false && x.path.trim());
+    const enabledGithubSkills = (p.githubSkills ?? []).filter((x) => x.enabled !== false && x.path.trim());
+    const enabledPastedMd = (p.pastedSkillMd ?? []).filter((x) => x.enabled !== false && (x.title.trim() || x.content.trim()));
+
+    onSave({
+      ...p,
+      skillPaths: enabledLocalSkills.map((x) => x.path),
+      skillPath: enabledLocalSkills[0]?.path ?? p.skillPath ?? '',
+      localSkills: enabledLocalSkills,
+      githubSkillPaths: enabledGithubSkills.map((x) => x.path),
+      githubSkills: enabledGithubSkills,
+      pastedSkillMd: enabledPastedMd,
+    });
+  };
+
   return (
     <div className="space-y-4">
       <Section title="Core fields">
@@ -131,8 +178,32 @@ function ProductEditor({ product, onSave, saving }: { product: Product; onSave: 
       <Section title={<><TestTube2 size={11}/> MTM test plans</>}>
         <MtmListEditor plans={p.mtmPlans} onChange={v => set("mtmPlans", v)}/>
       </Section>
-      <Section title={<><FileText size={11}/> Local skill / knowledge MD file paths</>}>
-        <StringListEditor values={p.skillPaths ?? []} onChange={v => set("skillPaths", v)} placeholder="C:\skills\shm-playbook.md" mono/>
+      <Section title={<><GitBranch size={11}/> GitHub devassist skill paths</>}>
+        <SkillPathEditor
+          values={p.githubSkills ?? []}
+          onChange={(v) => {
+            set("githubSkills", v);
+            set("githubSkillPaths", v.filter((x) => x.enabled !== false).map((x) => x.path));
+          }}
+          placeholder="https://github.com/org/repo/tree/main/skills/devassist-triage/areas/shm"
+        />
+      </Section>
+      <Section title={<><Folder size={11}/> Local skill / knowledge MD file paths</>}>
+        <SkillPathEditor
+          values={p.localSkills ?? []}
+          onChange={(v) => {
+            set("localSkills", v);
+            set("skillPaths", v.filter((x) => x.enabled !== false).map((x) => x.path));
+            set("skillPath", v.find((x) => x.enabled !== false)?.path ?? "");
+          }}
+          placeholder="C:\skills\shm-playbook.md"
+        />
+      </Section>
+      <Section title={<><FileText size={11}/> Pasted markdown skill content</>}>
+        <MarkdownSkillEditor
+          values={p.pastedSkillMd ?? []}
+          onChange={(v) => set("pastedSkillMd", v)}
+        />
       </Section>
       <Section title={<><Folder size={11}/> Local paths</>}>
         <div className="grid grid-cols-1 gap-3">
@@ -144,7 +215,7 @@ function ProductEditor({ product, onSave, saving }: { product: Product; onSave: 
         <textarea value={p.notes ?? ""} onChange={e => set("notes", e.target.value)} rows={3} placeholder="Team contacts, quirks, useful links..."
           className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-xs text-gray-200 resize-y focus:outline-none focus:border-altera-teal/60"/>
       </Section>
-      <button onClick={() => onSave(p)} disabled={saving}
+      <button onClick={saveProduct} disabled={saving}
         className="flex items-center gap-1.5 bg-altera-blue hover:bg-altera-blue/80 disabled:opacity-50 text-white px-4 py-2 rounded text-sm font-medium">
         <Save size={13}/> {saving ? "Saving..." : "Save product"}
       </button>
@@ -328,5 +399,98 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
     <button onClick={onClick} className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium ${active ? "bg-gray-800 text-gray-100" : "text-gray-500 hover:text-gray-300"}`}>
       {children}
     </button>
+  );
+}
+
+function SkillPathEditor({ values, onChange, placeholder }: { values: ProductSkillRef[]; onChange: (v: ProductSkillRef[]) => void; placeholder?: string }) {
+  const add = () => onChange([...values, { path: "", role: "secondary", enabled: true }]);
+  const del = (i: number) => onChange(values.filter((_, j) => j !== i));
+  const updPath = (i: number, path: string) => onChange(values.map((x, j) => j === i ? { ...x, path } : x));
+  const updRole = (i: number, role: ProductSkillRef['role']) => onChange(values.map((x, j) => j === i ? { ...x, role } : x));
+  const updEnabled = (i: number, enabled: boolean) => onChange(values.map((x, j) => j === i ? { ...x, enabled } : x));
+
+  return (
+    <div className="space-y-1.5">
+      {values.map((v, i) => (
+        <div key={i} className="grid grid-cols-1 sm:grid-cols-[92px_120px_1fr_auto] gap-2 items-center">
+          <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer whitespace-nowrap">
+            <input
+              type="checkbox"
+              checked={v.enabled !== false}
+              onChange={(e) => updEnabled(i, e.target.checked)}
+              className="accent-altera-teal"
+            />
+            Use
+          </label>
+          <select
+            value={v.role}
+            onChange={(e) => updRole(i, e.target.value as ProductSkillRef['role'])}
+            className={inp + " cursor-pointer"}
+          >
+            <option value="primary">Primary</option>
+            <option value="secondary">Secondary</option>
+          </select>
+          <input
+            value={v.path}
+            onChange={e => updPath(i, e.target.value)}
+            placeholder={placeholder}
+            className={`flex-1 ${inp} font-mono`}
+          />
+          <button onClick={() => del(i)} className="text-gray-600 hover:text-red-400"><Trash2 size={13}/></button>
+        </div>
+      ))}
+      <button onClick={add} className="flex items-center gap-1 text-xs text-gray-600 hover:text-altera-teal"><Plus size={12}/> Add skill path</button>
+    </div>
+  );
+}
+
+function MarkdownSkillEditor({ values, onChange }: { values: PastedSkillMdRef[]; onChange: (v: PastedSkillMdRef[]) => void }) {
+  const add = () => onChange([...values, { title: "", content: "", role: "secondary", enabled: true }]);
+  const del = (i: number) => onChange(values.filter((_, j) => j !== i));
+  const upd = <K extends keyof PastedSkillMdRef>(i: number, key: K, value: PastedSkillMdRef[K]) => {
+    onChange(values.map((x, j) => j === i ? { ...x, [key]: value } : x));
+  };
+
+  return (
+    <div className="space-y-3">
+      {values.map((v, i) => (
+        <div key={i} className="rounded border border-gray-800 p-3 space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-[92px_120px_1fr_auto] gap-2 items-center">
+            <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer whitespace-nowrap">
+              <input
+                type="checkbox"
+                checked={v.enabled !== false}
+                onChange={(e) => upd(i, "enabled", e.target.checked)}
+                className="accent-altera-teal"
+              />
+              Use
+            </label>
+            <select
+              value={v.role}
+              onChange={(e) => upd(i, "role", e.target.value as PastedSkillMdRef['role'])}
+              className={inp + " cursor-pointer"}
+            >
+              <option value="primary">Primary</option>
+              <option value="secondary">Secondary</option>
+            </select>
+            <input
+              value={v.title}
+              onChange={e => upd(i, "title", e.target.value)}
+              placeholder="Skill title"
+              className={inp}
+            />
+            <button onClick={() => del(i)} className="text-gray-600 hover:text-red-400"><Trash2 size={13}/></button>
+          </div>
+          <textarea
+            value={v.content}
+            onChange={e => upd(i, "content", e.target.value)}
+            placeholder="Paste the full markdown skill file here"
+            rows={8}
+            className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 resize-y focus:outline-none focus:border-altera-teal/60 font-mono"
+          />
+        </div>
+      ))}
+      <button onClick={add} className="flex items-center gap-1 text-xs text-gray-600 hover:text-altera-teal"><Plus size={12}/> Add pasted markdown skill</button>
+    </div>
   );
 }
