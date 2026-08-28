@@ -280,7 +280,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                   <a href={item.url} target="_blank" rel="noreferrer"
                      className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{item.id}</a>
                   <span className="text-gray-300 truncate flex-1">{item.title}</span>
-                  <span className="text-gray-500 shrink-0 ml-2">{item.supportVersion || '-'}</span>
+                  <span className="text-gray-500 shrink-0 ml-2">{item.supportVersion || item.reportedRelease || '-'}</span>
                   <span className={`shrink-0 ml-2 px-1.5 py-0.5 rounded text-xs ${
                     /Closed|Resolved|Done|Completed/i.test(item.state) ? 'bg-emerald-950 text-emerald-400' : 'bg-gray-800 text-gray-400'
                   }`}>{item.state}</span>

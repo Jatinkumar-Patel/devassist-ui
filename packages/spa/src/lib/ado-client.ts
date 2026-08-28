@@ -63,6 +63,7 @@ export interface RelatedItem {
   type: string;
   url: string;
   supportVersion?: string;
+  reportedRelease?: string;
   changedDate?: string;
 }
 
@@ -104,6 +105,7 @@ async function fetchItemsBatchDetailed(ids: number[], pat: string): Promise<Rela
     'System.WorkItemType',
     'System.ChangedDate',
     'Allscripts.Field.SupportVersion',
+    'Allscripts.Field.ReportedinRelease',
   ].join(',');
 
   const url = bridgeApi(`/api/ado/SR/_apis/wit/workItems?ids=${ids.join(',')}&fields=${fields}&api-version=7.0`);
@@ -118,6 +120,7 @@ async function fetchItemsBatchDetailed(ids: number[], pat: string): Promise<Rela
     type: w.fields['System.WorkItemType'] ?? '',
     url: workItemUrl(w.id),
     supportVersion: w.fields['Allscripts.Field.SupportVersion'] ?? '',
+    reportedRelease: w.fields['Allscripts.Field.ReportedinRelease'] ?? '',
     changedDate: w.fields['System.ChangedDate'] ?? '',
   }));
 }
@@ -155,7 +158,7 @@ export async function fetchAreaVersionEvidence(areaPath: string, pat: string, ve
 
   const all = await fetchAreaItems(areaPath, pat);
   const filtered = all.filter((item) => {
-    const hay = `${item.title} ${item.supportVersion ?? ''}`.toLowerCase();
+    const hay = `${item.title} ${item.supportVersion ?? ''} ${item.reportedRelease ?? ''}`.toLowerCase();
     return hints.some((h) => hay.includes(h));
   });
 
