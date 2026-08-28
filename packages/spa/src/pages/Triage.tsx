@@ -74,6 +74,23 @@ function toUserFacingError(err: unknown, bridgeUrl: string): string {
   return message;
 }
 
+function snowGapMessage(taskNumber: string | undefined, fetchError: string | undefined): string {
+  if (!taskNumber) return 'SNOW task number missing in work item';
+  if (!fetchError) return `SNOW task ${taskNumber} not fetched`;
+
+  if (/Unable to connect|Failed to fetch|NetworkError|Load failed/i.test(fetchError)) {
+    return `SNOW task ${taskNumber} not fetched — bridge is offline or blocked`;
+  }
+  if (/\b401\b|\b403\b|Access is denied|Unauthorized/i.test(fetchError)) {
+    return `SNOW task ${taskNumber} not fetched — authorization/policy blocked bridge access`;
+  }
+  if (/\b404\b|not found/i.test(fetchError)) {
+    return `SNOW task ${taskNumber} not found in SNOW task tables`;
+  }
+
+  return `SNOW task ${taskNumber} not fetched — ${fetchError.slice(0, 180)}`;
+}
+
 function buildSelectedScope(selectedProducts: Product[]): Product | undefined {
   if (selectedProducts.length === 0) return undefined;
 
@@ -506,8 +523,10 @@ export default function TriagePage() {
               } catch { /* non-fatal */ }
             }
           }
-        } catch {
-          // Bridge offline or VPN — non-fatal, mark as degraded
+        } catch (e) {
+          // Non-fatal degraded mode; capture real cause for user-facing clarity gaps.
+          const fetchError = e instanceof Error ? e.message : String(e);
+          s = { ...s, snowFetchError: fetchError };
         }
       }
 
@@ -675,7 +694,7 @@ export default function TriagePage() {
         if (!f['System.Description'] && !f['Allscripts.Field.DevAssistDetail']) {
           gaps.push('Problem description empty — check Description and DevAssistDetail fields');
         }
-        if (!s.snowTask) gaps.push('SNOW task not fetched — bridge offline or not on VPN');
+        if (!s.snowTask) gaps.push(snowGapMessage(s.snowTaskNumber, s.snowFetchError));
       }
       s = { ...s, clarityGaps: gaps };
 

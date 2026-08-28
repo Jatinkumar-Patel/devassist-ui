@@ -186,7 +186,8 @@ export interface TriageSession {
   product?: Product;
   adoItem?: AdoWorkItem;
   snowTask?: SnowTask;
-  snowTaskTable?: 'incident_task' | 'sc_task';
+  snowTaskTable?: 'incident_task' | 'sc_task' | 'u_pltf_task' | 'change_task' | 'sc_req_item' | 'sn_customerservice_task' | string;
+  snowFetchError?: string;
   snowIncident?: SnowTask;
   snowCase?: SnowTask;
   attachments?: SnowAttachment[];
