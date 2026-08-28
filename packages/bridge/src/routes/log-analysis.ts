@@ -102,6 +102,14 @@ interface AttachmentMeta {
   size_bytes: { value: string } | string;
 }
 
+const SCANNABLE_EXTENSIONS = ['.log', '.txt', '.zip', '.csv', '.json', '.xml'];
+
+function extensionOf(fileName: string): string {
+  const lower = fileName.toLowerCase();
+  const idx = lower.lastIndexOf('.');
+  return idx >= 0 ? lower.slice(idx) : '';
+}
+
 function val(f: unknown): string {
   if (!f) return '';
   if (typeof f === 'string') return f;
@@ -144,16 +152,24 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
     const parsed = typeof outer === 'string' ? JSON.parse(outer) : outer;
     const attachments: AttachmentMeta[] = Array.isArray(parsed?.result) ? parsed.result : [];
 
-    const logFiles = attachments.filter((a) => {
-      const name = val(a.file_name).toLowerCase();
-      return name.endsWith('.log') || name.endsWith('.txt') || name.endsWith('.zip');
-    });
+    const scannableFiles: AttachmentMeta[] = [];
 
     const allHits: LogHit[] = [];
     const analyzed: string[] = [];
     const skipped: string[] = [];
 
-    for (const att of logFiles) {
+    for (const att of attachments) {
+      const fileName = val(att.file_name) || '(unnamed attachment)';
+      const ext = extensionOf(fileName);
+      if (SCANNABLE_EXTENSIONS.includes(ext)) {
+        scannableFiles.push(att);
+      } else {
+        const ctype = val(att.content_type) || 'unknown type';
+        skipped.push(`${fileName} (unsupported for log scan: ${ctype})`);
+      }
+    }
+
+    for (const att of scannableFiles) {
       const fileName = val(att.file_name);
       const sysId = val(att.sys_id);
       const contentType = val(att.content_type);
@@ -229,6 +245,8 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
     const suggestions = buildSuggestions(allHits);
 
     return res.json({
+      totalAttachments: attachments.length,
+      scannableAttachments: scannableFiles.length,
       analyzed,
       skipped,
       totalHits: allHits.length,
