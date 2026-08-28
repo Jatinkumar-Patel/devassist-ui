@@ -22,6 +22,8 @@ interface CodeSuggestion {
 }
 
 interface LogAnalysisResult {
+  totalAttachments?: number;
+  scannableAttachments?: number;
   analyzed: string[];
   skipped: string[];
   totalHits: number;
@@ -61,14 +63,79 @@ export default function LogAnalysisPanel({ snowTask, snowTaskNumber, autoResult,
   const autoSysId = snowTask ? snowVal(snowTask.sys_id) : '';
   const sysId = autoSysId || manualSysId.trim();
 
+  const readSysId = (record: any): string => {
+    if (!record) return '';
+    const raw = record.sys_id;
+    return typeof raw === 'string' ? raw : snowVal(raw);
+  };
+
+  const mergeResults = (items: LogAnalysisResult[]): LogAnalysisResult => {
+    const analyzed = items.flatMap((x) => x.analyzed ?? []);
+    const skipped = items.flatMap((x) => x.skipped ?? []);
+    const hits = items.flatMap((x) => x.hits ?? []);
+
+    const topSeeds: Record<string, number> = {};
+    for (const item of items) {
+      for (const [seed, count] of Object.entries(item.topSeeds ?? {})) {
+        topSeeds[seed] = (topSeeds[seed] ?? 0) + (count ?? 0);
+      }
+    }
+
+    const byCategory: Record<string, LogHit[]> = { error: [], warning: [], lock: [], ops: [], other: [] };
+    for (const hit of hits) {
+      byCategory[hit.category] = [...(byCategory[hit.category] ?? []), hit].slice(0, 30);
+    }
+
+    return {
+      totalAttachments: items.reduce((sum, x) => sum + (x.totalAttachments ?? 0), 0),
+      scannableAttachments: items.reduce((sum, x) => sum + (x.scannableAttachments ?? 0), 0),
+      analyzed,
+      skipped,
+      totalHits: hits.length,
+      hits,
+      byCategory,
+      topSeeds,
+      suggestions: items.flatMap((x) => x.suggestions ?? []),
+    };
+  };
+
   const analyze = async () => {
     if (!sysId) return;
     setRunning(true);
     setError('');
     try {
-      const r = await fetch(bridgeApi(`/api/log-analysis/${sysId}`));
-      if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
-      const data: LogAnalysisResult = await r.json();
+      let data: LogAnalysisResult;
+
+      if (snowTask && autoSysId) {
+        const sysIds = new Set<string>([autoSysId]);
+        try {
+          const esc = await fetch(bridgeApi(`/api/snow/escalate/${autoSysId}`));
+          if (esc.ok) {
+            const chain = await esc.json() as { incident?: any; case?: any };
+            const incidentSysId = readSysId(chain.incident);
+            const caseSysId = readSysId(chain.case);
+            if (incidentSysId) sysIds.add(incidentSysId);
+            if (caseSysId) sysIds.add(caseSysId);
+          }
+        } catch {
+          // Non-fatal: fall back to task-only scan.
+        }
+
+        const scans = await Promise.all(
+          Array.from(sysIds).map(async (id) => {
+            const r = await fetch(bridgeApi(`/api/log-analysis/${id}`));
+            if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
+            return r.json() as Promise<LogAnalysisResult>;
+          })
+        );
+
+        data = mergeResults(scans);
+      } else {
+        const r = await fetch(bridgeApi(`/api/log-analysis/${sysId}`));
+        if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
+        data = await r.json();
+      }
+
       setResult(data);
       onResult?.(data.hits, data.topSeeds);
     } catch (e: any) {
