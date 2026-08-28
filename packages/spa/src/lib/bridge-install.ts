@@ -61,28 +61,26 @@ export function getBridgeInstallCommands(): {
   // Run once after first-time install. Bridge will start automatically at every Windows login.
   // No admin required — registers task for current user only.
   const bridgeFolder = `$env:USERPROFILE\\source\\${localFolder}`;
-  const taskNameCmd = 'DevAssist Bridge - %USERNAME%';
+  const runValueName = 'DevAssistBridge';
+  const runCmd = `cmd /c cd /d \"%USERPROFILE%\\source\\${localFolder}\" && npm run bridge >> \"%USERPROFILE%\\devassist-bridge.log\" 2>&1`;
   const autoStartPowershell = [
     // 1. Ensure the repo is installed first
     `$f="${bridgeFolder}";`,
     `if (-not (Test-Path "$f\\node_modules")) { Write-Error "Run the first-time install command first, then register auto-start."; exit 1 };`,
-    // 2. Register Task Scheduler task
-    `$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c cd /d \\"$f\\" && npm run bridge >> \\"$env:USERPROFILE\\devassist-bridge.log\\" 2>&1";`,
-    `$trigger = New-ScheduledTaskTrigger -AtLogOn;`,
-    `$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0 -RestartCount 5 -RestartInterval (New-TimeSpan -Minutes 2);`,
-    `$taskName = "DevAssist Bridge - $env:USERNAME";`,
-    `Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null;`,
-    // 3. Start it now without waiting for reboot
-    `Start-ScheduledTask -TaskName $taskName;`,
+    // 2. Register current-user startup entry (no admin, no Task Scheduler permissions required)
+    `$runName = '${runValueName}';`,
+    `$runCmd = "cmd /c cd /d \"$f\" && npm run bridge >> \"$env:USERPROFILE\\devassist-bridge.log\" 2>&1";`,
+    `New-Item -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Force | Out-Null;`,
+    `Set-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name $runName -Value $runCmd;`,
+    // 3. Start it now without waiting for next login
+    `Start-Process -WindowStyle Hidden -FilePath 'cmd.exe' -ArgumentList '/c', "cd /d \"$f\" && npm run bridge >> \"$env:USERPROFILE\\devassist-bridge.log\" 2>&1";`,
     `Write-Host 'Auto-start registered and bridge started. Open https://${repoSlug.split('/')[0]}.github.io/${localFolder}/#/triage in your browser.'`,
   ].join(' ');
 
-  // cmd equivalent (registers via schtasks.exe)
+  // cmd equivalent (registers in HKCU Run)
   const autoStartCmd = [
-    `schtasks /create /tn "${taskNameCmd}"`,
-    `/tr "cmd /c cd /d \\"%USERPROFILE%\\source\\${localFolder}\\" && npm run bridge >> \\"%USERPROFILE%\\devassist-bridge.log\\" 2>&1"`,
-    `/sc ONLOGON /ru "%USERDOMAIN%\\%USERNAME%" /f`,
-    `&& schtasks /run /tn "${taskNameCmd}"`,
+    `reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "${runValueName}" /t REG_SZ /d "${runCmd}" /f`,
+    `&& start "" /min cmd /c "cd /d \"%USERPROFILE%\\source\\${localFolder}\" && npm run bridge >> \"%USERPROFILE%\\devassist-bridge.log\" 2>&1"`,
     `&& echo Auto-start registered. Bridge started.`,
   ].join(' ');
 
