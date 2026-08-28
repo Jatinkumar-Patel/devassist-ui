@@ -2,6 +2,7 @@
 import { Package, GitBranch, TestTube2, Plus, Trash2, Save, ChevronDown, Folder, FileText, Users, CheckSquare, Square, RefreshCw } from "lucide-react";
 import { loadRegistry, saveRegistry, invalidateRegistry } from "../lib/product-registry";
 import type { ProductRegistry, Product, RepoRef, MtmPlan, ProductGroup, ProductSkillRef, PastedSkillMdRef } from "../types";
+import { useSettingsStore } from "../store/settings";
 
 const EMPTY_PRODUCT: Product = {
   id: "", displayName: "", areaPathPrefix: "", snowProduct: "",
@@ -105,6 +106,8 @@ export default function RegistryPage() {
 }
 
 function ProductEditor({ product, onSave, saving }: { product: Product; onSave: (p: Product) => void; saving: boolean }) {
+  const databaseRepoPaths = useSettingsStore((s) => s.databaseRepoPaths);
+
   const initialGithubSkills: ProductSkillRef[] =
     product.githubSkills?.length
       ? product.githubSkills
@@ -137,6 +140,35 @@ function ProductEditor({ product, onSave, saving }: { product: Product; onSave: 
     pastedSkillMd: initialPastedMd,
   });
   const set = <K extends keyof Product>(k: K, v: Product[K]) => setP(prev => ({ ...prev, [k]: v }));
+
+  const parseGithubTree = (url: string): { owner: string; repo: string } | null => {
+    const m = url.trim().match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/[^/]+\/.+$/i);
+    if (!m) return null;
+    return { owner: m[1], repo: m[2] };
+  };
+
+  const addDatabaseRepoToProduct = (url: string) => {
+    const parsed = parseGithubTree(url);
+    if (!parsed) return;
+
+    const already = p.repos.some((r) =>
+      r.owner.toLowerCase() === parsed.owner.toLowerCase() &&
+      r.repo.toLowerCase() === parsed.repo.toLowerCase()
+    );
+    if (already) return;
+
+    set("repos", [
+      ...p.repos,
+      {
+        key: `repo-db-${Date.now()}`,
+        owner: parsed.owner,
+        repo: parsed.repo,
+        required: false,
+        githubUrl: url,
+        localPaths: [],
+      },
+    ]);
+  };
 
   const saveProduct = () => {
     const enabledLocalSkills = (p.localSkills ?? []).filter((x) => x.enabled !== false && x.path.trim());
@@ -174,6 +206,46 @@ function ProductEditor({ product, onSave, saving }: { product: Product; onSave: 
       </Section>
       <Section title={<><GitBranch size={11}/> Repositories</>}>
         <RepoListEditor repos={p.repos} onChange={v => set("repos", v)}/>
+      </Section>
+      <Section title={<><Folder size={11}/> Database Repo Paths (from Settings)</>}>
+        {databaseRepoPaths.length === 0 ? (
+          <p className="text-xs text-yellow-500">No database repo paths found. Add them in Settings first.</p>
+        ) : (
+          <div className="space-y-2">
+            {databaseRepoPaths.map((dbPath, idx) => {
+              const parsed = parseGithubTree(dbPath);
+              const canAdd = Boolean(parsed);
+              const alreadyInRepos = parsed
+                ? p.repos.some((r) =>
+                    r.owner.toLowerCase() === parsed.owner.toLowerCase() &&
+                    r.repo.toLowerCase() === parsed.repo.toLowerCase()
+                  )
+                : false;
+
+              return (
+                <div key={`${idx}-${dbPath}`} className="rounded border border-gray-800 p-2.5 space-y-1.5">
+                  <p className="text-xs text-gray-300 font-mono break-all">{dbPath}</p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={!canAdd || alreadyInRepos}
+                      onClick={() => addDatabaseRepoToProduct(dbPath)}
+                      className="text-xs px-2.5 py-1 rounded border border-cyan-700 text-cyan-200 hover:bg-cyan-950/30 disabled:opacity-40"
+                    >
+                      {alreadyInRepos ? 'Already in repos' : 'Add to repositories'}
+                    </button>
+                    {!canAdd && (
+                      <span className="text-[11px] text-yellow-500">Expected GitHub tree URL format</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            <p className="text-[11px] text-gray-500">
+              This list is managed in Settings and reused by triage DB evidence search.
+            </p>
+          </div>
+        )}
       </Section>
       <Section title={<><TestTube2 size={11}/> MTM test plans</>}>
         <MtmListEditor plans={p.mtmPlans} onChange={v => set("mtmPlans", v)}/>
