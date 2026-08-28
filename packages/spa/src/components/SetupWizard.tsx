@@ -211,7 +211,7 @@ export default function SetupWizard({ onDone }: Props) {
                   <CopyableCommand label="Register auto-start — Command Prompt" value={installCmds.autoStartCmd} />
                 </div>
                 <p className="text-[11px] text-gray-500">
-                  Registers a current-user Windows startup entry (HKCU Run key, no admin needed).
+                  Registers a current-user Startup folder script (no registry edits, no admin needed).
                   Log file: <span className="font-mono">%USERPROFILE%\devassist-bridge.log</span>
                 </p>
               </div>

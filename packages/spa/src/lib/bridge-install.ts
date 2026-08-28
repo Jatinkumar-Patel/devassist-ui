@@ -61,26 +61,35 @@ export function getBridgeInstallCommands(): {
   // Run once after first-time install. Bridge will start automatically at every Windows login.
   // No admin required — registers task for current user only.
   const bridgeFolder = `$env:USERPROFILE\\source\\${localFolder}`;
-  const runValueName = 'DevAssistBridge';
-  const runCmd = `cmd /c cd /d \"%USERPROFILE%\\source\\${localFolder}\" && npm run bridge >> \"%USERPROFILE%\\devassist-bridge.log\" 2>&1`;
+  const startupCmdPath = `%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\DevAssist Bridge.cmd`;
   const autoStartPowershell = [
     // 1. Ensure the repo is installed first
     `$f="${bridgeFolder}";`,
     `if (-not (Test-Path "$f\\node_modules")) { Write-Error "Run the first-time install command first, then register auto-start."; exit 1 };`,
-    // 2. Register current-user startup entry (no admin, no Task Scheduler permissions required)
-    `$runName = '${runValueName}';`,
-    `$runCmd = "cmd /c cd /d \"$f\" && npm run bridge >> \"$env:USERPROFILE\\devassist-bridge.log\" 2>&1";`,
-    `New-Item -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Force | Out-Null;`,
-    `Set-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name $runName -Value $runCmd;`,
+    // 2. Register current-user Startup folder script (no registry, no admin, no Task Scheduler ACLs)
+    `$startup = Join-Path $env:APPDATA 'Microsoft\\Windows\\Start Menu\\Programs\\Startup\\DevAssist Bridge.cmd';`,
+    `$body = @'`,
+    `@echo off`,
+    `set "APP1=%USERPROFILE%\\source\\${localFolder}"`,
+    `set "APP2=%USERPROFILE%\\source\\repos\\${localFolder}"`,
+    `if exist "%APP1%\\node_modules" (cd /d "%APP1%") else (cd /d "%APP2%")`,
+    `npm run bridge >> "%USERPROFILE%\\devassist-bridge.log" 2>&1`,
+    `'@;`,
+    `Set-Content -Path $startup -Value $body -Encoding ASCII;`,
     // 3. Start it now without waiting for next login
-    `Start-Process -WindowStyle Hidden -FilePath 'cmd.exe' -ArgumentList '/c', "cd /d \"$f\" && npm run bridge >> \"$env:USERPROFILE\\devassist-bridge.log\" 2>&1";`,
+    `Start-Process -WindowStyle Hidden -FilePath 'cmd.exe' -ArgumentList '/c', "\"$startup\"";`,
     `Write-Host 'Auto-start registered and bridge started. Open https://${repoSlug.split('/')[0]}.github.io/${localFolder}/#/triage in your browser.'`,
   ].join(' ');
 
-  // cmd equivalent (registers in HKCU Run)
+  // cmd equivalent (registers Startup folder script)
   const autoStartCmd = [
-    `reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "${runValueName}" /t REG_SZ /d "${runCmd}" /f`,
-    `&& start "" /min cmd /c "cd /d \"%USERPROFILE%\\source\\${localFolder}\" && npm run bridge >> \"%USERPROFILE%\\devassist-bridge.log\" 2>&1"`,
+    `set "S=${startupCmdPath}"`,
+    `&& (echo @echo off)>"%S%"`,
+    `&& (echo set "APP1=%%USERPROFILE%%\\source\\${localFolder}")>>"%S%"`,
+    `&& (echo set "APP2=%%USERPROFILE%%\\source\\repos\\${localFolder}")>>"%S%"`,
+    `&& (echo if exist "%%APP1%%\\node_modules" ^(cd /d "%%APP1%%"^) else ^(cd /d "%%APP2%%"^))>>"%S%"`,
+    `&& (echo npm run bridge ^>^> "%%USERPROFILE%%\\devassist-bridge.log" 2^>^&1)>>"%S%"`,
+    `&& start "" /min cmd /c "\"%S%\""`,
     `&& echo Auto-start registered. Bridge started.`,
   ].join(' ');
 
