@@ -11,9 +11,25 @@ interface DiagnosticResult {
 }
 
 export default function SettingsPage() {
-  const { adoPat, githubPat, openaiKey, bridgeUrl, setAdoPat, setGithubPat, setOpenaiKey, setBridgeUrl, clearPats } = useSettingsStore();
+  const {
+    adoPat,
+    githubPat,
+    openaiKey,
+    bridgeUrl,
+    databaseRepoPaths,
+    setAdoPat,
+    setGithubPat,
+    setOpenaiKey,
+    setBridgeUrl,
+    setDatabaseRepoPaths,
+    addDatabaseRepoPath,
+    removeDatabaseRepoPath,
+    resetDatabaseRepoPaths,
+    clearPats,
+  } = useSettingsStore();
   const installCmds = getBridgeInstallCommands();
   const [bridgeCardOpen, setBridgeCardOpen] = useState<boolean>(() => localStorage.getItem('devassist-settings-bridge-open') !== '0');
+  const [newDatabasePath, setNewDatabasePath] = useState('');
 
   const reRunWizard = () => {
     localStorage.removeItem('devassist-setup-done');
@@ -26,6 +42,18 @@ export default function SettingsPage() {
       localStorage.setItem('devassist-settings-bridge-open', next ? '1' : '0');
       return next;
     });
+  };
+
+  const updateDatabasePath = (index: number, value: string) => {
+    const next = [...databaseRepoPaths];
+    next[index] = value;
+    setDatabaseRepoPaths(next);
+  };
+
+  const addDatabasePath = () => {
+    if (!newDatabasePath.trim()) return;
+    addDatabaseRepoPath(newDatabasePath);
+    setNewDatabasePath('');
   };
 
   return (
@@ -85,6 +113,66 @@ export default function SettingsPage() {
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Database Repo Paths</h2>
+        <p className="text-xs text-gray-600">
+          Add one or more database repository paths used by your team.
+          These can be GitHub folder URLs and can be edited manually.
+        </p>
+
+        <div className="space-y-2">
+          {databaseRepoPaths.map((path, idx) => (
+            <div key={`${idx}-${path}`} className="flex flex-col sm:flex-row gap-2">
+              <input
+                value={path}
+                onChange={(e) => updateDatabasePath(idx, e.target.value)}
+                className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200
+                           font-mono focus:outline-none focus:border-altera-teal"
+              />
+              <button
+                type="button"
+                onClick={() => removeDatabaseRepoPath(idx)}
+                className="text-xs px-3 py-2 rounded border border-red-800 text-red-300 hover:bg-red-950/30"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+
+          {databaseRepoPaths.length === 0 && (
+            <p className="text-xs text-yellow-500">No database repo path configured yet.</p>
+          )}
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            value={newDatabasePath}
+            onChange={(e) => setNewDatabasePath(e.target.value)}
+            placeholder="Add new database repo path..."
+            className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200
+                       font-mono focus:outline-none focus:border-altera-teal"
+          />
+          <button
+            type="button"
+            onClick={addDatabasePath}
+            className="text-xs px-3 py-2 rounded border border-cyan-700 text-cyan-200 hover:bg-cyan-950/30"
+          >
+            Add path
+          </button>
+          <button
+            type="button"
+            onClick={resetDatabaseRepoPaths}
+            className="text-xs px-3 py-2 rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
+          >
+            Reset default
+          </button>
+        </div>
+
+        <p className="text-xs text-gray-500">
+          Default: {ORG_DEFAULTS.databaseRepoPaths[0]}
+        </p>
       </section>
 
       <section className="space-y-4">
