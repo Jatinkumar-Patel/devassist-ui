@@ -172,10 +172,10 @@ export default function SetupWizard({ onDone }: Props) {
           {/* ── Step 1: Bridge ──────────────────────────────────────────────── */}
           {step === 'bridge' && (
             <>
-              <h2 className="text-lg font-semibold text-gray-100">Set up the local bridge</h2>
+              <h2 className="text-lg font-semibold text-gray-100">One-time setup</h2>
               <p className="text-sm text-gray-400">
-                The bridge is a tiny background service that connects to ServiceNow using your
-                Windows login. Do this <strong className="text-gray-200">once</strong> — it will start
+                The Secure Connector runs quietly in the background and securely connects to internal systems.
+                Do this <strong className="text-gray-200">once</strong> — it will start
                 automatically every time Windows starts. No daily commands needed.
               </p>
 
@@ -183,7 +183,7 @@ export default function SetupWizard({ onDone }: Props) {
               <div className="rounded-lg border border-blue-700/50 bg-blue-950/30 p-4 space-y-2">
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] font-bold shrink-0">1</span>
-                  <p className="text-xs font-semibold text-blue-300">Install bridge once (new machine)</p>
+                  <p className="text-xs font-semibold text-blue-300">Install Secure Connector once (new machine)</p>
                 </div>
                 <p className="text-[11px] text-gray-400 ml-7">Open a terminal, paste one command and press Enter. Safe from any folder including System32.</p>
                 <div className="space-y-2">
@@ -193,7 +193,7 @@ export default function SetupWizard({ onDone }: Props) {
                 <p className="text-[11px] text-gray-500">
                   Node.js ≥ 18 required —{' '}
                   <a href="https://nodejs.org" target="_blank" rel="noreferrer" className="text-altera-teal hover:underline">download here</a>.
-                  Clones the repo to <code className="text-[10px] bg-gray-800 px-1 rounded">%USERPROFILE%\source\devassist-ui</code>
+                  First-time install only.
                 </p>
               </div>
 
@@ -201,17 +201,17 @@ export default function SetupWizard({ onDone }: Props) {
               <div className="rounded-lg border border-emerald-700/50 bg-emerald-950/30 p-4 space-y-2">
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-bold shrink-0">2</span>
-                  <p className="text-xs font-semibold text-emerald-300">Register auto-start — run once after Step 1</p>
+                  <p className="text-xs font-semibold text-emerald-300">Turn on auto-start — run once after Step 1</p>
                 </div>
                 <p className="text-[11px] text-gray-400 ml-7">
-                  Bridge auto-starts at every Windows login — <strong className="text-gray-200">you never need to run any command again</strong>.
+                  Secure Connector auto-starts at every Windows login — <strong className="text-gray-200">you never need to run commands again</strong>.
                 </p>
                 <div className="space-y-2">
-                  <CopyableCommand label="Register auto-start — PowerShell" value={installCmds.autoStartPowershell} />
-                  <CopyableCommand label="Register auto-start — Command Prompt" value={installCmds.autoStartCmd} />
+                  <CopyableCommand label="Auto-start setup — PowerShell" value={installCmds.autoStartPowershell} />
+                  <CopyableCommand label="Auto-start setup — Command Prompt" value={installCmds.autoStartCmd} />
                 </div>
                 <p className="text-[11px] text-gray-500">
-                  Registers a current-user Startup folder script (no registry edits, no admin needed).
+                  Saves a startup script for your user (no admin needed).
                   Log file: <span className="font-mono">%USERPROFILE%\devassist-bridge.log</span>
                 </p>
               </div>
@@ -228,16 +228,16 @@ export default function SetupWizard({ onDone }: Props) {
 
               {window.location.protocol === 'https:' ? (
                 <div className="space-y-2 pt-1">
-                  <p className="text-[11px] text-gray-500 text-center">Done with Steps 1 &amp; 2? Click below to open your app.</p>
+                  <p className="text-[11px] text-gray-500 text-center">Done with Steps 1 &amp; 2? Click below.</p>
                   <a
                     href={bridgeBase}
                     className="flex items-center justify-center gap-2 bg-altera-blue hover:bg-altera-blue/80
                                text-white px-4 py-2.5 rounded-lg text-sm font-medium w-full"
                   >
                     <Wifi size={14} />
-                    Open my app (bridge must be running)
+                    Open DevAssist
                   </a>
-                  <p className="text-[11px] text-gray-600 text-center">This opens your local bridge which serves the full app</p>
+                  <p className="text-[11px] text-gray-600 text-center">If it does not open, run Step 2 once and try again.</p>
                 </div>
               ) : (
                 <div className="flex items-center gap-3 pt-2">
@@ -248,10 +248,10 @@ export default function SetupWizard({ onDone }: Props) {
                                text-altera-teal px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
                   >
                     <Wifi size={14} />
-                    {testing ? 'Checking…' : 'Check connection'}
+                    {testing ? 'Checking…' : 'Continue'}
                   </button>
                   {bridgeOk === true  && <span className="text-xs text-emerald-400 flex items-center gap-1"><CheckCircle2 size={13} /> Connected!</span>}
-                  {bridgeOk === false && <span className="text-xs text-red-400">Not found — is the bridge running?</span>}
+                  {bridgeOk === false && <span className="text-xs text-red-400">Secure Connector is not running yet.</span>}
                 </div>
               )}
             </>

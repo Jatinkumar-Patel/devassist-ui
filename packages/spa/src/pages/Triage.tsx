@@ -45,9 +45,9 @@ function isLocalBridgeUrl(url: string): boolean {
 
 function bridgeHelpMessage(bridgeUrl: string): string {
   if (window.location.protocol === 'https:' && isLocalBridgeUrl(bridgeUrl)) {
-    return `Cannot reach local bridge (${bridgeUrl}) from HTTPS due browser security. Open the app from bridge URL ${bridgeUrl} and retry.`;
+    return 'Secure Connector is not available from this page. Open DevAssist from your desktop/startup launch and retry.';
   }
-  return `Bridge is unreachable at ${bridgeUrl}. Start bridge from Settings using the one-command setup, then retry.`;
+  return 'Secure Connector is not running. Open Settings, run the one-time setup, then retry.';
 }
 
 async function ensureBridgeReachable(bridgeUrl: string): Promise<void> {
