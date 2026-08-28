@@ -225,6 +225,36 @@ function deriveSnowLinkedWorkItemId(...records: Array<any | undefined>): number 
   return undefined;
 }
 
+function buildReleaseHints(adoItem: any): string[] {
+  const reportedRelease = String(adoItem?.fields?.['Allscripts.Field.ReportedinRelease'] ?? '').trim();
+  const supportVersion = String(adoItem?.fields?.['Allscripts.Field.SupportVersion'] ?? '').trim();
+
+  const baseHints = [reportedRelease, supportVersion]
+    .filter(Boolean)
+    .flatMap((v) => {
+      const compact = v.replace(/\s+/g, ' ').trim();
+      const normalized = compact
+        .replace(/^SE\s+/i, '')
+        .replace(/[-_]/g, ' ')
+        .replace(/\bPR\s*/gi, 'PR');
+      const firstToken = normalized.split(/\s+/)[0] ?? '';
+      const versionCore = (normalized.match(/\b\d+\.\d+\b/) ?? [])[0] ?? '';
+
+      return [compact, normalized, firstToken, versionCore].filter(Boolean);
+    });
+
+  const seen = new Set<string>();
+  const hints: string[] = [];
+  for (const h of baseHints) {
+    const key = h.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      hints.push(h);
+    }
+  }
+  return hints;
+}
+
 function CopyableCommand({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -434,14 +464,7 @@ export default function TriagePage() {
         // ── Fetch repo/MTM comparison data in parallel with SNOW ──────────────
         const routedProduct = s.product;
         if (routedProduct) {
-          const supportVersionHint = String(adoItem.fields['Allscripts.Field.SupportVersion'] ?? '').trim();
-          const versionHints = [
-            supportVersionHint,
-            supportVersionHint.split(/\s+/)[0] ?? '',
-            '25.1',
-            '25.1PR3',
-            '25.1 PR3',
-          ].filter(Boolean);
+          const versionHints = buildReleaseHints(adoItem);
 
           const [relatedBugs, testCases, areaEvidence, versionEvidence] = await Promise.allSettled([
             fetchRelatedBugs(areaPath, adoPat),
@@ -636,14 +659,7 @@ export default function TriagePage() {
 
           const routedProduct = s.product;
           if (routedProduct) {
-            const supportVersionHint = String(adoItem.fields['Allscripts.Field.SupportVersion'] ?? '').trim();
-            const versionHints = [
-              supportVersionHint,
-              supportVersionHint.split(/\s+/)[0] ?? '',
-              '25.1',
-              '25.1PR3',
-              '25.1 PR3',
-            ].filter(Boolean);
+            const versionHints = buildReleaseHints(adoItem);
 
             const [relatedBugs, testCases, areaEvidence, versionEvidence] = await Promise.allSettled([
               fetchRelatedBugs(areaPath, adoPat),
@@ -715,7 +731,9 @@ export default function TriagePage() {
       const gaps: string[] = [];
       const f = s.adoItem?.fields;
       if (f) {
-        if (!f['Allscripts.Field.SupportVersion']) gaps.push('Release/version not specified');
+        if (!f['Allscripts.Field.ReportedinRelease'] && !f['Allscripts.Field.SupportVersion']) {
+          gaps.push('Release/version not specified');
+        }
         if (!f['Allscripts.Field.CustomerName'])  gaps.push('Customer name missing');
         if (!f['System.Description'] && !f['Allscripts.Field.DevAssistDetail']) {
           gaps.push('Problem description empty — check Description and DevAssistDetail fields');
