@@ -35,6 +35,8 @@ interface LogAnalysisResult {
 
 interface Props {
   snowTask?: SnowTask | null;
+  snowIncident?: Record<string, unknown> | null;
+  snowCase?: Record<string, unknown> | null;
   snowTaskNumber?: string;
   autoResult?: LogAnalysisResult | null;
   onResult?: (hits: LogHit[], topSeeds: Record<string, number>) => void;
@@ -54,7 +56,7 @@ const SEVERITY_COLOR = {
   medium:   'border-yellow-700 bg-yellow-950/20 text-yellow-300',
 };
 
-export default function LogAnalysisPanel({ snowTask, snowTaskNumber, autoResult, onResult }: Props) {
+export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, snowTaskNumber, autoResult, onResult }: Props) {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<LogAnalysisResult | null>(autoResult ?? null);
   const [error, setError] = useState('');
@@ -108,6 +110,12 @@ export default function LogAnalysisPanel({ snowTask, snowTaskNumber, autoResult,
 
       if (snowTask && autoSysId) {
         const sysIds = new Set<string>([autoSysId]);
+
+        const incidentFromSession = readSysId(snowIncident as any);
+        const caseFromSession = readSysId(snowCase as any);
+        if (incidentFromSession) sysIds.add(incidentFromSession);
+        if (caseFromSession) sysIds.add(caseFromSession);
+
         try {
           const esc = await fetch(bridgeApi(`/api/snow/escalate/${autoSysId}`));
           if (esc.ok) {

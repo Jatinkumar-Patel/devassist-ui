@@ -215,6 +215,8 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
       {session.status === 'ready' && (
         <LogAnalysisPanel
           snowTask={snowTask ?? null}
+          snowIncident={session.snowIncident as any}
+          snowCase={session.snowCase as any}
           snowTaskNumber={session.snowTaskNumber ?? snowVal((snowTask as any)?.number)}
           autoResult={(snowTask as any)?._logAnalysis ?? null}
           onResult={(hits, topSeeds) => {
