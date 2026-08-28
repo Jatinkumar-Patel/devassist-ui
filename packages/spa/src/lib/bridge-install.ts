@@ -79,7 +79,7 @@ export function getBridgeInstallCommands(): {
   const autoStartCmd = [
     `schtasks /create /tn "DevAssist Bridge"`,
     `/tr "cmd /c cd /d \\"%USERPROFILE%\\source\\${localFolder}\\" && npm run bridge >> \\"%USERPROFILE%\\devassist-bridge.log\\" 2>&1"`,
-    `/sc ONLOGON /ru "%USERNAME%" /f`,
+    `/sc ONLOGON /ru "%USERDOMAIN%\\%USERNAME%" /f`,
     `&& schtasks /run /tn "DevAssist Bridge"`,
     `&& echo Auto-start registered. Bridge started.`,
   ].join(' ');
