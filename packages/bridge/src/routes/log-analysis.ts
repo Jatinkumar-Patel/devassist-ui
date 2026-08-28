@@ -3,6 +3,7 @@ import { execPowerShell } from '../utils/powershell';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import * as XLSX from 'xlsx';
 
 export const logAnalysisRouter = Router();
 
@@ -102,7 +103,8 @@ interface AttachmentMeta {
   size_bytes: { value: string } | string;
 }
 
-const SCANNABLE_EXTENSIONS = ['.log', '.txt', '.zip', '.csv', '.json', '.xml'];
+const SCANNABLE_EXTENSIONS = ['.log', '.txt', '.zip', '.csv', '.json', '.xml', '.xlsx', '.xls'];
+const MAX_XLSX_BYTES = 30 * 1024 * 1024;
 
 function extensionOf(fileName: string): string {
   const lower = fileName.toLowerCase();
@@ -135,6 +137,42 @@ function parseHwsLog(content: string, fileName: string): LogHit[] {
       }
     }
   }
+  return hits;
+}
+
+function parseSpreadsheet(filePath: string, fileName: string): LogHit[] {
+  const hits: LogHit[] = [];
+  const wb = XLSX.readFile(filePath, { dense: true, cellDates: false });
+
+  for (const sheetName of wb.SheetNames.slice(0, 10)) {
+    const ws = wb.Sheets[sheetName];
+    if (!ws) continue;
+
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' }) as unknown[];
+    const maxRows = Math.min(rows.length, 20000);
+
+    for (let i = 0; i < maxRows; i++) {
+      const row = rows[i];
+      const rowText = Array.isArray(row)
+        ? row.map((v) => String(v ?? '')).join(' | ')
+        : String(row ?? '');
+      if (!rowText.trim()) continue;
+
+      for (const seed of GREP_SEEDS) {
+        if (rowText.toLowerCase().includes(seed.toLowerCase())) {
+          hits.push({
+            file: `${fileName}#${sheetName}`,
+            line: i + 1,
+            text: rowText.trim().slice(0, 300),
+            seed,
+            category: SEED_CATEGORY[seed] ?? 'other',
+          });
+          break;
+        }
+      }
+    }
+  }
+
   return hits;
 }
 
@@ -201,36 +239,68 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
           );
           const extracted = fs.readdirSync(extractDir);
           for (const inner of extracted) {
-            if (inner.toLowerCase().endsWith('.log') || inner.toLowerCase().endsWith('.txt')) {
+            if (
+              inner.toLowerCase().endsWith('.log') ||
+              inner.toLowerCase().endsWith('.txt') ||
+              inner.toLowerCase().endsWith('.csv') ||
+              inner.toLowerCase().endsWith('.json') ||
+              inner.toLowerCase().endsWith('.xml') ||
+              inner.toLowerCase().endsWith('.xlsx') ||
+              inner.toLowerCase().endsWith('.xls')
+            ) {
               const innerPath = path.join(extractDir, inner);
               const innerStat = fs.statSync(innerPath);
-              let content: string;
               let note = '';
               if (innerStat.size > MAX_SKIP_BYTES) {
                 skipped.push(`${fileName}/${inner} (too large: ${Math.round(innerStat.size / 1024 / 1024)}MB)`);
                 continue;
-              } else if (innerStat.size > MAX_PLAIN_BYTES) {
-                content = readTail(innerPath, TAIL_LINES);
-                note = ` [last ${TAIL_LINES} lines of ${Math.round(innerStat.size / 1024 / 1024)}MB]`;
-              } else {
-                content = fs.readFileSync(innerPath, 'utf-8');
               }
-              const hits = parseHwsLog(content, `${fileName}/${inner}`);
+
+              let hits: LogHit[] = [];
+              const innerExt = extensionOf(inner);
+              if (innerExt === '.xlsx' || innerExt === '.xls') {
+                if (innerStat.size > MAX_XLSX_BYTES) {
+                  skipped.push(`${fileName}/${inner} (spreadsheet too large: ${Math.round(innerStat.size / 1024 / 1024)}MB)`);
+                  continue;
+                }
+                hits = parseSpreadsheet(innerPath, `${fileName}/${inner}`);
+              } else {
+                let content: string;
+                if (innerStat.size > MAX_PLAIN_BYTES) {
+                  content = readTail(innerPath, TAIL_LINES);
+                  note = ` [last ${TAIL_LINES} lines of ${Math.round(innerStat.size / 1024 / 1024)}MB]`;
+                } else {
+                  content = fs.readFileSync(innerPath, 'utf-8');
+                }
+                hits = parseHwsLog(content, `${fileName}/${inner}`);
+              }
+
               allHits.push(...hits);
               analyzed.push(`${fileName}/${inner}${note} (${hits.length} hits)`);
             }
           }
         } else {
-          let content: string;
           let note = '';
           const rawStat = fs.statSync(outPath);
-          if (rawStat.size > MAX_PLAIN_BYTES) {
-            content = readTail(outPath, TAIL_LINES);
-            note = ` [last ${TAIL_LINES} lines of ${Math.round(rawStat.size / 1024 / 1024)}MB]`;
+          const ext = extensionOf(fileName);
+          let hits: LogHit[] = [];
+          if (ext === '.xlsx' || ext === '.xls') {
+            if (rawStat.size > MAX_XLSX_BYTES) {
+              skipped.push(`${fileName} (spreadsheet too large: ${Math.round(rawStat.size / 1024 / 1024)}MB)`);
+              continue;
+            }
+            hits = parseSpreadsheet(outPath, fileName);
           } else {
-            content = fs.readFileSync(outPath, 'utf-8');
+            let content: string;
+            if (rawStat.size > MAX_PLAIN_BYTES) {
+              content = readTail(outPath, TAIL_LINES);
+              note = ` [last ${TAIL_LINES} lines of ${Math.round(rawStat.size / 1024 / 1024)}MB]`;
+            } else {
+              content = fs.readFileSync(outPath, 'utf-8');
+            }
+            hits = parseHwsLog(content, fileName);
           }
-          const hits = parseHwsLog(content, fileName);
+
           allHits.push(...hits);
           analyzed.push(`${fileName}${note} (${hits.length} hits)`);
         }

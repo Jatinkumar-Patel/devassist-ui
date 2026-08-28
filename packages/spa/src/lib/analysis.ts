@@ -101,6 +101,12 @@ export interface CodeHit {
   snippet?: string;
 }
 
+function parseGithubTreePath(url: string): { repo: string; path: string } | null {
+  const m = url.match(/^https?:\/\/github\.com\/([^/]+\/[^/]+)\/tree\/[^/]+\/(.+)$/i);
+  if (!m) return null;
+  return { repo: m[1], path: m[2] };
+}
+
 // ── SHM Patterns ──────────────────────────────────────────────────────────────
 const SHM_PATTERNS: Pattern[] = [
   {
@@ -186,6 +192,52 @@ export async function runCodeSearch(
 
   const seen = new Set<string>();
   return hits.filter((h) => { if (seen.has(h.path)) return false; seen.add(h.path); return true; });
+}
+
+export async function runDatabaseRepoSearch(
+  githubPat: string,
+  databaseRepoPaths: string[],
+  terms: string[]
+): Promise<CodeHit[]> {
+  if (!githubPat || !databaseRepoPaths.length || !terms.length) return [];
+
+  const targets = databaseRepoPaths
+    .map(parseGithubTreePath)
+    .filter((v): v is { repo: string; path: string } => Boolean(v));
+
+  if (!targets.length) return [];
+
+  const hits: CodeHit[] = [];
+  const searchTerms = terms.slice(0, 4);
+
+  for (const target of targets) {
+    for (const term of searchTerms) {
+      try {
+        const q = encodeURIComponent(`${term} repo:${target.repo} path:${target.path}`);
+        const res = await fetch(
+          bridgeApi(`/api/gh-search/code?q=${q}&per_page=5`),
+          { headers: { 'X-GitHub-Token': githubPat } }
+        );
+        if (!res.ok) continue;
+        const result = await res.json() as {
+          items?: Array<{ repository: { full_name: string }; path: string; html_url: string }>;
+        };
+        for (const item of (result.items ?? []).slice(0, 2)) {
+          hits.push({ repo: item.repository.full_name, path: item.path, url: item.html_url });
+        }
+      } catch {
+        // non-fatal
+      }
+    }
+  }
+
+  const seen = new Set<string>();
+  return hits.filter((h) => {
+    const key = `${h.repo}/${h.path}`.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 // ── Phase 4: Build assessment with actual evidence ───────────────────────────
@@ -613,7 +665,10 @@ export async function buildSkillDrivenAssessment(
   snowWorkNotes: string | undefined,
   logHits: Array<{ seed: string; text: string; file: string }> | undefined,
   topSeeds: Record<string, number> | undefined,
-  codeHits: CodeHit[]
+  codeHits: CodeHit[],
+  areaEvidence: Array<{ id: number; title: string; state: string; type: string; supportVersion?: string }> = [],
+  versionEvidence: Array<{ id: number; title: string; state: string; type: string; supportVersion?: string }> = [],
+  databaseEvidence: CodeHit[] = []
 ): Promise<TriageAnalysis> {
   const bulletize = (items: Array<string | undefined | null>): string =>
     items
@@ -707,6 +762,18 @@ export async function buildSkillDrivenAssessment(
   );
   if (keyLogLine) logEvidence.push(`Key log line: "${keyLogLine.text.slice(0, 160)}"`);
 
+  if (areaEvidence.length > 0) {
+    const closedCount = areaEvidence.filter((i) => /closed|resolved|done|completed/i.test(i.state)).length;
+    logEvidence.push(`ADO area evidence: ${areaEvidence.length} recent items reviewed (${closedCount} closed/resolved)`);
+  }
+  if (versionEvidence.length > 0) {
+    const closedVersion = versionEvidence.filter((i) => /closed|resolved|done|completed/i.test(i.state)).length;
+    logEvidence.push(`Version evidence: ${versionEvidence.length} area items mention release hints (closed/resolved: ${closedVersion})`);
+  }
+  if (databaseEvidence.length > 0) {
+    logEvidence.push(`Database evidence: ${databaseEvidence.length} code hit(s) in configured DB repo paths`);
+  }
+
   // ── Step 5: code analysis ─────────────────────────────────────────────────
   const snowTechTerms = extractTechTerms(snowWorkNotes ?? '');
   let codeAnalysis: string;
@@ -718,6 +785,8 @@ export async function buildSkillDrivenAssessment(
       matchedPlaybookPattern.confirm ? `Confirm with: ${matchedPlaybookPattern.confirm.slice(0, 300)}` : '',
       repoRow ? `Priority code areas: ${repoRow}` : '',
       codeHits.length ? `Code hits: ${codeHits.map(h => h.path).slice(0,4).join(', ')}` : 'Code hits: none from API search',
+      versionEvidence.length ? `Version-linked area items: ${versionEvidence.slice(0, 4).map((i) => `#${i.id} (${i.state})`).join(', ')}` : '',
+      databaseEvidence.length ? `Database repo hits: ${databaseEvidence.slice(0, 4).map((h) => `${h.repo}:${h.path}`).join(', ')}` : '',
     ]);
   } else if (keywordPattern) {
     codeAnalysis = bulletize([
@@ -726,6 +795,8 @@ export async function buildSkillDrivenAssessment(
       `Repos: ${product.repos.filter(r => r.required).map(r => `${r.owner}/${r.repo}`).join(', ')}`,
       snowTechTerms.length ? `SNOW technical terms: ${snowTechTerms.join(', ')}` : '',
       codeHits.length ? `Code hits: ${codeHits.map(h => h.path).slice(0,4).join(', ')}` : 'Code hits: none (consider local clone search)',
+      versionEvidence.length ? `Version-linked area items: ${versionEvidence.slice(0, 4).map((i) => `#${i.id} ${i.type} (${i.state})`).join(', ')}` : '',
+      databaseEvidence.length ? `Database repo hits: ${databaseEvidence.slice(0, 4).map((h) => `${h.repo}:${h.path}`).join(', ')}` : '',
     ]);
   } else {
     // Derive from SNOW evidence — most reliable when no pattern matches
@@ -737,6 +808,8 @@ export async function buildSkillDrivenAssessment(
         ? `Skill area: ${areaId} (${playbook.length} patterns loaded, none high-confidence)`
         : `No skills pack mapped for this product yet`,
       codeHits.length ? `Code hits: ${codeHits.map(h => h.path).slice(0,4).join(', ')}` : 'Code hits: none',
+      versionEvidence.length ? `Version-linked area items: ${versionEvidence.slice(0, 4).map((i) => `#${i.id} ${i.type} (${i.state})`).join(', ')}` : '',
+      databaseEvidence.length ? `Database repo hits: ${databaseEvidence.slice(0, 4).map((h) => `${h.repo}:${h.path}`).join(', ')}` : '',
     ]);
   }
 
@@ -789,6 +862,7 @@ export async function buildSkillDrivenAssessment(
   if (!logHits?.length) blindSpots.push('HWS logs not attached or not yet scanned — attach logs for the incident window to raise confidence');
   if (!codeHits.length) blindSpots.push('Code search found no hits — clone SunriseMobile + HWS repos locally for direct inspection');
   if (!snowWorkNotes)   blindSpots.push('SNOW work notes empty — review SNOW task for additional context from support engineer');
+  if (!databaseEvidence.length) blindSpots.push('No direct DB repo hit found — broaden DB search terms (SP/view/table names) for deeper database verification');
   if (!matchedPlaybookPattern && playbook.length > 0) {
     blindSpots.push(`None of the ${playbook.length} playbook patterns matched with high confidence — this may be a new/unknown pattern`);
   }

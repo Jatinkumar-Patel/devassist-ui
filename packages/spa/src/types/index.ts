@@ -196,6 +196,9 @@ export interface TriageSession {
   clarityGaps?: string[];
   relatedItems?: import('../lib/ado-client').RelatedItem[];  // open bugs same area
   testCases?: import('../lib/ado-client').RelatedItem[];    // test cases same area
+  areaEvidence?: import('../lib/ado-client').RelatedItem[]; // recent defects/bugs/tasks same area
+  versionEvidence?: import('../lib/ado-client').RelatedItem[]; // area evidence filtered by version hints
+  databaseEvidence?: Array<{ repo: string; path: string; url: string }>; // DB repo hits
   recentCommits?: Array<{ sha: string; message: string; date: string; url: string }>;
   status: 'idle' | 'loading' | 'ready' | 'error';
   error?: string;

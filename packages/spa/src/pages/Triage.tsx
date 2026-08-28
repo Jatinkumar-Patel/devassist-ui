@@ -4,9 +4,9 @@ import TriageInput from '../components/TriageInput';
 import TriagePanel from '../components/TriagePanel';
 import { detectInput } from '../lib/input-detector';
 import { loadRegistry, routeByAreaPath } from '../lib/product-registry';
-import { fetchWorkItem, findWorkItemBySnowTask, findWorkItemByCase } from '../lib/ado-client';
+import { fetchWorkItem, findWorkItemBySnowTask, findWorkItemByCase, fetchAreaItems, fetchAreaVersionEvidence } from '../lib/ado-client';
 import { fetchSnowTask, fetchSnowWorkNotes, fetchSnowAttachments, fetchSnowCase, fetchSnowIncident, fetchSnowIncidentByCase, fetchSnowTasksByIncident, escalateSnowTask, snowVal } from '../lib/snow-client';
-import { matchPattern, runCodeSearch, buildSkillDrivenAssessment } from '../lib/analysis';
+import { matchPattern, runCodeSearch, runDatabaseRepoSearch, buildSkillDrivenAssessment } from '../lib/analysis';
 import { fetchRelatedBugs, fetchTestCases } from '../lib/ado-client';
 import { searchCommits } from '../lib/github-client';
 import { useSettingsStore } from '../store/settings';
@@ -337,7 +337,7 @@ async function enrichSnowTaskArtifacts(s: TriageSession, taskRecord: any): Promi
 }
 
 export default function TriagePage() {
-  const { adoPat, githubPat, bridgeUrl } = useSettingsStore();
+  const { adoPat, githubPat, bridgeUrl, databaseRepoPaths } = useSettingsStore();
   const { sessions, active, upsert } = useTriageStore();
   const installCmds = getBridgeInstallCommands();
   const [bridgeHint, setBridgeHint] = useState<string | null>(null);
@@ -434,12 +434,25 @@ export default function TriagePage() {
         // ── Fetch repo/MTM comparison data in parallel with SNOW ──────────────
         const routedProduct = s.product;
         if (routedProduct) {
-          const [relatedBugs, testCases] = await Promise.allSettled([
+          const supportVersionHint = String(adoItem.fields['Allscripts.Field.SupportVersion'] ?? '').trim();
+          const versionHints = [
+            supportVersionHint,
+            supportVersionHint.split(/\s+/)[0] ?? '',
+            '25.1',
+            '25.1PR3',
+            '25.1 PR3',
+          ].filter(Boolean);
+
+          const [relatedBugs, testCases, areaEvidence, versionEvidence] = await Promise.allSettled([
             fetchRelatedBugs(areaPath, adoPat),
             fetchTestCases(areaPath, adoPat),
+            fetchAreaItems(areaPath, adoPat),
+            fetchAreaVersionEvidence(areaPath, adoPat, versionHints),
           ]);
           if (relatedBugs.status === 'fulfilled') s = { ...s, relatedItems: relatedBugs.value };
           if (testCases.status === 'fulfilled')   s = { ...s, testCases: testCases.value };
+          if (areaEvidence.status === 'fulfilled') s = { ...s, areaEvidence: areaEvidence.value };
+          if (versionEvidence.status === 'fulfilled') s = { ...s, versionEvidence: versionEvidence.value };
           // GitHub recent commits for primary repos
           if (githubPat && routedProduct.repos.length) {
             const repo = routedProduct.repos.find(r => r.required);
@@ -623,12 +636,25 @@ export default function TriagePage() {
 
           const routedProduct = s.product;
           if (routedProduct) {
-            const [relatedBugs, testCases] = await Promise.allSettled([
+            const supportVersionHint = String(adoItem.fields['Allscripts.Field.SupportVersion'] ?? '').trim();
+            const versionHints = [
+              supportVersionHint,
+              supportVersionHint.split(/\s+/)[0] ?? '',
+              '25.1',
+              '25.1PR3',
+              '25.1 PR3',
+            ].filter(Boolean);
+
+            const [relatedBugs, testCases, areaEvidence, versionEvidence] = await Promise.allSettled([
               fetchRelatedBugs(areaPath, adoPat),
               fetchTestCases(areaPath, adoPat),
+              fetchAreaItems(areaPath, adoPat),
+              fetchAreaVersionEvidence(areaPath, adoPat, versionHints),
             ]);
             if (relatedBugs.status === 'fulfilled') s = { ...s, relatedItems: relatedBugs.value };
             if (testCases.status === 'fulfilled') s = { ...s, testCases: testCases.value };
+            if (areaEvidence.status === 'fulfilled') s = { ...s, areaEvidence: areaEvidence.value };
+            if (versionEvidence.status === 'fulfilled') s = { ...s, versionEvidence: versionEvidence.value };
             if (githubPat && routedProduct.repos.length) {
               const repo = routedProduct.repos.find((r) => r.required);
               if (repo) {
@@ -794,6 +820,21 @@ export default function TriagePage() {
           const codeHits = pattern && githubPat
             ? await runCodeSearch(githubPat, s.product, pattern)
             : [];
+
+          const dbTerms = Array.from(new Set([
+            ...(pattern?.searchSeeds ?? []),
+            ...String(s.adoItem.fields['System.Title'] ?? '')
+              .split(/\s+/)
+              .map((t) => t.trim())
+              .filter((t) => t.length >= 4),
+            ...Object.keys((s.snowTask as any)?._topSeeds ?? {})
+              .filter((k) => /sql|timeout|exception|lock/i.test(k)),
+          ])).slice(0, 8);
+
+          const databaseEvidence = githubPat
+            ? await runDatabaseRepoSearch(githubPat, databaseRepoPaths, dbTerms)
+            : [];
+
           const workNotes = s.snowTask
             ? String((s.snowTask as any)._workNotes
                 ? JSON.stringify((s.snowTask as any)._workNotes)
@@ -802,8 +843,18 @@ export default function TriagePage() {
           const logHits = (s.snowTask as any)?._logHits ?? [];
           const topSeeds = (s.snowTask as any)?._topSeeds ?? {};
           // Use skill-driven analysis — reads skill files, derives verdict from SNOW evidence
-          const analysis = await buildSkillDrivenAssessment(s.adoItem, s.product, workNotes, logHits, topSeeds, codeHits);
-          s = { ...s, analysis };
+          const analysis = await buildSkillDrivenAssessment(
+            s.adoItem,
+            s.product,
+            workNotes,
+            logHits,
+            topSeeds,
+            codeHits,
+            s.areaEvidence ?? [],
+            s.versionEvidence ?? [],
+            databaseEvidence
+          );
+          s = { ...s, analysis, databaseEvidence };
         } catch { /* non-fatal */ }
       }
 
@@ -813,7 +864,7 @@ export default function TriagePage() {
     } finally {
       setLoading(false);
     }
-  }, [adoPat, bridgeUrl, githubPat, upsert]);
+  }, [adoPat, bridgeUrl, databaseRepoPaths, githubPat, upsert]);
 
   return (
     <div className="space-y-3">

@@ -1,7 +1,7 @@
 ﻿import { useEffect, useState } from 'react';
 import { ClipboardCopy, Code2, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Wrench, Lightbulb, Sparkles, GitCommit, Bug, TestTube, Mail } from 'lucide-react';
 import type { TriageAnalysis, TriageSession } from '../types';
-import { matchPattern, runCodeSearch, buildSkillDrivenAssessment } from '../lib/analysis';
+import { matchPattern, runCodeSearch, runDatabaseRepoSearch, buildSkillDrivenAssessment } from '../lib/analysis';
 import { useSettingsStore } from '../store/settings';
 import { snowVal } from '../lib/snow-client';
 import { getBridgeUrl } from '../lib/bridge-url';
@@ -90,7 +90,7 @@ function buildAnalysisEmail(session: TriageSession, analysis: TriageAnalysis, sn
 }
 
 export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
-  const { githubPat } = useSettingsStore();
+  const { githubPat, databaseRepoPaths } = useSettingsStore();
   const [running, setRunning] = useState(false);
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -105,13 +105,34 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
       const codeHits = pattern
         ? await runCodeSearch(githubPat ?? '', product, pattern)
         : [];
+
+      const dbTerms = Array.from(new Set([
+        ...(pattern?.searchSeeds ?? []),
+        ...String(adoItem.fields['System.Title'] ?? '')
+          .split(/\s+/)
+          .map((t) => t.trim())
+          .filter((t) => t.length >= 4),
+      ])).slice(0, 8);
+
+      const databaseEvidence = await runDatabaseRepoSearch(githubPat ?? '', databaseRepoPaths, dbTerms);
+
       const workNotes = snowTask?.['_workNotes']
         ? JSON.stringify(snowTask['_workNotes'])
         : snowVal(snowTask?.work_notes);
       const logHits: Array<{ seed: string; text: string; file: string }> = (snowTask as any)?._logHits ?? [];
       const topSeeds: Record<string, number> = (snowTask as any)?._topSeeds ?? {};
       // Use skill-driven analysis (reads analysis-playbook.md, reasoning-framework.md etc. from bridge)
-      const result = await buildSkillDrivenAssessment(adoItem, product, workNotes || undefined, logHits, topSeeds, codeHits);
+      const result = await buildSkillDrivenAssessment(
+        adoItem,
+        product,
+        workNotes || undefined,
+        logHits,
+        topSeeds,
+        codeHits,
+        session.areaEvidence ?? [],
+        session.versionEvidence ?? [],
+        databaseEvidence
+      );
       onAnalysisComplete(result);
     } finally {
       setRunning(false);
@@ -244,9 +265,47 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
       </div>
 
       {/* Repo / MTM Comparison */}
-      {(session.relatedItems?.length || session.testCases?.length || session.recentCommits?.length) && (
+      {(session.relatedItems?.length || session.testCases?.length || session.recentCommits?.length || session.areaEvidence?.length || session.versionEvidence?.length) && (
         <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-4">
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Repo / MTM Comparison</p>
+
+          {(session.versionEvidence?.length ?? 0) > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+                <Bug size={11} className="text-amber-400" />
+                Version evidence (25.1/PR hints) · {session.versionEvidence!.length} found
+              </p>
+              {session.versionEvidence!.slice(0, 8).map(item => (
+                <div key={item.id} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-800 last:border-0">
+                  <a href={item.url} target="_blank" rel="noreferrer"
+                     className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{item.id}</a>
+                  <span className="text-gray-300 truncate flex-1">{item.title}</span>
+                  <span className="text-gray-500 shrink-0 ml-2">{item.supportVersion || '-'}</span>
+                  <span className={`shrink-0 ml-2 px-1.5 py-0.5 rounded text-xs ${
+                    /Closed|Resolved|Done|Completed/i.test(item.state) ? 'bg-emerald-950 text-emerald-400' : 'bg-gray-800 text-gray-400'
+                  }`}>{item.state}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {(session.areaEvidence?.length ?? 0) > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+                <Bug size={11} className="text-cyan-400" />
+                Area evidence (defect/bug/task/story, 365d) · {session.areaEvidence!.length} found
+              </p>
+              {session.areaEvidence!.slice(0, 8).map(item => (
+                <div key={item.id} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-800 last:border-0">
+                  <a href={item.url} target="_blank" rel="noreferrer"
+                     className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{item.id}</a>
+                  <span className="text-gray-300 truncate flex-1">{item.title}</span>
+                  <span className="text-gray-500 shrink-0 ml-2">{item.type}</span>
+                  <span className="text-gray-600 shrink-0 ml-2">{item.supportVersion || '-'}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Related open bugs */}
           {(session.relatedItems?.length ?? 0) > 0 && (

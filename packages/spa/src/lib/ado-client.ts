@@ -62,6 +62,8 @@ export interface RelatedItem {
   state: string;
   type: string;
   url: string;
+  supportVersion?: string;
+  changedDate?: string;
 }
 
 async function runWiql(pat: string, query: string): Promise<number[]> {
@@ -93,6 +95,33 @@ async function fetchItemsBatch(ids: number[], pat: string): Promise<RelatedItem[
   }));
 }
 
+async function fetchItemsBatchDetailed(ids: number[], pat: string): Promise<RelatedItem[]> {
+  if (!ids.length) return [];
+  const fields = [
+    'System.Id',
+    'System.Title',
+    'System.State',
+    'System.WorkItemType',
+    'System.ChangedDate',
+    'Allscripts.Field.SupportVersion',
+  ].join(',');
+
+  const url = bridgeApi(`/api/ado/SR/_apis/wit/workItems?ids=${ids.join(',')}&fields=${fields}&api-version=7.0`);
+  const res = await fetch(url, { headers: adoHeaders(pat), signal: AbortSignal.timeout(9000) });
+  if (!res.ok) return [];
+  const data = await res.json() as { value?: Array<{ id: number; fields: Record<string, string> }> };
+
+  return (data.value ?? []).map((w) => ({
+    id: w.id,
+    title: w.fields['System.Title'] ?? '',
+    state: w.fields['System.State'] ?? '',
+    type: w.fields['System.WorkItemType'] ?? '',
+    url: workItemUrl(w.id),
+    supportVersion: w.fields['Allscripts.Field.SupportVersion'] ?? '',
+    changedDate: w.fields['System.ChangedDate'] ?? '',
+  }));
+}
+
 /** Open bugs in the same area path created in the last 90 days */
 export async function fetchRelatedBugs(areaPath: string, pat: string): Promise<RelatedItem[]> {
   const escaped = areaPath.replace(/\\/g, '\\\\');
@@ -107,6 +136,30 @@ export async function fetchTestCases(areaPath: string, pat: string): Promise<Rel
   const query = `SELECT [System.Id] FROM WorkItems WHERE [System.AreaPath] UNDER '${escaped}' AND [System.WorkItemType] = 'Test Case' ORDER BY [System.ChangedDate] DESC`;
   const ids = await runWiql(pat, query);
   return fetchItemsBatch(ids.slice(0, 10), pat);
+}
+
+/** Recent area items across defect/bug/task/story regardless of open/closed state. */
+export async function fetchAreaItems(areaPath: string, pat: string): Promise<RelatedItem[]> {
+  const escaped = areaPath.replace(/\\/g, '\\\\');
+  const query = `SELECT [System.Id] FROM WorkItems WHERE [System.AreaPath] UNDER '${escaped}' AND [System.WorkItemType] IN ('Bug','Defect','Task','User Story') AND [System.ChangedDate] > @today - 365 ORDER BY [System.ChangedDate] DESC`;
+  const ids = await runWiql(pat, query);
+  return fetchItemsBatchDetailed(ids.slice(0, 80), pat);
+}
+
+/** Area evidence filtered by release/version hints (e.g. 25.1, 25.1 PR3). */
+export async function fetchAreaVersionEvidence(areaPath: string, pat: string, versionHints: string[]): Promise<RelatedItem[]> {
+  const hints = versionHints
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean);
+  if (!hints.length) return [];
+
+  const all = await fetchAreaItems(areaPath, pat);
+  const filtered = all.filter((item) => {
+    const hay = `${item.title} ${item.supportVersion ?? ''}`.toLowerCase();
+    return hints.some((h) => hay.includes(h));
+  });
+
+  return filtered.slice(0, 25);
 }
 
 export async function findWorkItemBySnowTask(taskNumber: string, pat: string) {
