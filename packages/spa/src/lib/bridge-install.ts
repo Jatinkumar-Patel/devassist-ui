@@ -73,11 +73,11 @@ export function getBridgeInstallCommands(): {
     `set "APP1=%USERPROFILE%\\source\\${localFolder}"`,
     `set "APP2=%USERPROFILE%\\source\\repos\\${localFolder}"`,
     `if exist "%APP1%\\node_modules" (cd /d "%APP1%") else (cd /d "%APP2%")`,
-    `npm run bridge >> "%USERPROFILE%\\devassist-bridge.log" 2>&1`,
+    `call "C:\\Program Files\\nodejs\\npm.cmd" run bridge >> "%USERPROFILE%\\devassist-bridge.log" 2>&1`,
     `'@;`,
     `Set-Content -Path $startup -Value $body -Encoding ASCII;`,
     // 3. Start it now without waiting for next login
-    `Start-Process -WindowStyle Hidden -FilePath 'cmd.exe' -ArgumentList '/c', "\"$startup\"";`,
+    `Start-Process -WindowStyle Hidden -FilePath $startup;`,
     `Write-Host 'Auto-start registered and bridge started. Open https://${repoSlug.split('/')[0]}.github.io/${localFolder}/#/triage in your browser.'`,
   ].join(' ');
 
@@ -88,8 +88,8 @@ export function getBridgeInstallCommands(): {
     `&& (echo set "APP1=%%USERPROFILE%%\\source\\${localFolder}")>>"%S%"`,
     `&& (echo set "APP2=%%USERPROFILE%%\\source\\repos\\${localFolder}")>>"%S%"`,
     `&& (echo if exist "%%APP1%%\\node_modules" ^(cd /d "%%APP1%%"^) else ^(cd /d "%%APP2%%"^))>>"%S%"`,
-    `&& (echo npm run bridge ^>^> "%%USERPROFILE%%\\devassist-bridge.log" 2^>^&1)>>"%S%"`,
-    `&& start "" /min cmd /c "\"%S%\""`,
+    `&& (echo call "C:\\Program Files\\nodejs\\npm.cmd" run bridge ^>^> "%%USERPROFILE%%\\devassist-bridge.log" 2^>^&1)>>"%S%"`,
+    `&& start "" /min "%S%"`,
     `&& echo Auto-start registered. Bridge started.`,
   ].join(' ');
 
