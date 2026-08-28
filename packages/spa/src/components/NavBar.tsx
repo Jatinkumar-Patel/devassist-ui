@@ -8,7 +8,9 @@ const links = [
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
-export default function NavBar() {
+export default function NavBar({ showSettings = true }: { showSettings?: boolean }) {
+  const visibleLinks = showSettings ? links : links.filter((x) => x.to !== '/settings');
+
   const refreshLatest = () => {
     const base = `${window.location.origin}/devassist-ui/`;
     const hash = window.location.hash || '#/triage';
@@ -24,7 +26,7 @@ export default function NavBar() {
             DevAssist
           </span>
           <nav className="flex gap-1 overflow-x-auto no-scrollbar -mx-1 px-1">
-            {links.map(({ to, label, icon: Icon }) => (
+            {visibleLinks.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}
                 to={to}
