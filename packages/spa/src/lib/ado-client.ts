@@ -77,7 +77,7 @@ async function runWiqlLimited(pat: string, query: string, limit: number): Promis
     method: 'POST',
     headers: adoHeaders(pat),
     body: JSON.stringify({ query }),
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(60000),
   });
   if (!res.ok) return [];
   const data = await res.json() as { workItems?: Array<{ id: number }> };
@@ -87,7 +87,7 @@ async function runWiqlLimited(pat: string, query: string, limit: number): Promis
 async function fetchReleaseFieldBatch(ids: number[], pat: string): Promise<string[]> {
   if (!ids.length) return [];
   const url = bridgeApi(`/api/ado/SR/_apis/wit/workItems?ids=${ids.join(',')}&fields=Allscripts.Field.ReportedinRelease&api-version=7.0`);
-  const res = await fetch(url, { headers: adoHeaders(pat), signal: AbortSignal.timeout(25000) });
+  const res = await fetch(url, { headers: adoHeaders(pat), signal: AbortSignal.timeout(45000) });
   if (!res.ok) return [];
   const data = await res.json() as { value?: Array<{ fields: Record<string, string> }> };
   return (data.value ?? [])
@@ -255,10 +255,49 @@ async function fetchReportedReleaseOptionsFromScope(areaPaths: string[], pat: st
   return allValues.sort(compareReleaseOptions);
 }
 
+const RELEASE_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const RELEASE_CACHE_STALE_MS = 60 * 60 * 1000;   // refresh after 1 hour
+
+function releasesCacheKey(areaPaths: string[]): string {
+  return `devassist:releaseOptions:${areaPaths.slice().sort().join('|')}`;
+}
+
+function readReleasesCache(key: string): { options: string[]; fetchedAt: number } | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { options: string[]; fetchedAt: number };
+    if (Date.now() - parsed.fetchedAt > RELEASE_CACHE_TTL_MS) { localStorage.removeItem(key); return null; }
+    return parsed;
+  } catch { return null; }
+}
+
+function writeReleasesCache(key: string, options: string[]): void {
+  try { localStorage.setItem(key, JSON.stringify({ options, fetchedAt: Date.now() })); } catch { /* quota */ }
+}
+
 export async function fetchReportedReleaseOptions(areaPaths: string[], pat: string): Promise<string[]> {
+  const key = releasesCacheKey(areaPaths);
+  const cached = readReleasesCache(key);
+
+  if (cached) {
+    // Return cached value immediately; refresh in background if stale
+    if (Date.now() - cached.fetchedAt > RELEASE_CACHE_STALE_MS) {
+      void (async () => {
+        try {
+          const fresh = await fetchReportedReleaseOptionsFromScope(areaPaths, pat)
+            .then(r => r.length ? r : fetchReportedReleaseOptionsFromScope([], pat));
+          if (fresh.length) writeReleasesCache(key, fresh);
+        } catch { /* background refresh failed, keep cache */ }
+      })();
+    }
+    return cached.options;
+  }
+
   const scoped = await fetchReportedReleaseOptionsFromScope(areaPaths, pat);
-  if (scoped.length) return scoped;
-  return fetchReportedReleaseOptionsFromScope([], pat);
+  const result = scoped.length ? scoped : await fetchReportedReleaseOptionsFromScope([], pat);
+  if (result.length) writeReleasesCache(key, result);
+  return result;
 }
 
 export async function findWorkItemBySnowTask(taskNumber: string, pat: string) {
