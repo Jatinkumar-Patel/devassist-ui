@@ -846,10 +846,11 @@ export default function TriagePage() {
       // Run against TASK sysId first, then also INCIDENT + CASE sysIds
       // so attachments at any level of the chain are captured.
       const snowSysId        = s.snowTask     ? snowVal(s.snowTask.sys_id)          : '';
+      const incidentSysIdFromTask = s.snowTask ? snowVal((s.snowTask as any).incident) : '';
       const incidentSysId2   = s.snowIncident ? snowVal((s.snowIncident as any).sys_id) : '';
       const caseSysId2       = s.snowCase     ? snowVal((s.snowCase as any).sys_id)    : '';
 
-      const sysIdsToScan = [...new Set([snowSysId, incidentSysId2, caseSysId2].filter(Boolean))];
+      const sysIdsToScan = [...new Set([snowSysId, incidentSysIdFromTask, incidentSysId2, caseSysId2].filter(Boolean))];
 
       if (sysIdsToScan.length) {
         s = phase(s, 'artifacts');

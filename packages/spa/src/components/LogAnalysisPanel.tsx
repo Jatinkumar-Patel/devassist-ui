@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { FileSearch, Loader2, ChevronDown, AlertTriangle, AlertCircle, Lock, Activity, Code2, ExternalLink } from 'lucide-react';
 import type { SnowTask } from '../types';
 import { snowVal } from '../lib/snow-client';
@@ -61,6 +61,10 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
   const [result, setResult] = useState<LogAnalysisResult | null>(autoResult ?? null);
   const [error, setError] = useState('');
   const [manualSysId, setManualSysId] = useState('');
+
+  useEffect(() => {
+    setResult(autoResult ?? null);
+  }, [autoResult]);
 
   const autoSysId = snowTask ? snowVal(snowTask.sys_id) : '';
   const sysId = autoSysId || manualSysId.trim();
