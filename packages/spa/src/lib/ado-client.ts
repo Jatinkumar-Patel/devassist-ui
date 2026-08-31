@@ -146,7 +146,7 @@ export async function fetchRelatedBugs(areaPaths: string | string[], pat: string
   const normalized = Array.from(new Set(paths.map((p) => p.trim()).filter(Boolean)));
   if (!normalized.length) return [];
   const underClause = normalized.map((p) => `[System.AreaPath] UNDER '${p.replace(/\\/g, '\\\\')}'`).join(' OR ');
-  const query = `SELECT [System.Id] FROM WorkItems WHERE (${underClause}) AND [System.WorkItemType] IN ('Bug','Task') AND [System.State] NOT IN ('Closed','Resolved','Done') AND [System.CreatedDate] > @today - 90 ORDER BY [System.ChangedDate] DESC`;
+  const query = `SELECT [System.Id] FROM WorkItems WHERE (${underClause}) AND [System.WorkItemType] IN ('Bug','Task') AND [System.State] NOT IN ('Removed') AND [System.CreatedDate] > @today - 90 ORDER BY [System.ChangedDate] DESC`;
   const ids = await runWiql(pat, query);
   return fetchItemsBatch(ids, pat);
 }
