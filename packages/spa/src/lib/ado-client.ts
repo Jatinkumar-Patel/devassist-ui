@@ -77,11 +77,22 @@ async function runWiqlLimited(pat: string, query: string, limit: number): Promis
     method: 'POST',
     headers: adoHeaders(pat),
     body: JSON.stringify({ query }),
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(30000),
   });
   if (!res.ok) return [];
   const data = await res.json() as { workItems?: Array<{ id: number }> };
   return (data.workItems ?? []).map(w => w.id).slice(0, limit);
+}
+
+async function fetchReleaseFieldBatch(ids: number[], pat: string): Promise<string[]> {
+  if (!ids.length) return [];
+  const url = bridgeApi(`/api/ado/SR/_apis/wit/workItems?ids=${ids.join(',')}&fields=Allscripts.Field.ReportedinRelease&api-version=7.0`);
+  const res = await fetch(url, { headers: adoHeaders(pat), signal: AbortSignal.timeout(25000) });
+  if (!res.ok) return [];
+  const data = await res.json() as { value?: Array<{ fields: Record<string, string> }> };
+  return (data.value ?? [])
+    .map(w => (w.fields['Allscripts.Field.ReportedinRelease'] ?? '').trim())
+    .filter(Boolean);
 }
 
 async function fetchItemsBatch(ids: number[], pat: string): Promise<RelatedItem[]> {
@@ -113,7 +124,7 @@ async function fetchItemsBatchDetailed(ids: number[], pat: string): Promise<Rela
   ].join(',');
 
   const url = bridgeApi(`/api/ado/SR/_apis/wit/workItems?ids=${ids.join(',')}&fields=${fields}&api-version=7.0`);
-  const res = await fetch(url, { headers: adoHeaders(pat), signal: AbortSignal.timeout(9000) });
+  const res = await fetch(url, { headers: adoHeaders(pat), signal: AbortSignal.timeout(25000) });
   if (!res.ok) return [];
   const data = await res.json() as { value?: Array<{ id: number; fields: Record<string, string> }> };
 
@@ -224,22 +235,6 @@ function compareReleaseOptions(a: string, b: string): number {
   return left.normalized.localeCompare(right.normalized);
 }
 
-function collectReportedReleaseValues(items: RelatedItem[]): string[] {
-  const seen = new Set<string>();
-  const values: string[] = [];
-
-  for (const item of items) {
-    const value = (item.reportedRelease ?? '').trim();
-    if (!value) continue;
-    const key = value.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    values.push(value);
-  }
-
-  return values.sort(compareReleaseOptions);
-}
-
 async function fetchReportedReleaseOptionsFromScope(areaPaths: string[], pat: string): Promise<string[]> {
   const normalized = Array.from(new Set(areaPaths.map((x) => x.trim()).filter(Boolean)));
   const areaClause = normalized.length
@@ -251,8 +246,13 @@ async function fetchReportedReleaseOptionsFromScope(areaPaths: string[], pat: st
   const query = `SELECT [System.Id] FROM WorkItems WHERE [Allscripts.Field.ReportedinRelease] <> '' AND [System.WorkItemType] IN ('Bug','Defect','Task','User Story') AND [System.ChangedDate] > @today - 540${areaClause} ORDER BY [System.ChangedDate] DESC`;
   const ids = await runWiqlLimited(pat, query, 200);
   if (!ids.length) return [];
-  const items = await fetchItemsBatchDetailed(ids, pat);
-  return collectReportedReleaseValues(items);
+  // Fetch only the release field in chunks to keep URLs short
+  const chunkSize = 100;
+  const chunks: number[][] = [];
+  for (let i = 0; i < ids.length; i += chunkSize) chunks.push(ids.slice(i, i + chunkSize));
+  const results = await Promise.all(chunks.map(chunk => fetchReleaseFieldBatch(chunk, pat)));
+  const allValues = Array.from(new Set(results.flat()));
+  return allValues.sort(compareReleaseOptions);
 }
 
 export async function fetchReportedReleaseOptions(areaPaths: string[], pat: string): Promise<string[]> {
