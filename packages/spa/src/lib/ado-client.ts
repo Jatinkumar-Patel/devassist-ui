@@ -141,17 +141,23 @@ async function fetchItemsBatchDetailed(ids: number[], pat: string): Promise<Rela
 }
 
 /** Open bugs in the same area path created in the last 90 days */
-export async function fetchRelatedBugs(areaPath: string, pat: string): Promise<RelatedItem[]> {
-  const escaped = areaPath.replace(/\\/g, '\\\\');
-  const query = `SELECT [System.Id] FROM WorkItems WHERE [System.AreaPath] UNDER '${escaped}' AND [System.WorkItemType] IN ('Bug','Task') AND [System.State] NOT IN ('Closed','Resolved','Done') AND [System.CreatedDate] > @today - 90 ORDER BY [System.ChangedDate] DESC`;
+export async function fetchRelatedBugs(areaPaths: string | string[], pat: string): Promise<RelatedItem[]> {
+  const paths = Array.isArray(areaPaths) ? areaPaths : [areaPaths];
+  const normalized = Array.from(new Set(paths.map((p) => p.trim()).filter(Boolean)));
+  if (!normalized.length) return [];
+  const underClause = normalized.map((p) => `[System.AreaPath] UNDER '${p.replace(/\\/g, '\\\\')}'`).join(' OR ');
+  const query = `SELECT [System.Id] FROM WorkItems WHERE (${underClause}) AND [System.WorkItemType] IN ('Bug','Task') AND [System.State] NOT IN ('Closed','Resolved','Done') AND [System.CreatedDate] > @today - 90 ORDER BY [System.ChangedDate] DESC`;
   const ids = await runWiql(pat, query);
   return fetchItemsBatch(ids, pat);
 }
 
-/** Test cases for the area path */
-export async function fetchTestCases(areaPath: string, pat: string): Promise<RelatedItem[]> {
-  const escaped = areaPath.replace(/\\/g, '\\\\');
-  const query = `SELECT [System.Id] FROM WorkItems WHERE [System.AreaPath] UNDER '${escaped}' AND [System.WorkItemType] = 'Test Case' ORDER BY [System.ChangedDate] DESC`;
+/** Test cases for the area path(s) */
+export async function fetchTestCases(areaPaths: string | string[], pat: string): Promise<RelatedItem[]> {
+  const paths = Array.isArray(areaPaths) ? areaPaths : [areaPaths];
+  const normalized = Array.from(new Set(paths.map((p) => p.trim()).filter(Boolean)));
+  if (!normalized.length) return [];
+  const underClause = normalized.map((p) => `[System.AreaPath] UNDER '${p.replace(/\\/g, '\\\\')}'`).join(' OR ');
+  const query = `SELECT [System.Id] FROM WorkItems WHERE (${underClause}) AND [System.WorkItemType] = 'Test Case' ORDER BY [System.ChangedDate] DESC`;
   const ids = await runWiql(pat, query);
   return fetchItemsBatch(ids.slice(0, 10), pat);
 }

@@ -88,10 +88,12 @@ function buildReleaseHintsFromInputs(adoItem: any, selectedReportedReleases: str
   return hints;
 }
 
-function buildKbTerms(adoItem: any, product?: Product): string[] {
+function buildKbTerms(adoItem: any, product?: Product, userSelectedScope?: boolean): string[] {
   const title = String(adoItem?.fields?.['System.Title'] ?? '');
   const productName = String(product?.displayName ?? '');
-  const snowProduct = String(adoItem?.fields?.['Allscripts.Field.SnowProduct'] ?? '');
+  // Only use the work item's SnowProduct field when no explicit scope is selected;
+  // otherwise it may contaminate results with a different product's terms.
+  const snowProduct = userSelectedScope ? '' : String(adoItem?.fields?.['Allscripts.Field.SnowProduct'] ?? '');
 
   const seedWords = [
     ...title.split(/[^A-Za-z0-9.]+/),
@@ -515,11 +517,11 @@ export default function TriagePage() {
         if (routedProduct) {
           const evidenceAreaPaths = getEvidenceAreaPaths(areaPath, routedProduct, !!selectedScope);
           const versionHints = buildReleaseHintsFromInputs(adoItem, selectedReportedReleases);
-          const kbTerms = buildKbTerms(adoItem, routedProduct);
+          const kbTerms = buildKbTerms(adoItem, routedProduct, !!selectedScope);
 
           const [relatedBugs, testCases, areaEvidence, versionEvidence, kbEvidence] = await Promise.allSettled([
-            fetchRelatedBugs(areaPath, adoPat),
-            fetchTestCases(areaPath, adoPat),
+            fetchRelatedBugs(evidenceAreaPaths.length ? evidenceAreaPaths : [areaPath], adoPat),
+            fetchTestCases(evidenceAreaPaths.length ? evidenceAreaPaths : [areaPath], adoPat),
             fetchAreaItemsByPaths(evidenceAreaPaths, adoPat),
             fetchAreaVersionEvidenceByPaths(evidenceAreaPaths, adoPat, versionHints),
             fetchSnowKbSearch(kbTerms, versionHints),
@@ -723,13 +725,14 @@ export default function TriagePage() {
 
           const routedProduct = s.product;
           if (routedProduct) {
-            const evidenceAreaPaths = getEvidenceAreaPaths(areaPath, routedProduct, s.product?.id?.startsWith('selected-'));
+            const isUserScope = s.product?.id?.startsWith('selected-');
+            const evidenceAreaPaths = getEvidenceAreaPaths(areaPath, routedProduct, isUserScope);
             const versionHints = buildReleaseHintsFromInputs(adoItem, s.selectedReportedReleases ?? []);
-            const kbTerms = buildKbTerms(adoItem, routedProduct);
+            const kbTerms = buildKbTerms(adoItem, routedProduct, isUserScope);
 
             const [relatedBugs, testCases, areaEvidence, versionEvidence, kbEvidence] = await Promise.allSettled([
-              fetchRelatedBugs(areaPath, adoPat),
-              fetchTestCases(areaPath, adoPat),
+              fetchRelatedBugs(evidenceAreaPaths.length ? evidenceAreaPaths : [areaPath], adoPat),
+              fetchTestCases(evidenceAreaPaths.length ? evidenceAreaPaths : [areaPath], adoPat),
               fetchAreaItemsByPaths(evidenceAreaPaths, adoPat),
               fetchAreaVersionEvidenceByPaths(evidenceAreaPaths, adoPat, versionHints),
               fetchSnowKbSearch(kbTerms, versionHints),
