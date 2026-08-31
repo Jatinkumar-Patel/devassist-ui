@@ -1,11 +1,8 @@
 node_modules/
-dist/
+# dist/ — NOT ignored; packages/spa/dist and packages/bridge/dist are committed
 .env
 .env.local
 *.tsbuildinfo
-# dist folders are committed so git pull is enough on any machine
-# packages/spa/dist/
-# packages/bridge/dist/
 # Never commit credentials
 .snow.curlrc
 .ado.curlrc
