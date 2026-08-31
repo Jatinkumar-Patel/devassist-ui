@@ -3,8 +3,9 @@ dist/
 .env
 .env.local
 *.tsbuildinfo
-packages/spa/dist/
-packages/bridge/dist/
+# dist folders are committed so git pull is enough on any machine
+# packages/spa/dist/
+# packages/bridge/dist/
 # Never commit credentials
 .snow.curlrc
 .ado.curlrc
