@@ -8,6 +8,7 @@
     "dev": "concurrently -n bridge,spa -c cyan,magenta \"npm run dev --workspace=packages/bridge\" \"npm run dev --workspace=packages/spa\"",
     "build": "npm run build --workspace=packages/spa",
     "bridge": "npm run build --workspace=packages/spa && npm run build --workspace=packages/bridge && npm run start --workspace=packages/bridge",
+    "bridge:start": "npm run start --workspace=packages/bridge",
     "bridge:dev": "npm run dev --workspace=packages/bridge"
   },
   "devDependencies": {
