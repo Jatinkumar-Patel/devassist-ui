@@ -3,6 +3,7 @@ import { Package, GitBranch, TestTube2, Plus, Trash2, Save, ChevronDown, Folder,
 import { loadRegistry, saveRegistry, invalidateRegistry } from "../lib/product-registry";
 import type { ProductRegistry, Product, RepoRef, MtmPlan, ProductGroup, ProductSkillRef, PastedSkillMdRef } from "../types";
 import { useSettingsStore } from "../store/settings";
+import { bridgeApi } from "../lib/bridge-url";
 
 const EMPTY_PRODUCT: Product = {
   id: "", displayName: "", areaPathPrefix: "", snowProduct: "",
@@ -192,7 +193,6 @@ function ProductEditor({ product, onSave, saving }: { product: Product; onSave: 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="ID (slug)" value={p.id} onChange={v => set("id", v)} mono placeholder="e.g. shm"/>
           <Field label="Display name" value={p.displayName} onChange={v => set("displayName", v)} placeholder="Secure Health Messaging"/>
-          <Field label="Area path prefix" value={p.areaPathPrefix} onChange={v => set("areaPathPrefix", v)} mono placeholder="SR\SCM\Ambulatory\SHM" fullWidth/>
           <Field label="SNOW product" value={p.snowProduct} onChange={v => set("snowProduct", v)} placeholder="Sunrise Ambulatory Care"/>
           <div><label className="block text-xs text-gray-500 mb-1">SNOW task table</label>
             <select value={p.snowTaskTable} onChange={e => set("snowTaskTable", e.target.value as Product["snowTaskTable"])} className={inp + " cursor-pointer"}>
@@ -201,7 +201,21 @@ function ProductEditor({ product, onSave, saving }: { product: Product; onSave: 
           </div>
         </div>
       </Section>
-      <Section title="Additional area path prefixes">
+      <Section title="Area paths">
+        <Field
+          label="Primary area path prefix"
+          value={p.areaPathPrefix}
+          onChange={v => set("areaPathPrefix", v)}
+          mono
+          placeholder="SR\SCM\Ambulatory\SHM"
+          fullWidth
+        />
+        <AreaPathSyncPicker
+          primaryPath={p.areaPathPrefix}
+          values={p.areaPathPrefixes ?? []}
+          onChange={(v) => set("areaPathPrefixes", v)}
+        />
+        <p className="text-xs text-gray-500 mt-1">Additional area paths (manual edit, multiple allowed)</p>
         <StringListEditor values={p.areaPathPrefixes ?? []} onChange={v => set("areaPathPrefixes", v)} placeholder="SR\SCM\Ambulatory" mono/>
       </Section>
       <Section title={<><GitBranch size={11}/> Repositories</>}>
@@ -563,6 +577,172 @@ function MarkdownSkillEditor({ values, onChange }: { values: PastedSkillMdRef[];
         </div>
       ))}
       <button onClick={add} className="flex items-center gap-1 text-xs text-gray-600 hover:text-altera-teal"><Plus size={12}/> Add pasted markdown skill</button>
+    </div>
+  );
+}
+
+type AdoAreaNode = {
+  name?: string;
+  path?: string;
+  hasChildren?: boolean;
+  children?: AdoAreaNode[];
+};
+
+function AreaPathSyncPicker({
+  primaryPath,
+  values,
+  onChange,
+}: {
+  primaryPath: string;
+  values: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const [nodes, setNodes] = useState<AdoAreaNode[]>([]);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  const selected = Array.from(new Set(values.map((v) => v.trim()).filter(Boolean)));
+
+  const fetchAreaPaths = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(bridgeApi('/api/ado/SR/_apis/wit/classificationnodes/areas?$depth=10&api-version=7.0'));
+      if (!res.ok) throw new Error(`ADO area sync failed: ${res.status}`);
+      const data = await res.json();
+      const children = Array.isArray(data?.children) ? data.children : [];
+      setNodes(children);
+
+      const nextExpanded: Record<string, boolean> = {};
+      for (const path of selected) nextExpanded[path] = true;
+      if (primaryPath.trim()) nextExpanded[primaryPath.trim()] = true;
+      setExpanded(nextExpanded);
+      setOpen(true);
+    } catch (e: any) {
+      setError(e?.message ?? 'Unable to load area paths');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleSelected = (path: string) => {
+    const normalized = path.trim();
+    if (!normalized) return;
+    if (selected.includes(normalized)) {
+      onChange(selected.filter((p) => p !== normalized));
+    } else {
+      onChange([...selected, normalized]);
+    }
+  };
+
+  const toggleExpanded = (path: string) => {
+    setExpanded((prev) => ({ ...prev, [path]: !prev[path] }));
+  };
+
+  const matches = (node: AdoAreaNode, q: string): boolean => {
+    if (!q) return true;
+    const name = String(node.name ?? '').toLowerCase();
+    const path = String(node.path ?? '').toLowerCase();
+    if (name.includes(q) || path.includes(q)) return true;
+    return (node.children ?? []).some((child) => matches(child, q));
+  };
+
+  const renderNode = (node: AdoAreaNode, depth = 0): React.ReactNode => {
+    const path = String(node.path ?? '').trim();
+    const name = String(node.name ?? '').trim() || path;
+    const children = Array.isArray(node.children) ? node.children : [];
+    const hasChildren = children.length > 0 || !!node.hasChildren;
+    const isOpen = expanded[path] ?? false;
+    const isChecked = path ? selected.includes(path) : false;
+    const q = query.trim().toLowerCase();
+
+    if (!matches(node, q)) return null;
+
+    return (
+      <div key={path || `${name}-${depth}`}>
+        <div className="flex items-center gap-2 py-1" style={{ paddingLeft: `${depth * 14}px` }}>
+          {hasChildren ? (
+            <button
+              type="button"
+              onClick={() => path && toggleExpanded(path)}
+              className="text-gray-500 hover:text-gray-200"
+              aria-label={isOpen ? 'Collapse area path node' : 'Expand area path node'}
+            >
+              <ChevronDown size={12} className={`transition-transform ${isOpen ? 'rotate-180' : '-rotate-90'}`} />
+            </button>
+          ) : (
+            <span className="w-3" />
+          )}
+          <label className="flex items-center gap-2 text-xs text-gray-200 flex-1 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isChecked}
+              onChange={() => path && toggleSelected(path)}
+              className="accent-altera-teal"
+            />
+            <span className="truncate">{name}</span>
+            {path === primaryPath && <span className="text-[10px] text-cyan-300 border border-cyan-800/60 px-1 rounded">primary</span>}
+          </label>
+        </div>
+        {hasChildren && isOpen && (
+          <div>
+            {children.map((child) => renderNode(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            if (!nodes.length) {
+              void fetchAreaPaths();
+              return;
+            }
+            setOpen((v) => !v);
+          }}
+          className="text-xs px-2.5 py-1.5 rounded border border-cyan-700 text-cyan-200 hover:bg-cyan-950/30"
+        >
+          {nodes.length ? (open ? 'Hide ADO area paths' : 'Show ADO area paths') : 'Sync ADO area paths'}
+        </button>
+        <button
+          type="button"
+          onClick={() => void fetchAreaPaths()}
+          className="text-xs px-2.5 py-1.5 rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
+        >
+          Refresh
+        </button>
+        <span className="text-[11px] text-gray-500">{selected.length} selected</span>
+      </div>
+
+      {loading && <p className="text-xs text-gray-500 animate-pulse">Syncing area paths from ADO...</p>}
+      {error && <p className="text-xs text-red-400">{error}</p>}
+
+      {open && (
+        <div className="rounded border border-gray-800 bg-gray-950/40 p-2 space-y-2">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter area paths..."
+            className={inp + " font-mono text-[11px]"}
+          />
+          <div className="max-h-72 overflow-auto border border-gray-800 rounded p-2 space-y-0.5">
+            {nodes.length === 0 ? (
+              <p className="text-xs text-gray-500">No area paths loaded yet. Click Sync ADO area paths.</p>
+            ) : (
+              nodes.map((node) => renderNode(node, 0))
+            )}
+          </div>
+          <p className="text-[11px] text-gray-500">Checked nodes are stored as additional area path prefixes for this product.</p>
+        </div>
+      )}
     </div>
   );
 }
