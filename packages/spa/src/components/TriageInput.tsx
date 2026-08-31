@@ -5,9 +5,21 @@ import { loadRegistry } from '../lib/product-registry';
 import type { ProductRegistry } from '../types';
 
 interface Props {
-  onSubmit: (raw: string, selectedProductIds: string[]) => void;
+  onSubmit: (raw: string, selectedProductIds: string[], selectedReportedReleases: string[]) => void;
   loading: boolean;
 }
+
+const RELEASE_OPTIONS = [
+  'SE 25.1-PR',
+  'SE 25.1',
+  'POH 25.1',
+  'SE 25.2-PR',
+  'SE 25.2',
+  'POH 25.2',
+  'SE 25.3-PR',
+  'SE 25.3',
+  'POH 25.3',
+];
 
 const PLACEHOLDERS = [
   'DA 9358329',
@@ -24,6 +36,8 @@ export default function TriageInput({ onSubmit, loading }: Props) {
   const [selectedGroupId, setSelectedGroupId] = useState('');
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [productsOpen, setProductsOpen] = useState(false);
+  const [releasesOpen, setReleasesOpen] = useState(false);
+  const [selectedReportedReleases, setSelectedReportedReleases] = useState<string[]>([]);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [listening, setListening] = useState(false);
   const [scopeOpen, setScopeOpen] = useState<boolean>(() => localStorage.getItem('devassist-card-scope-open') !== '0');
@@ -130,7 +144,19 @@ export default function TriageInput({ onSubmit, loading }: Props) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (value.trim()) onSubmit(value.trim(), selectedProductIds);
+    if (value.trim()) onSubmit(value.trim(), selectedProductIds, selectedReportedReleases);
+  };
+
+  const selectedReleaseLabel = useMemo(() => {
+    if (selectedReportedReleases.length === 0) return 'Auto from DevAssist';
+    if (selectedReportedReleases.length <= 2) return selectedReportedReleases.join(', ');
+    return `${selectedReportedReleases.slice(0, 2).join(', ')} +${selectedReportedReleases.length - 2} more`;
+  }, [selectedReportedReleases]);
+
+  const toggleRelease = (release: string) => {
+    setSelectedReportedReleases((prev) =>
+      prev.includes(release) ? prev.filter((x) => x !== release) : [...prev, release]
+    );
   };
 
   const toggleVoice = () => {
@@ -235,6 +261,43 @@ export default function TriageInput({ onSubmit, loading }: Props) {
                     )}
                   </div>
                 </div>
+                <div>
+                  <label className="block text-xs text-gray-300 mb-1.5">Reported in Release (multi-select)</label>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setReleasesOpen((v) => !v)}
+                      className="w-full bg-slate-950/70 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-gray-100 text-left flex items-center justify-between gap-3"
+                    >
+                      <span className="truncate">{selectedReleaseLabel}</span>
+                      <span className="text-xs text-cyan-200 shrink-0">{selectedReportedReleases.length} selected</span>
+                    </button>
+
+                    {releasesOpen && (
+                      <div className="mt-2 w-full rounded-xl border border-white/15 bg-slate-950/95 shadow-2xl shadow-black/40 max-h-56 overflow-auto p-2 space-y-1">
+                        {RELEASE_OPTIONS.map((release) => {
+                          const checked = selectedReportedReleases.includes(release);
+                          return (
+                            <label
+                              key={release}
+                              className={`flex items-center gap-2 rounded-lg px-2 py-2 cursor-pointer ${
+                                checked ? 'bg-cyan-500/15' : 'hover:bg-white/5'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleRelease(release)}
+                                className="h-4 w-4 accent-cyan-400"
+                              />
+                              <span className="text-sm text-gray-100 truncate flex-1">{release}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
             </div>
 
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-[11px]">
@@ -262,6 +325,13 @@ export default function TriageInput({ onSubmit, loading }: Props) {
                   >
                     Clear
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedReportedReleases([])}
+                    className="text-gray-400 hover:text-gray-200"
+                  >
+                    Clear releases
+                  </button>
                 </div>
               </div>
 
@@ -270,6 +340,9 @@ export default function TriageInput({ onSubmit, loading }: Props) {
                 {selectedProductIds.length === 0 && (
                   <span className="ml-2 text-yellow-500">(auto route by area path)</span>
                 )}
+              </p>
+              <p className="text-[11px] text-gray-500">
+                Release filter: <span className="text-gray-300">{selectedReportedReleases.length ? selectedReportedReleases.join(', ') : 'Auto from DevAssist Reported in Release'}</span>
               </p>
             </>
           )}

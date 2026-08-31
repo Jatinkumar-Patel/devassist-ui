@@ -132,6 +132,7 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
             <div className="flex flex-wrap gap-1.5 text-xs mt-2">
               <Badge label="State" value={fields['System.State']} />
               {fields['Allscripts.Field.SupportVersion'] && <Badge label="Release" value={String(fields['Allscripts.Field.SupportVersion'])} />}
+              {!!fields['Allscripts.Field.ReportedinRelease'] && <Badge label="Reported In" value={String(fields['Allscripts.Field.ReportedinRelease'])} />}
               {fields['Allscripts.Field.CustomerName']   && <Badge label="Customer" value={String(fields['Allscripts.Field.CustomerName'])} />}
               {fields['Microsoft.VSTS.Common.Severity']  && <Badge label="Sev" value={String(fields['Microsoft.VSTS.Common.Severity'])} />}
               {product && <Badge label="Product" value={product.displayName} />}
@@ -154,6 +155,14 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
                 </div>
               );
             })()}
+            {session.selectedReportedReleases && session.selectedReportedReleases.length > 0 && (
+              <div className="flex flex-wrap gap-1 text-xs mt-1.5">
+                <span className="text-gray-500">Release Filter:</span>
+                {session.selectedReportedReleases.map((release) => (
+                  <span key={release} className="bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 font-mono text-cyan-300">{release}</span>
+                ))}
+              </div>
+            )}
           </>
         ) : (
           <>

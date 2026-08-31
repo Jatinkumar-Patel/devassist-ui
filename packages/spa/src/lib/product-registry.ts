@@ -41,8 +41,17 @@ export function routeByAreaPath(areaPath: string, reg: ProductRegistry, title?: 
 
   // Exact/prefix match first — most specific wins
   const candidates = reg.products
-    .filter((p) => lower.startsWith(p.areaPathPrefix.toLowerCase().replace(/\\\\/g, '\\')))
-    .sort((a, b) => b.areaPathPrefix.length - a.areaPathPrefix.length); // longest prefix wins
+    .filter((p) => {
+      const prefixes = [p.areaPathPrefix, ...(p.areaPathPrefixes ?? [])]
+        .map((x) => x.toLowerCase().replace(/\\\\/g, '\\'))
+        .filter(Boolean);
+      return prefixes.some((prefix) => lower.startsWith(prefix));
+    })
+    .sort((a, b) => {
+      const maxA = Math.max(...[a.areaPathPrefix, ...(a.areaPathPrefixes ?? [])].map((x) => x.length));
+      const maxB = Math.max(...[b.areaPathPrefix, ...(b.areaPathPrefixes ?? [])].map((x) => x.length));
+      return maxB - maxA;
+    }); // longest matching prefix wins
 
   if (candidates.length === 1) return candidates[0];
 

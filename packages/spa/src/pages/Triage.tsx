@@ -4,7 +4,7 @@ import TriageInput from '../components/TriageInput';
 import TriagePanel from '../components/TriagePanel';
 import { detectInput } from '../lib/input-detector';
 import { loadRegistry, routeByAreaPath } from '../lib/product-registry';
-import { fetchWorkItem, findWorkItemBySnowTask, findWorkItemByCase, fetchAreaItems, fetchAreaVersionEvidence } from '../lib/ado-client';
+import { fetchWorkItem, findWorkItemBySnowTask, findWorkItemByCase, fetchAreaItemsByPaths, fetchAreaVersionEvidenceByPaths } from '../lib/ado-client';
 import { fetchSnowTask, fetchSnowWorkNotes, fetchSnowAttachments, fetchSnowCase, fetchSnowIncident, fetchSnowIncidentByCase, fetchSnowTasksByIncident, escalateSnowTask, snowVal } from '../lib/snow-client';
 import { matchPattern, runCodeSearch, runDatabaseRepoSearch, buildSkillDrivenAssessment } from '../lib/analysis';
 import { fetchRelatedBugs, fetchTestCases } from '../lib/ado-client';
@@ -14,12 +14,13 @@ import { useTriageStore } from '../store/triage';
 import { getBridgeInstallCommands } from '../lib/bridge-install';
 import type { TriageSession, SessionPhase, Product } from '../types';
 
-function newSession(raw: string): TriageSession {
+function newSession(raw: string, selectedReportedReleases: string[] = []): TriageSession {
   const { type, id } = detectInput(raw);
   return {
     id: crypto.randomUUID(),
     inputRaw: raw,
     inputType: type,
+    selectedReportedReleases,
     currentPhase: 'preflight',
     workItemId: (type === 'DA' || type === 'TFS') ? parseInt(id, 10) : undefined,
     snowTaskNumber: type === 'TASK' ? id : undefined,
@@ -28,6 +29,54 @@ function newSession(raw: string): TriageSession {
     status: 'loading',
     startedAt: new Date().toISOString(),
   };
+}
+
+function getEvidenceAreaPaths(primaryAreaPath: string, product?: Product): string[] {
+  const paths = [
+    primaryAreaPath,
+    product?.areaPathPrefix ?? '',
+    ...(product?.areaPathPrefixes ?? []),
+  ].map((p) => p.trim()).filter(Boolean);
+
+  return Array.from(new Set(paths));
+}
+
+function buildReleaseHintsFromInputs(adoItem: any, selectedReportedReleases: string[] = []): string[] {
+  const fromUser = selectedReportedReleases.map((x) => x.trim()).filter(Boolean);
+  const reportedRelease = String(adoItem?.fields?.['Allscripts.Field.ReportedinRelease'] ?? '').trim();
+  const supportVersion = String(adoItem?.fields?.['Allscripts.Field.SupportVersion'] ?? '').trim();
+
+  const base = fromUser.length ? fromUser : [reportedRelease, supportVersion].filter(Boolean);
+
+  const expanded = base.flatMap((v) => {
+    const compact = v.replace(/\s+/g, ' ').trim();
+    const normalized = compact
+      .replace(/^SE\s+/i, '')
+      .replace(/[-_]/g, ' ')
+      .replace(/\bPR\s*/gi, 'PR');
+    const versionCore = (normalized.match(/\b\d+\.\d+\b/) ?? [])[0] ?? '';
+
+    const variants = [compact, normalized, versionCore]
+      .filter(Boolean);
+
+    if (versionCore) {
+      variants.push(`SE ${versionCore}`);
+      variants.push(`POH ${versionCore}`);
+      variants.push(`${versionCore} PR`);
+    }
+
+    return variants;
+  });
+
+  const seen = new Set<string>();
+  const hints: string[] = [];
+  for (const h of expanded) {
+    const key = h.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    hints.push(h);
+  }
+  return hints;
 }
 
 function phase(s: TriageSession, p: SessionPhase): TriageSession {
@@ -225,36 +274,6 @@ function deriveSnowLinkedWorkItemId(...records: Array<any | undefined>): number 
   return undefined;
 }
 
-function buildReleaseHints(adoItem: any): string[] {
-  const reportedRelease = String(adoItem?.fields?.['Allscripts.Field.ReportedinRelease'] ?? '').trim();
-  const supportVersion = String(adoItem?.fields?.['Allscripts.Field.SupportVersion'] ?? '').trim();
-
-  const baseHints = [reportedRelease, supportVersion]
-    .filter(Boolean)
-    .flatMap((v) => {
-      const compact = v.replace(/\s+/g, ' ').trim();
-      const normalized = compact
-        .replace(/^SE\s+/i, '')
-        .replace(/[-_]/g, ' ')
-        .replace(/\bPR\s*/gi, 'PR');
-      const firstToken = normalized.split(/\s+/)[0] ?? '';
-      const versionCore = (normalized.match(/\b\d+\.\d+\b/) ?? [])[0] ?? '';
-
-      return [compact, normalized, firstToken, versionCore].filter(Boolean);
-    });
-
-  const seen = new Set<string>();
-  const hints: string[] = [];
-  for (const h of baseHints) {
-    const key = h.toLowerCase();
-    if (!seen.has(key)) {
-      seen.add(key);
-      hints.push(h);
-    }
-  }
-  return hints;
-}
-
 function CopyableCommand({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -425,8 +444,8 @@ export default function TriagePage() {
 
   const activeSession = sessions.find((s) => s.id === active);
 
-  const handleSubmit = useCallback(async (raw: string, selectedProductIds: string[]) => {
-    const preview = newSession(raw);
+  const handleSubmit = useCallback(async (raw: string, selectedProductIds: string[], selectedReportedReleases: string[]) => {
+    const preview = newSession(raw, selectedReportedReleases);
 
     setLoading(true);
     let s = preview;
@@ -464,13 +483,14 @@ export default function TriagePage() {
         // ── Fetch repo/MTM comparison data in parallel with SNOW ──────────────
         const routedProduct = s.product;
         if (routedProduct) {
-          const versionHints = buildReleaseHints(adoItem);
+          const evidenceAreaPaths = getEvidenceAreaPaths(areaPath, routedProduct);
+          const versionHints = buildReleaseHintsFromInputs(adoItem, selectedReportedReleases);
 
           const [relatedBugs, testCases, areaEvidence, versionEvidence] = await Promise.allSettled([
             fetchRelatedBugs(areaPath, adoPat),
             fetchTestCases(areaPath, adoPat),
-            fetchAreaItems(areaPath, adoPat),
-            fetchAreaVersionEvidence(areaPath, adoPat, versionHints),
+            fetchAreaItemsByPaths(evidenceAreaPaths, adoPat),
+            fetchAreaVersionEvidenceByPaths(evidenceAreaPaths, adoPat, versionHints),
           ]);
           if (relatedBugs.status === 'fulfilled') s = { ...s, relatedItems: relatedBugs.value };
           if (testCases.status === 'fulfilled')   s = { ...s, testCases: testCases.value };
@@ -659,13 +679,14 @@ export default function TriagePage() {
 
           const routedProduct = s.product;
           if (routedProduct) {
-            const versionHints = buildReleaseHints(adoItem);
+            const evidenceAreaPaths = getEvidenceAreaPaths(areaPath, routedProduct);
+            const versionHints = buildReleaseHintsFromInputs(adoItem, s.selectedReportedReleases ?? []);
 
             const [relatedBugs, testCases, areaEvidence, versionEvidence] = await Promise.allSettled([
               fetchRelatedBugs(areaPath, adoPat),
               fetchTestCases(areaPath, adoPat),
-              fetchAreaItems(areaPath, adoPat),
-              fetchAreaVersionEvidence(areaPath, adoPat, versionHints),
+              fetchAreaItemsByPaths(evidenceAreaPaths, adoPat),
+              fetchAreaVersionEvidenceByPaths(evidenceAreaPaths, adoPat, versionHints),
             ]);
             if (relatedBugs.status === 'fulfilled') s = { ...s, relatedItems: relatedBugs.value };
             if (testCases.status === 'fulfilled') s = { ...s, testCases: testCases.value };

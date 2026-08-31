@@ -149,6 +149,22 @@ export async function fetchAreaItems(areaPath: string, pat: string): Promise<Rel
   return fetchItemsBatchDetailed(ids.slice(0, 80), pat);
 }
 
+export async function fetchAreaItemsByPaths(areaPaths: string[], pat: string): Promise<RelatedItem[]> {
+  const normalized = Array.from(new Set(areaPaths.map((x) => x.trim()).filter(Boolean)));
+  if (!normalized.length) return [];
+
+  const results = await Promise.all(normalized.map((areaPath) => fetchAreaItems(areaPath, pat).catch(() => [])));
+  const merged = results.flat();
+  const seen = new Set<number>();
+  const deduped: RelatedItem[] = [];
+  for (const item of merged) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    deduped.push(item);
+  }
+  return deduped;
+}
+
 /** Area evidence filtered by release/version hints (e.g. 25.1, 25.1 PR3). */
 export async function fetchAreaVersionEvidence(areaPath: string, pat: string, versionHints: string[]): Promise<RelatedItem[]> {
   const hints = versionHints
@@ -163,6 +179,25 @@ export async function fetchAreaVersionEvidence(areaPath: string, pat: string, ve
   });
 
   return filtered.slice(0, 25);
+}
+
+export async function fetchAreaVersionEvidenceByPaths(areaPaths: string[], pat: string, versionHints: string[]): Promise<RelatedItem[]> {
+  const normalized = Array.from(new Set(areaPaths.map((x) => x.trim()).filter(Boolean)));
+  if (!normalized.length) return [];
+
+  const results = await Promise.all(
+    normalized.map((areaPath) => fetchAreaVersionEvidence(areaPath, pat, versionHints).catch(() => []))
+  );
+
+  const merged = results.flat();
+  const seen = new Set<number>();
+  const deduped: RelatedItem[] = [];
+  for (const item of merged) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    deduped.push(item);
+  }
+  return deduped.slice(0, 50);
 }
 
 export async function findWorkItemBySnowTask(taskNumber: string, pat: string) {
