@@ -37,6 +37,7 @@ interface LogAnalysisResult {
     columnCount: number;
     headers?: string[];
     sampleRows?: string[];
+    findings?: string[];
   }>;
   suggestions: CodeSuggestion[];
 }
@@ -242,6 +243,13 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
                     )}
                     {s.sampleRows && s.sampleRows.length > 0 && (
                       <p className="text-gray-500 font-mono break-all">Sample: {s.sampleRows[0]}</p>
+                    )}
+                    {s.findings && s.findings.length > 0 && (
+                      <div className="space-y-0.5 pt-1 border-t border-cyan-900/50">
+                        {s.findings.slice(0, 4).map((f, idx) => (
+                          <p key={idx} className="text-gray-300">- {f}</p>
+                        ))}
+                      </div>
                     )}
                   </div>
                 ))}

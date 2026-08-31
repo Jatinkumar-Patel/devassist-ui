@@ -83,6 +83,7 @@ interface SpreadsheetSummary {
   columnCount: number;
   headers: string[];
   sampleRows: string[];
+  findings?: string[];
 }
 
 const MAX_PLAIN_BYTES  = 50 * 1024 * 1024;  // 50 MB — read whole file
@@ -154,6 +155,15 @@ function parseSpreadsheet(filePath: string, fileName: string): { hits: LogHit[];
   const summaries: SpreadsheetSummary[] = [];
   const wb = XLSX.readFile(filePath, { dense: true, cellDates: false });
 
+  const norm = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const parseBoolish = (value: string): boolean | undefined => {
+    const v = value.trim().toLowerCase();
+    if (!v) return undefined;
+    if (v === '1' || v === 'true' || v === 'active' || v === 'yes' || v === 'y') return true;
+    if (v === '0' || v === 'false' || v === 'inactive' || v === 'no' || v === 'n') return false;
+    return undefined;
+  };
+
   for (const sheetName of wb.SheetNames.slice(0, 10)) {
     const ws = wb.Sheets[sheetName];
     if (!ws) continue;
@@ -173,6 +183,103 @@ function parseSpreadsheet(filePath: string, fileName: string): { hits: LogHit[];
         .slice(1, 6)
         .map((r) => r.slice(0, 20).join(' | ').slice(0, 300));
 
+      const headerRow = visibleRows[0].map((x) => String(x ?? '').trim());
+      const headerMap = new Map<string, number>();
+      headerRow.forEach((h, idx) => {
+        if (h) headerMap.set(norm(h), idx);
+      });
+      const indexOfAny = (aliases: string[]): number => {
+        for (const alias of aliases) {
+          const idx = headerMap.get(norm(alias));
+          if (typeof idx === 'number') return idx;
+        }
+        return -1;
+      };
+      const idxDisplayName = indexOfAny(['DisplayName']);
+      const idxFirstName = indexOfAny(['FirstName']);
+      const idxLastName = indexOfAny(['LastName']);
+      const idxPersonGuid = indexOfAny(['PersonGUID', 'PersonGuid']);
+      const idxGuid = indexOfAny(['GUID', 'Guid']);
+      const idxNameType = indexOfAny(['NameTypeCode']);
+      const idxActive = indexOfAny(['Active']);
+      const idxStatus = indexOfAny(['Status']);
+
+      const rows = visibleRows.slice(1).filter((row) => {
+        if (!row.length) return false;
+        const joined = row.slice(0, Math.min(row.length, 10)).map((x) => String(x ?? '').trim().toLowerCase()).join('|');
+        // Skip repeated header lines embedded in exports.
+        return !(joined.includes('siteid') && joined.includes('repflags') && (joined.includes('firstname') || joined.includes('displayname')));
+      });
+
+      const displayNameCounts = new Map<string, number>();
+      const personGuidSet = new Set<string>();
+      const guidSet = new Set<string>();
+      const nameTypeCounts = new Map<string, number>();
+      const personGuidToNameTypes = new Map<string, Set<string>>();
+      let activeTrue = 0;
+      let activeFalse = 0;
+      let statusActive = 0;
+      let statusInactive = 0;
+
+      for (const row of rows) {
+        const val = (idx: number): string => (idx >= 0 ? String(row[idx] ?? '').trim() : '');
+        const first = val(idxFirstName);
+        const last = val(idxLastName);
+        const displayName = val(idxDisplayName) || [last, first].filter(Boolean).join(', ');
+        const personGuid = val(idxPersonGuid);
+        const guid = val(idxGuid);
+        const nameType = val(idxNameType);
+        const activeVal = val(idxActive);
+        const status = val(idxStatus);
+
+        if (displayName) displayNameCounts.set(displayName, (displayNameCounts.get(displayName) ?? 0) + 1);
+        if (personGuid) personGuidSet.add(personGuid);
+        if (guid) guidSet.add(guid);
+        if (nameType) nameTypeCounts.set(nameType, (nameTypeCounts.get(nameType) ?? 0) + 1);
+
+        if (personGuid && nameType) {
+          const set = personGuidToNameTypes.get(personGuid) ?? new Set<string>();
+          set.add(nameType);
+          personGuidToNameTypes.set(personGuid, set);
+        }
+
+        const active = parseBoolish(activeVal);
+        if (active === true) activeTrue += 1;
+        if (active === false) activeFalse += 1;
+
+        if (status) {
+          const s = status.trim().toLowerCase();
+          if (s === 'active') statusActive += 1;
+          if (s === 'inactive') statusInactive += 1;
+        }
+      }
+
+      const duplicateDisplayNames = Array.from(displayNameCounts.entries())
+        .filter(([, count]) => count > 1)
+        .sort((a, b) => b[1] - a[1]);
+      const multiTypePersons = Array.from(personGuidToNameTypes.entries())
+        .filter(([, types]) => types.size > 1)
+        .slice(0, 3)
+        .map(([pg, types]) => `${pg}: ${Array.from(types).join('/')}`);
+
+      const findings: string[] = [];
+      findings.push(`Rows analyzed: ${rows.length}; unique GUIDs: ${guidSet.size}; unique PersonGUIDs: ${personGuidSet.size}`);
+      if (duplicateDisplayNames.length) {
+        findings.push(`Duplicate display names: ${duplicateDisplayNames.slice(0, 3).map(([name, count]) => `${name} (${count})`).join(', ')}`);
+      }
+      if (nameTypeCounts.size) {
+        findings.push(`NameTypeCode distribution: ${Array.from(nameTypeCounts.entries()).map(([type, count]) => `${type}:${count}`).join(', ')}`);
+      }
+      if (activeTrue || activeFalse) {
+        findings.push(`Active flag counts: true=${activeTrue}, false=${activeFalse}`);
+      }
+      if (statusActive || statusInactive) {
+        findings.push(`Status counts: Active=${statusActive}, Inactive=${statusInactive}`);
+      }
+      if (multiTypePersons.length) {
+        findings.push(`PersonGUIDs with multiple NameTypeCode values: ${multiTypePersons.join(' | ')}`);
+      }
+
       summaries.push({
         file: fileName,
         sheet: sheetName,
@@ -180,6 +287,7 @@ function parseSpreadsheet(filePath: string, fileName: string): { hits: LogHit[];
         columnCount,
         headers,
         sampleRows,
+        findings,
       });
     }
 

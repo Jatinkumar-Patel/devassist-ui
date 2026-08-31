@@ -8,6 +8,7 @@ interface SpreadsheetSummaryInput {
   columnCount: number;
   headers?: string[];
   sampleRows?: string[];
+  findings?: string[];
 }
 
 interface SnowContextInput {
@@ -717,7 +718,8 @@ export async function buildSkillDrivenAssessment(
     .map((s) => {
       const headers = (s.headers ?? []).filter(Boolean).slice(0, 8).join(', ');
       const sample = (s.sampleRows ?? []).filter(Boolean)[0] ?? '';
-      return `${s.file}#${s.sheet}: rows=${s.rowCount}, cols=${s.columnCount}${headers ? `, headers=[${headers}]` : ''}${sample ? `, sample=${sample.slice(0, 140)}` : ''}`;
+      const findings = (s.findings ?? []).filter(Boolean).slice(0, 2).join(' | ');
+      return `${s.file}#${s.sheet}: rows=${s.rowCount}, cols=${s.columnCount}${headers ? `, headers=[${headers}]` : ''}${sample ? `, sample=${sample.slice(0, 140)}` : ''}${findings ? `, findings=${findings}` : ''}`;
     });
 
   const bulletize = (items: Array<string | undefined | null>): string =>
