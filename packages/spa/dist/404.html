@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="refresh" content="0; url=/devassist-ui/" />
+    <script>
+      // GitHub Pages project-site SPA fallback for /devassist-ui/* routes.
+      (function () {
+        var repoBase = '/devassist-ui/';
+        var fullPath = window.location.pathname;
+        var route = fullPath.indexOf(repoBase) === 0
+          ? fullPath.slice(repoBase.length)
+          : fullPath.replace(/^\//, '');
+        var search = window.location.search ? '&' + window.location.search.slice(1).replace(/&/g, '~and~') : '';
+        var hash = window.location.hash || '';
+        var target = window.location.origin + repoBase + '?/' + route + search + hash;
+        window.location.replace(target);
+      })();
+    </script>
+    <title>Redirecting...</title>
+  </head>
+  <body>
+    Redirecting...
+  </body>
+</html>
