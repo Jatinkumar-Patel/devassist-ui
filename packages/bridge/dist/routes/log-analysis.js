@@ -158,12 +158,34 @@ function parseHwsLog(content, fileName) {
 }
 function parseSpreadsheet(filePath, fileName) {
     const hits = [];
+    const summaries = [];
     const wb = XLSX.readFile(filePath, { dense: true, cellDates: false });
     for (const sheetName of wb.SheetNames.slice(0, 10)) {
         const ws = wb.Sheets[sheetName];
         if (!ws)
             continue;
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+        const visibleRows = rows
+            .map((row) => Array.isArray(row) ? row.map((v) => String(v ?? '').trim()) : [String(row ?? '').trim()])
+            .filter((cells) => cells.some((c) => c.length > 0));
+        if (visibleRows.length > 0) {
+            const headers = visibleRows[0]
+                .map((x) => String(x ?? '').trim())
+                .filter(Boolean)
+                .slice(0, 20);
+            const columnCount = Math.max(...visibleRows.map((r) => r.length));
+            const sampleRows = visibleRows
+                .slice(1, 6)
+                .map((r) => r.slice(0, 20).join(' | ').slice(0, 300));
+            summaries.push({
+                file: fileName,
+                sheet: sheetName,
+                rowCount: visibleRows.length,
+                columnCount,
+                headers,
+                sampleRows,
+            });
+        }
         const maxRows = Math.min(rows.length, 20000);
         for (let i = 0; i < maxRows; i++) {
             const row = rows[i];
@@ -186,7 +208,7 @@ function parseSpreadsheet(filePath, fileName) {
             }
         }
     }
-    return hits;
+    return { hits, summaries };
 }
 // GET /api/log-analysis/:recordSysId — download + parse all log attachments for a SNOW record
 exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
@@ -200,6 +222,7 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
         const attachments = Array.isArray(parsed?.result) ? parsed.result : [];
         const scannableFiles = [];
         const allHits = [];
+        const spreadsheetSummaries = [];
         const analyzed = [];
         const skipped = [];
         for (const att of attachments) {
@@ -258,7 +281,9 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
                                     skipped.push(`${fileName}/${inner} (spreadsheet too large: ${Math.round(innerStat.size / 1024 / 1024)}MB)`);
                                     continue;
                                 }
-                                hits = parseSpreadsheet(innerPath, `${fileName}/${inner}`);
+                                const parsed = parseSpreadsheet(innerPath, `${fileName}/${inner}`);
+                                hits = parsed.hits;
+                                spreadsheetSummaries.push(...parsed.summaries);
                             }
                             else {
                                 let content;
@@ -286,7 +311,9 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
                             skipped.push(`${fileName} (spreadsheet too large: ${Math.round(rawStat.size / 1024 / 1024)}MB)`);
                             continue;
                         }
-                        hits = parseSpreadsheet(outPath, fileName);
+                        const parsed = parseSpreadsheet(outPath, fileName);
+                        hits = parsed.hits;
+                        spreadsheetSummaries.push(...parsed.summaries);
                     }
                     else {
                         let content;
@@ -321,6 +348,7 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
             byCategory,
             lockPairs: lockPairs.slice(0, 20),
             topSeeds: summariseBySeeds(allHits),
+            spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
             suggestions,
         });
     }

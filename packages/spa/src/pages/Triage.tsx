@@ -866,6 +866,7 @@ export default function TriagePage() {
         // Merge all hits — primary sysId first
         const primaryLogData = allLogData[snowSysId] ?? Object.values(allLogData)[0];
         const allHits = Object.values(allLogData).flatMap((d: any) => d.hits ?? []);
+        const allSpreadsheetSummaries = Object.values(allLogData).flatMap((d: any) => d.spreadsheetSummaries ?? []);
         const allTopSeeds: Record<string, number> = {};
         for (const d of Object.values(allLogData) as any[]) {
           for (const [k, v] of Object.entries(d.topSeeds ?? {})) {
@@ -881,6 +882,7 @@ export default function TriagePage() {
               ...s.snowTask,
               _logHits: allHits,
               _topSeeds: allTopSeeds,
+              _spreadsheetSummaries: allSpreadsheetSummaries,
               _logAnalysis: mergedLogAnalysis,
             } : s.snowTask,
           };
@@ -960,6 +962,7 @@ export default function TriagePage() {
             : undefined;
           const logHits = (s.snowTask as any)?._logHits ?? [];
           const topSeeds = (s.snowTask as any)?._topSeeds ?? {};
+          const spreadsheetSummaries = (s.snowTask as any)?._spreadsheetSummaries ?? [];
           // Use skill-driven analysis — reads skill files, derives verdict from SNOW evidence
           const analysis = await buildSkillDrivenAssessment(
             s.adoItem,
@@ -970,7 +973,13 @@ export default function TriagePage() {
             codeHits,
             s.areaEvidence ?? [],
             s.versionEvidence ?? [],
-            databaseEvidence
+            databaseEvidence,
+            spreadsheetSummaries,
+            {
+              snowTask: s.snowTask,
+              snowIncident: s.snowIncident,
+              snowCase: s.snowCase,
+            }
           );
           s = { ...s, analysis, databaseEvidence };
         } catch { /* non-fatal */ }

@@ -76,6 +76,15 @@ interface LogHit {
   category: 'error' | 'warning' | 'lock' | 'ops' | 'other';
 }
 
+interface SpreadsheetSummary {
+  file: string;
+  sheet: string;
+  rowCount: number;
+  columnCount: number;
+  headers: string[];
+  sampleRows: string[];
+}
+
 const MAX_PLAIN_BYTES  = 50 * 1024 * 1024;  // 50 MB — read whole file
 const MAX_CHUNK_BYTES  = 200 * 1024 * 1024; // 200 MB — read last N lines
 const TAIL_LINES       = 5000;               // lines to tail on very large files
@@ -140,8 +149,9 @@ function parseHwsLog(content: string, fileName: string): LogHit[] {
   return hits;
 }
 
-function parseSpreadsheet(filePath: string, fileName: string): LogHit[] {
+function parseSpreadsheet(filePath: string, fileName: string): { hits: LogHit[]; summaries: SpreadsheetSummary[] } {
   const hits: LogHit[] = [];
+  const summaries: SpreadsheetSummary[] = [];
   const wb = XLSX.readFile(filePath, { dense: true, cellDates: false });
 
   for (const sheetName of wb.SheetNames.slice(0, 10)) {
@@ -149,6 +159,30 @@ function parseSpreadsheet(filePath: string, fileName: string): LogHit[] {
     if (!ws) continue;
 
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' }) as unknown[];
+    const visibleRows = rows
+      .map((row) => Array.isArray(row) ? row.map((v) => String(v ?? '').trim()) : [String(row ?? '').trim()])
+      .filter((cells) => cells.some((c) => c.length > 0));
+
+    if (visibleRows.length > 0) {
+      const headers = visibleRows[0]
+        .map((x) => String(x ?? '').trim())
+        .filter(Boolean)
+        .slice(0, 20);
+      const columnCount = Math.max(...visibleRows.map((r) => r.length));
+      const sampleRows = visibleRows
+        .slice(1, 6)
+        .map((r) => r.slice(0, 20).join(' | ').slice(0, 300));
+
+      summaries.push({
+        file: fileName,
+        sheet: sheetName,
+        rowCount: visibleRows.length,
+        columnCount,
+        headers,
+        sampleRows,
+      });
+    }
+
     const maxRows = Math.min(rows.length, 20000);
 
     for (let i = 0; i < maxRows; i++) {
@@ -173,7 +207,7 @@ function parseSpreadsheet(filePath: string, fileName: string): LogHit[] {
     }
   }
 
-  return hits;
+  return { hits, summaries };
 }
 
 // GET /api/log-analysis/:recordSysId — download + parse all log attachments for a SNOW record
@@ -193,6 +227,7 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
     const scannableFiles: AttachmentMeta[] = [];
 
     const allHits: LogHit[] = [];
+    const spreadsheetSummaries: SpreadsheetSummary[] = [];
     const analyzed: string[] = [];
     const skipped: string[] = [];
 
@@ -263,7 +298,9 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
                   skipped.push(`${fileName}/${inner} (spreadsheet too large: ${Math.round(innerStat.size / 1024 / 1024)}MB)`);
                   continue;
                 }
-                hits = parseSpreadsheet(innerPath, `${fileName}/${inner}`);
+                const parsed = parseSpreadsheet(innerPath, `${fileName}/${inner}`);
+                hits = parsed.hits;
+                spreadsheetSummaries.push(...parsed.summaries);
               } else {
                 let content: string;
                 if (innerStat.size > MAX_PLAIN_BYTES) {
@@ -289,7 +326,9 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
               skipped.push(`${fileName} (spreadsheet too large: ${Math.round(rawStat.size / 1024 / 1024)}MB)`);
               continue;
             }
-            hits = parseSpreadsheet(outPath, fileName);
+            const parsed = parseSpreadsheet(outPath, fileName);
+            hits = parsed.hits;
+            spreadsheetSummaries.push(...parsed.summaries);
           } else {
             let content: string;
             if (rawStat.size > MAX_PLAIN_BYTES) {
@@ -324,6 +363,7 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
       byCategory,
       lockPairs: lockPairs.slice(0, 20),
       topSeeds: summariseBySeeds(allHits),
+      spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
       suggestions,
     });
 

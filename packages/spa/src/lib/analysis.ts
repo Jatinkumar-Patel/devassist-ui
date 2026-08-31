@@ -1,6 +1,21 @@
 import type { AdoWorkItem, Product, TriageAnalysis } from '../types';
 import { bridgeApi, getBridgeUrl } from './bridge-url';
 
+interface SpreadsheetSummaryInput {
+  file: string;
+  sheet: string;
+  rowCount: number;
+  columnCount: number;
+  headers?: string[];
+  sampleRows?: string[];
+}
+
+interface SnowContextInput {
+  snowTask?: Record<string, unknown> | null;
+  snowIncident?: Record<string, unknown> | null;
+  snowCase?: Record<string, unknown> | null;
+}
+
 // ── Pattern definitions from areas/sunrise-mobile/analysis-playbook.md ───────
 
 interface Pattern {
@@ -668,8 +683,43 @@ export async function buildSkillDrivenAssessment(
   codeHits: CodeHit[],
   areaEvidence: Array<{ id: number; title: string; state: string; type: string; supportVersion?: string }> = [],
   versionEvidence: Array<{ id: number; title: string; state: string; type: string; supportVersion?: string }> = [],
-  databaseEvidence: CodeHit[] = []
+  databaseEvidence: CodeHit[] = [],
+  spreadsheetSummaries: SpreadsheetSummaryInput[] = [],
+  snowContext: SnowContextInput = {}
 ): Promise<TriageAnalysis> {
+  const snowField = (value: unknown): string => {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'object') {
+      const rec = value as Record<string, unknown>;
+      const dv = rec['display_value'];
+      const vv = rec['value'];
+      if (typeof dv === 'string' && dv.trim()) return dv;
+      if (typeof vv === 'string' && vv.trim()) return vv;
+    }
+    return String(value);
+  };
+
+  const summarizeSnowRecord = (label: string, record?: Record<string, unknown> | null): string[] => {
+    if (!record) return [];
+    const id = snowField(record['number']) || snowField(record['sys_id']) || '(unknown)';
+    const state = snowField(record['state']) || '-';
+    const shortDesc = snowField(record['short_description']) || snowField(record['description']) || '-';
+    const updated = snowField(record['sys_updated_on']) || '-';
+    return [
+      `${label}: ${id} | State: ${state} | Updated: ${updated}`,
+      `${label} summary: ${shortDesc.slice(0, 220)}`,
+    ];
+  };
+
+  const spreadsheetEvidenceLines = spreadsheetSummaries
+    .slice(0, 12)
+    .map((s) => {
+      const headers = (s.headers ?? []).filter(Boolean).slice(0, 8).join(', ');
+      const sample = (s.sampleRows ?? []).filter(Boolean)[0] ?? '';
+      return `${s.file}#${s.sheet}: rows=${s.rowCount}, cols=${s.columnCount}${headers ? `, headers=[${headers}]` : ''}${sample ? `, sample=${sample.slice(0, 140)}` : ''}`;
+    });
+
   const bulletize = (items: Array<string | undefined | null>): string =>
     items
       .map((v) => String(v ?? '').trim())
@@ -692,6 +742,7 @@ export async function buildSkillDrivenAssessment(
     String(f['Allscripts.Field.DevAssistDetail'] ?? ''),
     snowWorkNotes ?? '',
     (logHits ?? []).map(h => h.text).join(' '),
+    spreadsheetEvidenceLines.join(' '),
   ].join(' ').toLowerCase();
 
   const seeds = topSeeds ?? {};
@@ -746,6 +797,10 @@ export async function buildSkillDrivenAssessment(
     const vers = snowWorkNotes.match(/\b\d+\.\d+(\.\d+)+\b/g)?.slice(0, 3) ?? [];
     if (vers.length) snowEvidence.push(`Versions in SNOW: ${vers.join(', ')}`);
   }
+  snowEvidence.push(...summarizeSnowRecord('SNOW Task', snowContext.snowTask));
+  snowEvidence.push(...summarizeSnowRecord('SNOW Incident', snowContext.snowIncident));
+  snowEvidence.push(...summarizeSnowRecord('SNOW Case', snowContext.snowCase));
+
   // Log evidence
   const logEvidence: string[] = [];
   if (Object.keys(seeds).length) {
@@ -772,6 +827,10 @@ export async function buildSkillDrivenAssessment(
   }
   if (databaseEvidence.length > 0) {
     logEvidence.push(`Database evidence: ${databaseEvidence.length} code hit(s) in configured DB repo paths`);
+  }
+  if (spreadsheetSummaries.length > 0) {
+    logEvidence.push(`Spreadsheet evidence: ${spreadsheetSummaries.length} sheet summary row(s) extracted from attachments`);
+    logEvidence.push(`Spreadsheet highlights: ${spreadsheetEvidenceLines.slice(0, 3).join(' || ')}`);
   }
 
   // ── Step 5: code analysis ─────────────────────────────────────────────────
@@ -863,6 +922,7 @@ export async function buildSkillDrivenAssessment(
   if (!codeHits.length) blindSpots.push('Code search found no hits — clone SunriseMobile + HWS repos locally for direct inspection');
   if (!snowWorkNotes)   blindSpots.push('SNOW work notes empty — review SNOW task for additional context from support engineer');
   if (!databaseEvidence.length) blindSpots.push('No direct DB repo hit found — broaden DB search terms (SP/view/table names) for deeper database verification');
+  if (!spreadsheetSummaries.length) blindSpots.push('No spreadsheet evidence extracted from attachments — include PSS workbook exports when available');
   if (!matchedPlaybookPattern && playbook.length > 0) {
     blindSpots.push(`None of the ${playbook.length} playbook patterns matched with high confidence — this may be a new/unknown pattern`);
   }
