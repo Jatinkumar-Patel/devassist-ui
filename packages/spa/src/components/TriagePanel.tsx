@@ -350,9 +350,16 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
               <p className="text-xs font-medium text-gray-400 flex items-center gap-1.5">
                 <Paperclip size={11} /> Attachments ({attachments.length})
               </p>
-              {attachments.map((a, i) => (
+              {attachments.map((a: any, i) => (
                 <div key={i} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-800 last:border-0">
-                  <span className="text-gray-300 font-mono truncate max-w-xs">{snowVal(a.file_name)}</span>
+                  <div className="min-w-0 flex items-center gap-2">
+                    <span className="text-gray-300 font-mono truncate max-w-xs">{snowVal(a.file_name)}</span>
+                    {a._source && (
+                      <span className="text-[10px] text-cyan-300 border border-cyan-800/70 bg-cyan-950/30 rounded px-1.5 py-0.5 shrink-0">
+                        {String(a._source)}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-gray-600 shrink-0 ml-2">{snowVal(a.content_type)}</span>
                 </div>
               ))}

@@ -856,6 +856,43 @@ export default function TriagePage() {
         s = phase(s, 'artifacts');
         upsert(s);
 
+        const incidentNum = snowVal((s.snowIncident as any)?.number) || snowVal((s.snowTask as any)?.['incident.number']);
+        const caseNum = snowVal((s.snowCase as any)?.number) || s.snowCaseNumber || snowVal(s.adoItem?.fields?.['Allscripts.Field.CaseId']);
+        const sourceLabelForSysId = (sid: string): string => {
+          if (sid === snowSysId) return `TASK ${s.snowTaskNumber ?? ''}`.trim();
+          if (sid === incidentSysIdFromTask || sid === incidentSysId2) return `INC ${incidentNum}`.trim();
+          if (sid === caseSysId2) return `CS ${caseNum}`.trim();
+          return `SNOW ${sid.slice(0, 8)}...`;
+        };
+
+        // Collect attachment metadata from every linked record (TASK + INCIDENT + CASE).
+        const attachmentRows: Array<Record<string, unknown>> = [];
+        await Promise.allSettled(sysIdsToScan.map(async (sid) => {
+          try {
+            const attachResp = await fetchSnowAttachments(sid);
+            const rows = Array.isArray(attachResp?.result) ? attachResp.result : (attachResp?.result ? [attachResp.result] : []);
+            const source = sourceLabelForSysId(sid);
+            for (const row of rows as Array<Record<string, unknown>>) {
+              attachmentRows.push({ ...row, _source: source, _sourceSysId: sid });
+            }
+          } catch {
+            // Non-fatal: log-analysis call below may still succeed via direct scan endpoint.
+          }
+        }));
+
+        const seenAttachmentIds = new Set<string>();
+        const mergedAttachments = attachmentRows.filter((row) => {
+          const attachmentId = snowVal((row as any).sys_id);
+          if (!attachmentId) return true;
+          const key = attachmentId.toLowerCase();
+          if (seenAttachmentIds.has(key)) return false;
+          seenAttachmentIds.add(key);
+          return true;
+        });
+        if (mergedAttachments.length) {
+          s = { ...s, attachments: mergedAttachments as any };
+        }
+
         const allLogData: Record<string, any> = {};
         await Promise.allSettled(sysIdsToScan.map(async (sid) => {
           try {
@@ -868,6 +905,12 @@ export default function TriagePage() {
         const primaryLogData = allLogData[snowSysId] ?? Object.values(allLogData)[0];
         const allHits = Object.values(allLogData).flatMap((d: any) => d.hits ?? []);
         const allSpreadsheetSummaries = Object.values(allLogData).flatMap((d: any) => d.spreadsheetSummaries ?? []);
+        const spreadsheetByFile = new Map<string, number>();
+        for (const summary of allSpreadsheetSummaries as any[]) {
+          const fileKey = String(summary?.file ?? '').trim();
+          if (!fileKey) continue;
+          spreadsheetByFile.set(fileKey, (spreadsheetByFile.get(fileKey) ?? 0) + 1);
+        }
         const allTopSeeds: Record<string, number> = {};
         for (const d of Object.values(allLogData) as any[]) {
           for (const [k, v] of Object.entries(d.topSeeds ?? {})) {
@@ -895,16 +938,19 @@ export default function TriagePage() {
           if (!hitsByFile[h.file]) hitsByFile[h.file] = [];
           hitsByFile[h.file].push(`[${h.category}] ${h.text.slice(0, 120)}`);
         }
-        const analyzedFiles = s.attachments?.map((a) => {
+        const analyzedFiles = s.attachments?.map((a: any) => {
           const fname = snowVal(a.file_name);
           const fileHits = hitsByFile[fname] ?? [];
+          const sheetCount = spreadsheetByFile.get(fname) ?? 0;
           return {
-            source: `TASK ${s.snowTaskNumber ?? ''}`,
+            source: String(a._source ?? `TASK ${s.snowTaskNumber ?? ''}`),
             file: fname,
             type: snowVal(a.content_type),
             finding: fileHits.length
               ? `${fileHits.length} hit(s): ${fileHits.slice(0, 2).join(' | ').slice(0, 200)}`
-              : 'No pattern matches',
+              : sheetCount > 0
+                ? `Spreadsheet parsed (${sheetCount} sheet summary entries); no log-pattern matches`
+                : 'No pattern matches',
           };
         }) ?? [];
 
@@ -921,11 +967,22 @@ export default function TriagePage() {
         }
 
         const totalHits = allHits.length;
+        const rawSkipped = Object.values(allLogData).flatMap((d: any) => d.skipped ?? []);
+        const notAnalyzed = rawSkipped.map((entry: any) => {
+          const text = String(entry ?? '');
+          const m = text.match(/^(.+?)\s*\((.+)\)$/);
+          return {
+            source: 'SNOW attachments',
+            file: m ? m[1] : text,
+            type: '',
+            reason: m ? m[2] : 'Skipped',
+          };
+        });
         s = {
           ...s,
           artifactLedger: {
             analyzed: analyzedFiles,
-            notAnalyzed: Object.values(allLogData).flatMap((d: any) => d.skipped ?? []),
+            notAnalyzed,
             coverageTimeframe: totalHits > 0 ? `${totalHits} log matches across ${sysIdsToScan.length} record(s)` : analyzedFiles.length > 0 ? 'scanned — no matches' : 'no attachments',
             coverageSubject: totalHits > 0 ? `Errors: ${(allTopSeeds['ERROR'] ?? 0) + (allTopSeeds['FATAL'] ?? 0)} | Warnings: ${allTopSeeds['WARNING'] ?? 0} | Timeouts: ${allTopSeeds['Timeout'] ?? 0}` : 'no log hits',
           },
