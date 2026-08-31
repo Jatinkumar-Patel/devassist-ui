@@ -104,7 +104,7 @@ export default function App() {
       {!wizardDone && (
         <SetupWizard onDone={() => { setWizardDone(true); navigate('/triage'); }} />
       )}
-      <NavBar showSettings={!wizardDone} />
+      <NavBar showSettings={wizardDone} />
       <main className="flex-1 container mx-auto px-3 sm:px-5 py-4 sm:py-7 max-w-7xl">
         <Routes>
           <Route path="/" element={<Navigate to="/triage" replace />} />
