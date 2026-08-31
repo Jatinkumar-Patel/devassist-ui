@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { ChevronDown, PanelLeftClose, PanelLeftOpen, ExternalLink } from 'lucide-react';
 import TriageInput from '../components/TriageInput';
 import TriagePanel from '../components/TriagePanel';
@@ -415,7 +415,7 @@ async function enrichSnowTaskArtifacts(s: TriageSession, taskRecord: any): Promi
 
 export default function TriagePage() {
   const { adoPat, githubPat, bridgeUrl, databaseRepoPaths } = useSettingsStore();
-  const { sessions, active, upsert } = useTriageStore();
+  const { sessions, active, upsert, remove } = useTriageStore();
   const installCmds = getBridgeInstallCommands();
   const [bridgeHint, setBridgeHint] = useState<string | null>(null);
   const [quickStartOpen, setQuickStartOpen] = useState<boolean>(() => {
@@ -431,6 +431,17 @@ export default function TriagePage() {
     return saved === '1';
   });
   const [loading, setLoading] = useState(false);
+  const cancelledRef = useRef(false);
+  const activeSessionIdRef = useRef<string | null>(null);
+
+  const handleStop = useCallback(() => {
+    cancelledRef.current = true;
+    setLoading(false);
+    if (activeSessionIdRef.current) {
+      remove(activeSessionIdRef.current);
+      activeSessionIdRef.current = null;
+    }
+  }, [remove]);
 
   const toggleQuickStart = () => {
     setQuickStartOpen((prev) => {
@@ -479,14 +490,18 @@ export default function TriagePage() {
   ) => {
     const preview = newSession(raw, selectedReportedReleases);
 
+    cancelledRef.current = false;
     setLoading(true);
     let s = preview;
     upsert(s);
+    activeSessionIdRef.current = s.id;
 
     try {
       await ensureBridgeReachable(bridgeUrl);
+      if (cancelledRef.current) return;
 
       const registry = await loadRegistry();
+      if (cancelledRef.current) return;
       const selectedProducts = selectedProductIds.length > 0
         ? registry.products.filter((p) => selectedProductIds.includes(p.id))
         : [];
@@ -501,6 +516,7 @@ export default function TriagePage() {
         s = phase(s, 'reading');
         upsert(s);
         const adoItem = await fetchWorkItem(s.workItemId!, adoPat);
+        if (cancelledRef.current) return;
         const areaPath = adoItem.fields['System.AreaPath'] ?? '';
         const autoProduct = routeByAreaPath(areaPath, registry, adoItem.fields['System.Title']);
         const product = selectedScope ?? autoProduct;
@@ -526,6 +542,7 @@ export default function TriagePage() {
             fetchAreaVersionEvidenceByPaths(evidenceAreaPaths, adoPat, versionHints),
             fetchSnowKbSearch(kbTerms, versionHints),
           ]);
+          if (cancelledRef.current) return;
           if (relatedBugs.status === 'fulfilled') s = { ...s, relatedItems: relatedBugs.value };
           if (testCases.status === 'fulfilled')   s = { ...s, testCases: testCases.value };
           if (areaEvidence.status === 'fulfilled') s = { ...s, areaEvidence: areaEvidence.value };
@@ -564,6 +581,7 @@ export default function TriagePage() {
         upsert(s);
         try {
           const taskResp = await fetchSnowTask(s.snowTaskNumber!);
+          if (cancelledRef.current) return;
           const taskRecord = Array.isArray(taskResp?.result) ? taskResp.result[0] : taskResp?.result;
           s = { ...s, snowTask: taskRecord, snowTaskTable: taskResp?.table };
 
@@ -1020,7 +1038,7 @@ export default function TriagePage() {
           )}
         </div>
 
-        <TriageInput onSubmit={handleSubmit} loading={loading} />
+        <TriageInput onSubmit={handleSubmit} onStop={handleStop} loading={loading} />
 
         {sessions.length > 0 && (
           <div className="glass-panel rounded-2xl p-3 space-y-2">

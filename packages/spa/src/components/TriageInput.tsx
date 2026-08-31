@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Loader2, Mic, MicOff, ChevronDown } from 'lucide-react';
+import { Search, Loader2, Mic, MicOff, ChevronDown, StopCircle } from 'lucide-react';
 import { detectInput } from '../lib/input-detector';
 import { loadRegistry } from '../lib/product-registry';
 import { fetchReportedReleaseOptions } from '../lib/ado-client';
@@ -12,6 +12,7 @@ interface Props {
     selectedProductIds: string[],
     selectedReportedReleases: string[]
   ) => void;
+  onStop?: () => void;
   loading: boolean;
 }
 
@@ -23,7 +24,7 @@ const PLACEHOLDERS = [
   '9358329',
 ];
 
-export default function TriageInput({ onSubmit, loading }: Props) {
+export default function TriageInput({ onSubmit, onStop, loading }: Props) {
   const adoPat = useSettingsStore((s) => s.adoPat);
   const [value, setValue] = useState('');
   const [registry, setRegistry] = useState<ProductRegistry | null>(null);
@@ -485,6 +486,16 @@ export default function TriageInput({ onSubmit, loading }: Props) {
                   {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
                   {loading ? 'Analyzing…' : 'Analyze'}
                 </button>
+                {loading && onStop && (
+                  <button
+                    type="button"
+                    onClick={onStop}
+                    className="flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white px-5 py-3 rounded-xl text-sm font-semibold transition-colors justify-center"
+                  >
+                    <StopCircle size={16} />
+                    Stop
+                  </button>
+                )}
               </div>
             </div>
 
