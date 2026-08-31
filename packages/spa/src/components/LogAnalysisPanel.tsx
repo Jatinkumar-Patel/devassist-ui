@@ -30,6 +30,14 @@ interface LogAnalysisResult {
   hits: LogHit[];
   byCategory: Record<string, LogHit[]>;
   topSeeds: Record<string, number>;
+  spreadsheetSummaries?: Array<{
+    file: string;
+    sheet: string;
+    rowCount: number;
+    columnCount: number;
+    headers?: string[];
+    sampleRows?: string[];
+  }>;
   suggestions: CodeSuggestion[];
 }
 
@@ -217,6 +225,29 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
               {!result.skipped.length && <p className="text-gray-600">none</p>}
             </div>
           </div>
+
+          {result.spreadsheetSummaries && result.spreadsheetSummaries.length > 0 && (
+            <details className="rounded-lg border border-cyan-900/60 bg-cyan-950/20 p-3 group" open>
+              <summary className="flex items-center justify-between cursor-pointer list-none select-none">
+                <span className="text-xs font-medium text-cyan-200">Spreadsheet Data Extracted ({result.spreadsheetSummaries.length})</span>
+                <ChevronDown size={11} className="group-open:rotate-180 transition-transform text-cyan-300" />
+              </summary>
+              <div className="mt-2 space-y-2 max-h-56 overflow-auto">
+                {result.spreadsheetSummaries.slice(0, 20).map((s, i) => (
+                  <div key={`${s.file}-${s.sheet}-${i}`} className="text-xs rounded border border-cyan-900/50 bg-black/20 p-2 space-y-1">
+                    <p className="text-cyan-200 font-mono break-all">{s.file}#{s.sheet}</p>
+                    <p className="text-gray-300">Rows: {s.rowCount} | Columns: {s.columnCount}</p>
+                    {s.headers && s.headers.length > 0 && (
+                      <p className="text-gray-400">Headers: {s.headers.slice(0, 8).join(', ')}</p>
+                    )}
+                    {s.sampleRows && s.sampleRows.length > 0 && (
+                      <p className="text-gray-500 font-mono break-all">Sample: {s.sampleRows[0]}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
 
           {/* ── Categorized sections ── */}
           {(Object.entries(result.byCategory) as [string, LogHit[]][])

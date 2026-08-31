@@ -238,7 +238,7 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
         scannableFiles.push(att);
       } else {
         const ctype = val(att.content_type) || 'unknown type';
-        skipped.push(`${fileName} (unsupported for log scan: ${ctype})`);
+        skipped.push(`${fileName} (evidence-only attachment; manual review required: ${ctype})`);
       }
     }
 
@@ -301,6 +301,9 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
                 const parsed = parseSpreadsheet(innerPath, `${fileName}/${inner}`);
                 hits = parsed.hits;
                 spreadsheetSummaries.push(...parsed.summaries);
+                analyzed.push(
+                  `${fileName}/${inner} (spreadsheet parsed: ${parsed.summaries.length} sheet(s), ${hits.length} log-pattern hit(s))`
+                );
               } else {
                 let content: string;
                 if (innerStat.size > MAX_PLAIN_BYTES) {
@@ -310,10 +313,10 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
                   content = fs.readFileSync(innerPath, 'utf-8');
                 }
                 hits = parseHwsLog(content, `${fileName}/${inner}`);
+                analyzed.push(`${fileName}/${inner}${note} (${hits.length} hit(s))`);
               }
 
               allHits.push(...hits);
-              analyzed.push(`${fileName}/${inner}${note} (${hits.length} hits)`);
             }
           }
         } else {
@@ -329,6 +332,9 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
             const parsed = parseSpreadsheet(outPath, fileName);
             hits = parsed.hits;
             spreadsheetSummaries.push(...parsed.summaries);
+            analyzed.push(
+              `${fileName} (spreadsheet parsed: ${parsed.summaries.length} sheet(s), ${hits.length} log-pattern hit(s))`
+            );
           } else {
             let content: string;
             if (rawStat.size > MAX_PLAIN_BYTES) {
@@ -338,10 +344,10 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
               content = fs.readFileSync(outPath, 'utf-8');
             }
             hits = parseHwsLog(content, fileName);
+            analyzed.push(`${fileName}${note} (${hits.length} hit(s))`);
           }
 
           allHits.push(...hits);
-          analyzed.push(`${fileName}${note} (${hits.length} hits)`);
         }
       } catch (e: any) {
         skipped.push(`${fileName} (${e.message.slice(0, 80)})`);

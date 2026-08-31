@@ -233,7 +233,7 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
             }
             else {
                 const ctype = val(att.content_type) || 'unknown type';
-                skipped.push(`${fileName} (unsupported for log scan: ${ctype})`);
+                skipped.push(`${fileName} (evidence-only attachment; manual review required: ${ctype})`);
             }
         }
         for (const att of scannableFiles) {
@@ -284,6 +284,7 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
                                 const parsed = parseSpreadsheet(innerPath, `${fileName}/${inner}`);
                                 hits = parsed.hits;
                                 spreadsheetSummaries.push(...parsed.summaries);
+                                analyzed.push(`${fileName}/${inner} (spreadsheet parsed: ${parsed.summaries.length} sheet(s), ${hits.length} log-pattern hit(s))`);
                             }
                             else {
                                 let content;
@@ -295,9 +296,9 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
                                     content = fs_1.default.readFileSync(innerPath, 'utf-8');
                                 }
                                 hits = parseHwsLog(content, `${fileName}/${inner}`);
+                                analyzed.push(`${fileName}/${inner}${note} (${hits.length} hit(s))`);
                             }
                             allHits.push(...hits);
-                            analyzed.push(`${fileName}/${inner}${note} (${hits.length} hits)`);
                         }
                     }
                 }
@@ -314,6 +315,7 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
                         const parsed = parseSpreadsheet(outPath, fileName);
                         hits = parsed.hits;
                         spreadsheetSummaries.push(...parsed.summaries);
+                        analyzed.push(`${fileName} (spreadsheet parsed: ${parsed.summaries.length} sheet(s), ${hits.length} log-pattern hit(s))`);
                     }
                     else {
                         let content;
@@ -325,9 +327,9 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
                             content = fs_1.default.readFileSync(outPath, 'utf-8');
                         }
                         hits = parseHwsLog(content, fileName);
+                        analyzed.push(`${fileName}${note} (${hits.length} hit(s))`);
                     }
                     allHits.push(...hits);
-                    analyzed.push(`${fileName}${note} (${hits.length} hits)`);
                 }
             }
             catch (e) {
