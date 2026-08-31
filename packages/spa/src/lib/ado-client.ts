@@ -68,6 +68,10 @@ export interface RelatedItem {
 }
 
 async function runWiql(pat: string, query: string): Promise<number[]> {
+  return runWiqlLimited(pat, query, 15);
+}
+
+async function runWiqlLimited(pat: string, query: string, limit: number): Promise<number[]> {
   const url = bridgeApi('/api/ado/SR/_apis/wit/wiql?api-version=7.0');
   const res = await fetch(url, {
     method: 'POST',
@@ -77,7 +81,7 @@ async function runWiql(pat: string, query: string): Promise<number[]> {
   });
   if (!res.ok) return [];
   const data = await res.json() as { workItems?: Array<{ id: number }> };
-  return (data.workItems ?? []).map(w => w.id).slice(0, 15);
+  return (data.workItems ?? []).map(w => w.id).slice(0, limit);
 }
 
 async function fetchItemsBatch(ids: number[], pat: string): Promise<RelatedItem[]> {
@@ -198,6 +202,63 @@ export async function fetchAreaVersionEvidenceByPaths(areaPaths: string[], pat: 
     deduped.push(item);
   }
   return deduped.slice(0, 50);
+}
+
+function compareReleaseOptions(a: string, b: string): number {
+  const parse = (value: string) => {
+    const normalized = value.replace(/\s+/g, ' ').trim().toUpperCase();
+    const match = normalized.match(/\b(\d+)\.(\d+)\b/);
+    const major = match ? parseInt(match[1], 10) : -1;
+    const minor = match ? parseInt(match[2], 10) : -1;
+    const productRank = normalized.startsWith('SE ') ? 0 : normalized.startsWith('POH ') ? 1 : 2;
+    const prereleaseRank = /(^|[\s-])PR\b/.test(normalized) ? 0 : 1;
+    return { major, minor, productRank, prereleaseRank, normalized };
+  };
+
+  const left = parse(a);
+  const right = parse(b);
+  if (left.major !== right.major) return right.major - left.major;
+  if (left.minor !== right.minor) return right.minor - left.minor;
+  if (left.prereleaseRank !== right.prereleaseRank) return left.prereleaseRank - right.prereleaseRank;
+  if (left.productRank !== right.productRank) return left.productRank - right.productRank;
+  return left.normalized.localeCompare(right.normalized);
+}
+
+function collectReportedReleaseValues(items: RelatedItem[]): string[] {
+  const seen = new Set<string>();
+  const values: string[] = [];
+
+  for (const item of items) {
+    const value = (item.reportedRelease ?? '').trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    values.push(value);
+  }
+
+  return values.sort(compareReleaseOptions);
+}
+
+async function fetchReportedReleaseOptionsFromScope(areaPaths: string[], pat: string): Promise<string[]> {
+  const normalized = Array.from(new Set(areaPaths.map((x) => x.trim()).filter(Boolean)));
+  const areaClause = normalized.length
+    ? ` AND (${normalized
+        .map((areaPath) => `[System.AreaPath] UNDER '${areaPath.replace(/\\/g, '\\\\').replace(/'/g, "''")}'`)
+        .join(' OR ')})`
+    : '';
+
+  const query = `SELECT [System.Id] FROM WorkItems WHERE [Allscripts.Field.ReportedinRelease] <> '' AND [System.WorkItemType] IN ('Bug','Defect','Task','User Story') AND [System.ChangedDate] > @today - 540${areaClause} ORDER BY [System.ChangedDate] DESC`;
+  const ids = await runWiqlLimited(pat, query, 200);
+  if (!ids.length) return [];
+  const items = await fetchItemsBatchDetailed(ids, pat);
+  return collectReportedReleaseValues(items);
+}
+
+export async function fetchReportedReleaseOptions(areaPaths: string[], pat: string): Promise<string[]> {
+  const scoped = await fetchReportedReleaseOptionsFromScope(areaPaths, pat);
+  if (scoped.length) return scoped;
+  return fetchReportedReleaseOptionsFromScope([], pat);
 }
 
 export async function findWorkItemBySnowTask(taskNumber: string, pat: string) {

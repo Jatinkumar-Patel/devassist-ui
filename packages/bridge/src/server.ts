@@ -49,6 +49,16 @@ export function createServer({ spaOrigin }: ServerOptions) {
 
   // Serve the built SPA if it exists alongside the bridge dist
   const spaPath = path.resolve(__dirname, '../../spa/dist');
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (!req.path.startsWith('/api/')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      res.setHeader('Surrogate-Control', 'no-store');
+    }
+    next();
+  });
+
   app.use(express.static(spaPath));
   app.get('*', (_req: Request, res: Response) => {
     res.sendFile(path.join(spaPath, 'index.html'), (err) => {

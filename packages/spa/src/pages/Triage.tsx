@@ -16,8 +16,7 @@ import type { TriageSession, SessionPhase, Product } from '../types';
 
 function newSession(
   raw: string,
-  selectedReportedReleases: string[] = [],
-  selectedAreaPaths: string[] = []
+  selectedReportedReleases: string[] = []
 ): TriageSession {
   const { type, id } = detectInput(raw);
   return {
@@ -25,7 +24,6 @@ function newSession(
     inputRaw: raw,
     inputType: type,
     selectedReportedReleases,
-    selectedAreaPaths,
     currentPhase: 'preflight',
     workItemId: (type === 'DA' || type === 'TFS') ? parseInt(id, 10) : undefined,
     snowTaskNumber: type === 'TASK' ? id : undefined,
@@ -34,17 +32,6 @@ function newSession(
     status: 'loading',
     startedAt: new Date().toISOString(),
   };
-}
-
-function getEvidenceAreaPathsWithSelection(
-  primaryAreaPath: string,
-  product: Product | undefined,
-  selectedAreaPaths: string[] = []
-): string[] {
-  if (selectedAreaPaths.length > 0) {
-    return Array.from(new Set(selectedAreaPaths.map((p) => p.trim()).filter(Boolean)));
-  }
-  return getEvidenceAreaPaths(primaryAreaPath, product);
 }
 
 function getEvidenceAreaPaths(primaryAreaPath: string, product?: Product): string[] {
@@ -480,10 +467,9 @@ export default function TriagePage() {
   const handleSubmit = useCallback(async (
     raw: string,
     selectedProductIds: string[],
-    selectedAreaPaths: string[],
     selectedReportedReleases: string[]
   ) => {
-    const preview = newSession(raw, selectedReportedReleases, selectedAreaPaths);
+    const preview = newSession(raw, selectedReportedReleases);
 
     setLoading(true);
     let s = preview;
@@ -521,7 +507,7 @@ export default function TriagePage() {
         // ── Fetch repo/MTM comparison data in parallel with SNOW ──────────────
         const routedProduct = s.product;
         if (routedProduct) {
-          const evidenceAreaPaths = getEvidenceAreaPathsWithSelection(areaPath, routedProduct, selectedAreaPaths);
+          const evidenceAreaPaths = getEvidenceAreaPaths(areaPath, routedProduct);
           const versionHints = buildReleaseHintsFromInputs(adoItem, selectedReportedReleases);
           const kbTerms = buildKbTerms(adoItem, routedProduct);
 
@@ -731,7 +717,7 @@ export default function TriagePage() {
 
           const routedProduct = s.product;
           if (routedProduct) {
-            const evidenceAreaPaths = getEvidenceAreaPathsWithSelection(areaPath, routedProduct, s.selectedAreaPaths ?? []);
+            const evidenceAreaPaths = getEvidenceAreaPaths(areaPath, routedProduct);
             const versionHints = buildReleaseHintsFromInputs(adoItem, s.selectedReportedReleases ?? []);
             const kbTerms = buildKbTerms(adoItem, routedProduct);
 

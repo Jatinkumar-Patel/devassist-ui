@@ -163,14 +163,6 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
                 ))}
               </div>
             )}
-            {session.selectedAreaPaths && session.selectedAreaPaths.length > 0 && (
-              <div className="flex flex-wrap gap-1 text-xs mt-1.5">
-                <span className="text-gray-500">Area Path Filter:</span>
-                {session.selectedAreaPaths.map((path) => (
-                  <span key={path} className="bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 font-mono text-sky-300">{path}</span>
-                ))}
-              </div>
-            )}
           </>
         ) : (
           <>

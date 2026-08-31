@@ -179,7 +179,6 @@ export interface TriageSession {
   inputRaw: string;
   inputType: InputType;
   selectedReportedReleases?: string[];
-  selectedAreaPaths?: string[];
   currentPhase: SessionPhase;
   workItemId?: number;
   snowTaskNumber?: string;

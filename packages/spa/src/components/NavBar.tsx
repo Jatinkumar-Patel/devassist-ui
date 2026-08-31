@@ -10,21 +10,30 @@ const links = [
 
 export default function NavBar({ showSettings = true }: { showSettings?: boolean }) {
   const visibleLinks = showSettings ? links : links.filter((x) => x.to !== '/settings');
+  const buildLabel = __APP_BUILD__;
 
   const refreshLatest = () => {
-    const base = `${window.location.origin}/devassist-ui/`;
+    const base = `${window.location.origin}${window.location.pathname}`;
     const hash = window.location.hash || '#/triage';
     const bust = `v=${Date.now()}`;
-    window.location.href = `${base}?${bust}${hash}`;
+    window.location.replace(`${base}?${bust}${hash}`);
   };
 
   return (
     <header className="sticky top-0 z-30 px-3 sm:px-4 py-3 border-b border-white/10 bg-slate-950/70 backdrop-blur-md">
       <div className="container mx-auto max-w-7xl flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center justify-between sm:justify-start gap-4 sm:gap-6 min-w-0">
-          <span className="font-extrabold text-base sm:text-lg tracking-tight shrink-0 bg-gradient-to-r from-cyan-300 via-sky-300 to-blue-400 bg-clip-text text-transparent">
-            DevAssist
-          </span>
+          <div className="flex items-center gap-2 min-w-0 shrink">
+            <span className="font-extrabold text-base sm:text-lg tracking-tight shrink-0 bg-gradient-to-r from-cyan-300 via-sky-300 to-blue-400 bg-clip-text text-transparent">
+              DevAssist
+            </span>
+            <span
+              className="inline-flex max-w-[220px] sm:max-w-[280px] truncate rounded-full border border-cyan-400/25 bg-cyan-500/8 px-2 py-0.5 text-[10px] text-cyan-100/85"
+              title={buildLabel}
+            >
+              {buildLabel}
+            </span>
+          </div>
           <nav className="flex gap-1 overflow-x-auto no-scrollbar -mx-1 px-1">
             {visibleLinks.map(({ to, label, icon: Icon }) => (
               <NavLink
