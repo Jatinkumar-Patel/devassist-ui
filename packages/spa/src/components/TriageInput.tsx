@@ -161,6 +161,13 @@ export default function TriageInput({ onSubmit, loading }: Props) {
   useEffect(() => {
     let disposed = false;
 
+    if (!adoPat.trim()) {
+      setReleaseOptions([]);
+      setReleaseOptionsLoading(false);
+      setReleaseOptionsError('No ADO PAT configured. Go to Settings to add your PAT.');
+      return;
+    }
+
     const hydrateReleaseOptions = async () => {
       setReleaseOptionsLoading(true);
       setReleaseOptionsError(null);
