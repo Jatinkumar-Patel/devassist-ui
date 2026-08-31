@@ -34,7 +34,13 @@ function newSession(
   };
 }
 
-function getEvidenceAreaPaths(primaryAreaPath: string, product?: Product): string[] {
+function getEvidenceAreaPaths(primaryAreaPath: string, product?: Product, userSelectedScope?: boolean): string[] {
+  // When user explicitly selected products, use only those paths — not the work item's own area path
+  if (userSelectedScope && product) {
+    const paths = [product.areaPathPrefix, ...(product.areaPathPrefixes ?? [])]
+      .map((p) => p.trim()).filter(Boolean);
+    return Array.from(new Set(paths));
+  }
   const paths = [
     primaryAreaPath,
     product?.areaPathPrefix ?? '',
@@ -507,7 +513,7 @@ export default function TriagePage() {
         // ── Fetch repo/MTM comparison data in parallel with SNOW ──────────────
         const routedProduct = s.product;
         if (routedProduct) {
-          const evidenceAreaPaths = getEvidenceAreaPaths(areaPath, routedProduct);
+          const evidenceAreaPaths = getEvidenceAreaPaths(areaPath, routedProduct, !!selectedScope);
           const versionHints = buildReleaseHintsFromInputs(adoItem, selectedReportedReleases);
           const kbTerms = buildKbTerms(adoItem, routedProduct);
 
@@ -717,7 +723,7 @@ export default function TriagePage() {
 
           const routedProduct = s.product;
           if (routedProduct) {
-            const evidenceAreaPaths = getEvidenceAreaPaths(areaPath, routedProduct);
+            const evidenceAreaPaths = getEvidenceAreaPaths(areaPath, routedProduct, s.product?.id?.startsWith('selected-'));
             const versionHints = buildReleaseHintsFromInputs(adoItem, s.selectedReportedReleases ?? []);
             const kbTerms = buildKbTerms(adoItem, routedProduct);
 
