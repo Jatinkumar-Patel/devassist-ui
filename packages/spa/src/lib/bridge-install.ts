@@ -57,26 +57,17 @@ export function getBridgeInstallCommands(): {
     `elseif (Test-Path "${localFolder}") { npx --yes degit ${repoSlug} "${localFolder}" --force; Set-Location "${localFolder}"; npm install; npm run bridge } ` +
     `else { npx --yes degit ${repoSlug} "${localFolder}"; Set-Location "${localFolder}"; npm install; npm run bridge }`;
 
-  // ── Auto-start via Windows Task Scheduler ─────────────────────────────────
+  // ── Auto-start via current-user Startup folder ────────────────────────────
   // Run once after first-time install. Bridge will start automatically at every Windows login.
-  // No admin required — registers task for current user only.
+  // No admin required — saves a .cmd file into the user's Startup folder.
   const bridgeFolder = `$env:USERPROFILE\\source\\${localFolder}`;
   const startupCmdPath = `%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\DevAssist Bridge.cmd`;
   const autoStartPowershell = [
-    // 1. Ensure the repo is installed first
     `$f="${bridgeFolder}";`,
     `if (-not (Test-Path "$f\\node_modules")) { Write-Error "Run the first-time install command first, then register auto-start."; exit 1 };`,
-    // 2. Register current-user Startup folder script (no registry, no admin, no Task Scheduler ACLs)
     `$startup = Join-Path $env:APPDATA 'Microsoft\\Windows\\Start Menu\\Programs\\Startup\\DevAssist Bridge.cmd';`,
-    `$body = @'`,
-    `@echo off`,
-    `set "APP1=%USERPROFILE%\\source\\repos\\${localFolder}"`,
-    `set "APP2=%USERPROFILE%\\source\\${localFolder}"`,
-    `if exist "%APP1%\\node_modules" (cd /d "%APP1%") else (cd /d "%APP2%")`,
-    `call "C:\\Program Files\\nodejs\\npm.cmd" run bridge >> "%USERPROFILE%\\devassist-bridge.log" 2>&1`,
-    `'@;`,
-    `Set-Content -Path $startup -Value $body -Encoding ASCII;`,
-    // 3. Start it now without waiting for next login
+    `$lines = @('@echo off','set "APP1=%USERPROFILE%\\source\\repos\\${localFolder}"','set "APP2=%USERPROFILE%\\source\\${localFolder}"','if exist "%APP1%\\node_modules" (','  cd /d "%APP1%"',') else (','  cd /d "%APP2%"',')','call "C:\\Program Files\\nodejs\\npm.cmd" run bridge >> "%USERPROFILE%\\devassist-bridge.log" 2>&1');`,
+    `[System.IO.File]::WriteAllLines($startup, $lines, [System.Text.Encoding]::ASCII);`,
     `Start-Process -WindowStyle Hidden -FilePath $startup;`,
     `Write-Host 'Auto-start registered and bridge started. Open https://${repoSlug.split('/')[0]}.github.io/${localFolder}/#/triage in your browser.'`,
   ].join(' ');
