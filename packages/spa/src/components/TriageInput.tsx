@@ -5,7 +5,12 @@ import { loadRegistry } from '../lib/product-registry';
 import type { ProductRegistry } from '../types';
 
 interface Props {
-  onSubmit: (raw: string, selectedProductIds: string[], selectedReportedReleases: string[]) => void;
+  onSubmit: (
+    raw: string,
+    selectedProductIds: string[],
+    selectedAreaPaths: string[],
+    selectedReportedReleases: string[]
+  ) => void;
   loading: boolean;
 }
 
@@ -36,15 +41,19 @@ export default function TriageInput({ onSubmit, loading }: Props) {
   const [selectedGroupId, setSelectedGroupId] = useState('');
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [productsOpen, setProductsOpen] = useState(false);
+  const [areaPathsOpen, setAreaPathsOpen] = useState(false);
   const [releasesOpen, setReleasesOpen] = useState(false);
+  const [selectedAreaPaths, setSelectedAreaPaths] = useState<string[]>([]);
   const [selectedReportedReleases, setSelectedReportedReleases] = useState<string[]>([]);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [listening, setListening] = useState(false);
-  const [scopeOpen, setScopeOpen] = useState<boolean>(() => localStorage.getItem('devassist-card-scope-open') !== '0');
+  const [scopeOpen, setScopeOpen] = useState<boolean>(true);
   const [inputOpen, setInputOpen] = useState<boolean>(() => localStorage.getItem('devassist-card-input-open') !== '0');
   const [placeholderExample] = useState(() => PLACEHOLDERS[Math.floor(Math.random() * PLACEHOLDERS.length)]);
   const inputRef = useRef<HTMLInputElement>(null);
   const productsMenuRef = useRef<HTMLDivElement>(null);
+  const areaPathsMenuRef = useRef<HTMLDivElement>(null);
+  const releasesMenuRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
 
   const detected = value.trim() ? detectInput(value) : null;
@@ -90,17 +99,24 @@ export default function TriageInput({ onSubmit, loading }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!productsOpen) return;
+    if (!productsOpen && !areaPathsOpen && !releasesOpen) return;
 
     const onPointerDown = (event: MouseEvent) => {
-      if (!productsMenuRef.current) return;
-      if (!productsMenuRef.current.contains(event.target as Node)) {
-        setProductsOpen(false);
-      }
+      const target = event.target as Node;
+      const clickedProducts = productsMenuRef.current?.contains(target) ?? false;
+      const clickedAreaPaths = areaPathsMenuRef.current?.contains(target) ?? false;
+      const clickedReleases = releasesMenuRef.current?.contains(target) ?? false;
+      if (!clickedProducts) setProductsOpen(false);
+      if (!clickedAreaPaths) setAreaPathsOpen(false);
+      if (!clickedReleases) setReleasesOpen(false);
     };
 
     const onEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setProductsOpen(false);
+      if (event.key === 'Escape') {
+        setProductsOpen(false);
+        setAreaPathsOpen(false);
+        setReleasesOpen(false);
+      }
     };
 
     document.addEventListener('mousedown', onPointerDown);
@@ -109,7 +125,7 @@ export default function TriageInput({ onSubmit, loading }: Props) {
       document.removeEventListener('mousedown', onPointerDown);
       document.removeEventListener('keydown', onEscape);
     };
-  }, [productsOpen]);
+  }, [productsOpen, areaPathsOpen, releasesOpen]);
 
   const availableProducts = useMemo(() => registry?.products ?? [], [registry]);
 
@@ -126,6 +142,23 @@ export default function TriageInput({ onSubmit, loading }: Props) {
     const groups = registry?.groups ?? [];
     return [{ id: '', name: 'Custom selection' }, ...groups.map((g) => ({ id: g.id, name: g.name }))];
   }, [registry]);
+
+  const availableAreaPaths = useMemo(() => {
+    const productsSource = selectedProductIds.length
+      ? availableProducts.filter((p) => selectedProductIds.includes(p.id))
+      : availableProducts;
+
+    const paths = productsSource
+      .flatMap((p) => [p.areaPathPrefix, ...(p.areaPathPrefixes ?? [])])
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    return Array.from(new Set(paths)).sort((a, b) => a.localeCompare(b));
+  }, [availableProducts, selectedProductIds]);
+
+  useEffect(() => {
+    setSelectedAreaPaths((prev) => prev.filter((p) => availableAreaPaths.includes(p)));
+  }, [availableAreaPaths]);
 
   const setGroup = (groupId: string) => {
     setSelectedGroupId(groupId);
@@ -144,7 +177,19 @@ export default function TriageInput({ onSubmit, loading }: Props) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (value.trim()) onSubmit(value.trim(), selectedProductIds, selectedReportedReleases);
+    if (value.trim()) onSubmit(value.trim(), selectedProductIds, selectedAreaPaths, selectedReportedReleases);
+  };
+
+  const selectedAreaPathLabel = useMemo(() => {
+    if (selectedAreaPaths.length === 0) return 'Auto from selected products';
+    if (selectedAreaPaths.length <= 2) return selectedAreaPaths.join(', ');
+    return `${selectedAreaPaths.slice(0, 2).join(', ')} +${selectedAreaPaths.length - 2} more`;
+  }, [selectedAreaPaths]);
+
+  const toggleAreaPath = (path: string) => {
+    setSelectedAreaPaths((prev) =>
+      prev.includes(path) ? prev.filter((x) => x !== path) : [...prev, path]
+    );
   };
 
   const selectedReleaseLabel = useMemo(() => {
@@ -263,7 +308,7 @@ export default function TriageInput({ onSubmit, loading }: Props) {
                 </div>
                 <div>
                   <label className="block text-xs text-gray-300 mb-1.5">Reported in Release (multi-select)</label>
-                  <div className="relative">
+                  <div className="relative" ref={releasesMenuRef}>
                     <button
                       type="button"
                       onClick={() => setReleasesOpen((v) => !v)}
@@ -294,6 +339,46 @@ export default function TriageInput({ onSubmit, loading }: Props) {
                             </label>
                           );
                         })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-300 mb-1.5">Area Path (multi-select)</label>
+                  <div className="relative" ref={areaPathsMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setAreaPathsOpen((v) => !v)}
+                      className="w-full bg-slate-950/70 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-gray-100 text-left flex items-center justify-between gap-3"
+                    >
+                      <span className="truncate">{selectedAreaPathLabel}</span>
+                      <span className="text-xs text-cyan-200 shrink-0">{selectedAreaPaths.length} selected</span>
+                    </button>
+
+                    {areaPathsOpen && (
+                      <div className="mt-2 w-full rounded-xl border border-white/15 bg-slate-950/95 shadow-2xl shadow-black/40 max-h-56 overflow-auto p-2 space-y-1">
+                        {availableAreaPaths.map((path) => {
+                          const checked = selectedAreaPaths.includes(path);
+                          return (
+                            <label
+                              key={path}
+                              className={`flex items-center gap-2 rounded-lg px-2 py-2 cursor-pointer ${
+                                checked ? 'bg-cyan-500/15' : 'hover:bg-white/5'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleAreaPath(path)}
+                                className="h-4 w-4 accent-cyan-400"
+                              />
+                              <span className="text-sm text-gray-100 truncate flex-1">{path}</span>
+                            </label>
+                          );
+                        })}
+                        {availableAreaPaths.length === 0 && (
+                          <p className="text-xs text-gray-400 px-2 py-1">No area paths available for current selection.</p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -332,6 +417,13 @@ export default function TriageInput({ onSubmit, loading }: Props) {
                   >
                     Clear releases
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAreaPaths([])}
+                    className="text-gray-400 hover:text-gray-200"
+                  >
+                    Clear area paths
+                  </button>
                 </div>
               </div>
 
@@ -343,6 +435,9 @@ export default function TriageInput({ onSubmit, loading }: Props) {
               </p>
               <p className="text-[11px] text-gray-500">
                 Release filter: <span className="text-gray-300">{selectedReportedReleases.length ? selectedReportedReleases.join(', ') : 'Auto from DevAssist Reported in Release'}</span>
+              </p>
+              <p className="text-[11px] text-gray-500">
+                Area path filter: <span className="text-gray-300">{selectedAreaPaths.length ? selectedAreaPaths.join(', ') : 'Auto from selected products'}</span>
               </p>
             </>
           )}

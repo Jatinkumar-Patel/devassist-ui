@@ -265,9 +265,26 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
       </div>
 
       {/* Repo / MTM Comparison */}
-      {(session.relatedItems?.length || session.testCases?.length || session.recentCommits?.length || session.areaEvidence?.length || session.versionEvidence?.length) && (
+      {(session.relatedItems?.length || session.testCases?.length || session.recentCommits?.length || session.areaEvidence?.length || session.versionEvidence?.length || session.kbEvidence?.length) && (
         <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-4">
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Repo / MTM Comparison</p>
+
+          {(session.kbEvidence?.length ?? 0) > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+                <Bug size={11} className="text-cyan-300" />
+                SNOW KB related articles · {session.kbEvidence!.length} found
+              </p>
+              {session.kbEvidence!.slice(0, 8).map((kb, idx) => (
+                <div key={`${kb.number}-${idx}`} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-800 last:border-0">
+                  <span className="text-altera-teal font-mono shrink-0 mr-2">{kb.number || 'KB'}</span>
+                  <span className="text-gray-300 truncate flex-1">{kb.shortDescription || '(no short description)'}</span>
+                  <span className="text-gray-500 shrink-0 ml-2">{kb.state || '-'}</span>
+                  <span className="text-gray-600 shrink-0 ml-2">{kb.updatedOn ? String(kb.updatedOn).slice(0, 10) : '-'}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {(session.versionEvidence?.length ?? 0) > 0 && (
             <div className="space-y-1.5">

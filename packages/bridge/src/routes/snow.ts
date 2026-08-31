@@ -75,6 +75,10 @@ function escapePsSingleQuoted(value: string): string {
   return value.replace(/'/g, "''");
 }
 
+function escapeSnowQuery(value: string): string {
+  return value.replace(/[\^=~]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 async function snowFetchDecoded(url: string): Promise<unknown> {
   const escapedUrl = escapePsSingleQuoted(url);
   const json = await execPowerShell(
@@ -331,6 +335,62 @@ snowRouter.get('/escalate/:taskSysId', async (req: Request, res: Response) => {
     }
 
     return res.json({ incident, case: clientCase });
+  } catch (err: any) {
+    return res.status(502).json({ error: err.message });
+  }
+});
+
+// POST /api/snow/kb-search — find related KB articles by terms + release hints
+snowRouter.post('/kb-search', async (req: Request, res: Response) => {
+  const terms = Array.isArray(req.body?.terms) ? req.body.terms : [];
+  const releaseHints = Array.isArray(req.body?.releaseHints) ? req.body.releaseHints : [];
+
+  const normalizedTerms = [...terms, ...releaseHints]
+    .map((v: unknown) => String(v ?? '').trim())
+    .filter((v) => v.length >= 3)
+    .map(escapeSnowQuery)
+    .slice(0, 8);
+
+  if (!normalizedTerms.length) {
+    return res.json({ result: [] });
+  }
+
+  const fields = [
+    'sys_id',
+    'number',
+    'short_description',
+    'workflow_state',
+    'published',
+    'sys_updated_on',
+    'kb_knowledge_base',
+    'kb_category',
+  ].join(',');
+
+  try {
+    const articleMap = new Map<string, any>();
+
+    for (const term of normalizedTerms) {
+      try {
+        const query = encodeURIComponent(
+          `active=true^short_descriptionLIKE${term}^ORactive=true^textLIKE${term}`
+        );
+        const url = `${SNOW_BASE}/GetTableJSON/?tablename=kb_knowledge&sysparm_query=${query}&sysparm_fields=${fields}&sysparm_limit=15`;
+
+        const decoded = snowDecode(await snowFetch(url)) as { result?: any[] };
+        const rows = Array.isArray(decoded?.result) ? decoded.result : [];
+
+        for (const row of rows.slice(0, 20)) {
+          const sysId = row?.sys_id?.value ?? row?.sys_id;
+          if (!sysId) continue;
+          if (!articleMap.has(sysId)) articleMap.set(sysId, row);
+        }
+      } catch {
+        // Skip malformed or oversized responses for this specific term.
+      }
+    }
+
+    const result = Array.from(articleMap.values()).slice(0, 25);
+    return res.json({ result });
   } catch (err: any) {
     return res.status(502).json({ error: err.message });
   }

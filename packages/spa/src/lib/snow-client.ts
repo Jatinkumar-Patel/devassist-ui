@@ -36,6 +36,16 @@ export async function fetchSnowTasksByIncident(number: string) {
   return res.json();
 }
 
+export async function fetchSnowKbSearch(terms: string[], releaseHints: string[] = []) {
+  const res = await fetch(bridgeApi('/api/snow/kb-search'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ terms, releaseHints }),
+  });
+  if (!res.ok) throw new Error(`SNOW KB search ${res.status}: ${await res.text()}`);
+  return res.json() as Promise<{ result?: Array<Record<string, unknown>> }>;
+}
+
 /** List attachment metadata — use fetchSnowAttachment() to download the binary */
 export async function fetchSnowAttachments(sysId: string) {
   const res = await fetch(bridgeApi(`/api/snow/attachments/${encodeURIComponent(sysId)}`));

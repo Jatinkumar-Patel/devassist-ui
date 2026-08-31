@@ -5,7 +5,7 @@ import TriagePanel from '../components/TriagePanel';
 import { detectInput } from '../lib/input-detector';
 import { loadRegistry, routeByAreaPath } from '../lib/product-registry';
 import { fetchWorkItem, findWorkItemBySnowTask, findWorkItemByCase, fetchAreaItemsByPaths, fetchAreaVersionEvidenceByPaths } from '../lib/ado-client';
-import { fetchSnowTask, fetchSnowWorkNotes, fetchSnowAttachments, fetchSnowCase, fetchSnowIncident, fetchSnowIncidentByCase, fetchSnowTasksByIncident, escalateSnowTask, snowVal } from '../lib/snow-client';
+import { fetchSnowTask, fetchSnowWorkNotes, fetchSnowAttachments, fetchSnowCase, fetchSnowIncident, fetchSnowIncidentByCase, fetchSnowTasksByIncident, fetchSnowKbSearch, escalateSnowTask, snowVal } from '../lib/snow-client';
 import { matchPattern, runCodeSearch, runDatabaseRepoSearch, buildSkillDrivenAssessment } from '../lib/analysis';
 import { fetchRelatedBugs, fetchTestCases } from '../lib/ado-client';
 import { searchCommits } from '../lib/github-client';
@@ -14,13 +14,18 @@ import { useTriageStore } from '../store/triage';
 import { getBridgeInstallCommands } from '../lib/bridge-install';
 import type { TriageSession, SessionPhase, Product } from '../types';
 
-function newSession(raw: string, selectedReportedReleases: string[] = []): TriageSession {
+function newSession(
+  raw: string,
+  selectedReportedReleases: string[] = [],
+  selectedAreaPaths: string[] = []
+): TriageSession {
   const { type, id } = detectInput(raw);
   return {
     id: crypto.randomUUID(),
     inputRaw: raw,
     inputType: type,
     selectedReportedReleases,
+    selectedAreaPaths,
     currentPhase: 'preflight',
     workItemId: (type === 'DA' || type === 'TFS') ? parseInt(id, 10) : undefined,
     snowTaskNumber: type === 'TASK' ? id : undefined,
@@ -29,6 +34,17 @@ function newSession(raw: string, selectedReportedReleases: string[] = []): Triag
     status: 'loading',
     startedAt: new Date().toISOString(),
   };
+}
+
+function getEvidenceAreaPathsWithSelection(
+  primaryAreaPath: string,
+  product: Product | undefined,
+  selectedAreaPaths: string[] = []
+): string[] {
+  if (selectedAreaPaths.length > 0) {
+    return Array.from(new Set(selectedAreaPaths.map((p) => p.trim()).filter(Boolean)));
+  }
+  return getEvidenceAreaPaths(primaryAreaPath, product);
 }
 
 function getEvidenceAreaPaths(primaryAreaPath: string, product?: Product): string[] {
@@ -77,6 +93,23 @@ function buildReleaseHintsFromInputs(adoItem: any, selectedReportedReleases: str
     hints.push(h);
   }
   return hints;
+}
+
+function buildKbTerms(adoItem: any, product?: Product): string[] {
+  const title = String(adoItem?.fields?.['System.Title'] ?? '');
+  const productName = String(product?.displayName ?? '');
+  const snowProduct = String(adoItem?.fields?.['Allscripts.Field.SnowProduct'] ?? '');
+
+  const seedWords = [
+    ...title.split(/[^A-Za-z0-9.]+/),
+    ...productName.split(/[^A-Za-z0-9.]+/),
+    ...snowProduct.split(/[^A-Za-z0-9.]+/),
+  ]
+    .map((w) => w.trim())
+    .filter((w) => w.length >= 4)
+    .filter((w) => !/^(devassit|devassist|the|with|from|that|this|have|your|for|when|only)$/i.test(w));
+
+  return Array.from(new Set(seedWords)).slice(0, 8);
 }
 
 function phase(s: TriageSession, p: SessionPhase): TriageSession {
@@ -444,8 +477,13 @@ export default function TriagePage() {
 
   const activeSession = sessions.find((s) => s.id === active);
 
-  const handleSubmit = useCallback(async (raw: string, selectedProductIds: string[], selectedReportedReleases: string[]) => {
-    const preview = newSession(raw, selectedReportedReleases);
+  const handleSubmit = useCallback(async (
+    raw: string,
+    selectedProductIds: string[],
+    selectedAreaPaths: string[],
+    selectedReportedReleases: string[]
+  ) => {
+    const preview = newSession(raw, selectedReportedReleases, selectedAreaPaths);
 
     setLoading(true);
     let s = preview;
@@ -483,19 +521,33 @@ export default function TriagePage() {
         // ── Fetch repo/MTM comparison data in parallel with SNOW ──────────────
         const routedProduct = s.product;
         if (routedProduct) {
-          const evidenceAreaPaths = getEvidenceAreaPaths(areaPath, routedProduct);
+          const evidenceAreaPaths = getEvidenceAreaPathsWithSelection(areaPath, routedProduct, selectedAreaPaths);
           const versionHints = buildReleaseHintsFromInputs(adoItem, selectedReportedReleases);
+          const kbTerms = buildKbTerms(adoItem, routedProduct);
 
-          const [relatedBugs, testCases, areaEvidence, versionEvidence] = await Promise.allSettled([
+          const [relatedBugs, testCases, areaEvidence, versionEvidence, kbEvidence] = await Promise.allSettled([
             fetchRelatedBugs(areaPath, adoPat),
             fetchTestCases(areaPath, adoPat),
             fetchAreaItemsByPaths(evidenceAreaPaths, adoPat),
             fetchAreaVersionEvidenceByPaths(evidenceAreaPaths, adoPat, versionHints),
+            fetchSnowKbSearch(kbTerms, versionHints),
           ]);
           if (relatedBugs.status === 'fulfilled') s = { ...s, relatedItems: relatedBugs.value };
           if (testCases.status === 'fulfilled')   s = { ...s, testCases: testCases.value };
           if (areaEvidence.status === 'fulfilled') s = { ...s, areaEvidence: areaEvidence.value };
           if (versionEvidence.status === 'fulfilled') s = { ...s, versionEvidence: versionEvidence.value };
+          if (kbEvidence.status === 'fulfilled') {
+            const kbRows = Array.isArray(kbEvidence.value?.result) ? kbEvidence.value.result : [];
+            s = {
+              ...s,
+              kbEvidence: kbRows.slice(0, 15).map((row: any) => ({
+                number: String(row?.number?.display_value ?? row?.number ?? ''),
+                shortDescription: String(row?.short_description?.display_value ?? row?.short_description ?? ''),
+                state: String(row?.workflow_state?.display_value ?? row?.workflow_state ?? ''),
+                updatedOn: String(row?.sys_updated_on?.display_value ?? row?.sys_updated_on ?? ''),
+              })),
+            };
+          }
           // GitHub recent commits for primary repos
           if (githubPat && routedProduct.repos.length) {
             const repo = routedProduct.repos.find(r => r.required);
@@ -679,19 +731,33 @@ export default function TriagePage() {
 
           const routedProduct = s.product;
           if (routedProduct) {
-            const evidenceAreaPaths = getEvidenceAreaPaths(areaPath, routedProduct);
+            const evidenceAreaPaths = getEvidenceAreaPathsWithSelection(areaPath, routedProduct, s.selectedAreaPaths ?? []);
             const versionHints = buildReleaseHintsFromInputs(adoItem, s.selectedReportedReleases ?? []);
+            const kbTerms = buildKbTerms(adoItem, routedProduct);
 
-            const [relatedBugs, testCases, areaEvidence, versionEvidence] = await Promise.allSettled([
+            const [relatedBugs, testCases, areaEvidence, versionEvidence, kbEvidence] = await Promise.allSettled([
               fetchRelatedBugs(areaPath, adoPat),
               fetchTestCases(areaPath, adoPat),
               fetchAreaItemsByPaths(evidenceAreaPaths, adoPat),
               fetchAreaVersionEvidenceByPaths(evidenceAreaPaths, adoPat, versionHints),
+              fetchSnowKbSearch(kbTerms, versionHints),
             ]);
             if (relatedBugs.status === 'fulfilled') s = { ...s, relatedItems: relatedBugs.value };
             if (testCases.status === 'fulfilled') s = { ...s, testCases: testCases.value };
             if (areaEvidence.status === 'fulfilled') s = { ...s, areaEvidence: areaEvidence.value };
             if (versionEvidence.status === 'fulfilled') s = { ...s, versionEvidence: versionEvidence.value };
+            if (kbEvidence.status === 'fulfilled') {
+              const kbRows = Array.isArray(kbEvidence.value?.result) ? kbEvidence.value.result : [];
+              s = {
+                ...s,
+                kbEvidence: kbRows.slice(0, 15).map((row: any) => ({
+                  number: String(row?.number?.display_value ?? row?.number ?? ''),
+                  shortDescription: String(row?.short_description?.display_value ?? row?.short_description ?? ''),
+                  state: String(row?.workflow_state?.display_value ?? row?.workflow_state ?? ''),
+                  updatedOn: String(row?.sys_updated_on?.display_value ?? row?.sys_updated_on ?? ''),
+                })),
+              };
+            }
             if (githubPat && routedProduct.repos.length) {
               const repo = routedProduct.repos.find((r) => r.required);
               if (repo) {
