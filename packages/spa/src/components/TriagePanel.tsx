@@ -127,6 +127,14 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
 
   const fields = adoItem?.fields;
   const snowNum = fields?.['Allscripts.Field.IncidentTaskID'];
+  const hasRawEvidence = Boolean(
+    product ||
+    (adoItem && fields && (fields['System.Description'] || fields['Allscripts.Field.DevAssistDetail'] || fields['Allscripts.Field.WorkaroundInstructions'])) ||
+    (attachments && attachments.length > 0) ||
+    snowTask ||
+    session.snowIncident ||
+    session.snowCase
+  );
 
   return (
     <div className="space-y-4">
@@ -297,6 +305,12 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
           {snowTask && <span className="text-gray-600 ml-1">({snowVal(snowTask.number)})</span>}
         </summary>
         <div className="mt-2 space-y-3 pl-1">
+          {!hasRawEvidence && (
+            <div className="rounded-lg border border-gray-700 bg-gray-900 p-3 space-y-1">
+              <p className="text-xs font-medium text-gray-300">No raw evidence loaded yet</p>
+              <p className="text-xs text-gray-500">If analysis is still running, wait for completion. If it already finished, click Re-run to fetch SNOW/TFS/attachment evidence again.</p>
+            </div>
+          )}
 
           {product ? (
             <div className="rounded-lg border border-altera-blue/30 bg-altera-blue/5 p-3 space-y-2">
