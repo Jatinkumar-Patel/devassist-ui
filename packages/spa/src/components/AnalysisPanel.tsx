@@ -227,6 +227,18 @@ function buildPrintableHtml(session: TriageSession, analysis: TriageAnalysis, sn
       <meta charset="utf-8" />
       <title>DevAssist Analysis Report</title>
       <style>${style}</style>
+      <script>
+        window.addEventListener('load', function () {
+          setTimeout(function () {
+            try {
+              window.focus();
+              window.print();
+            } catch (error) {
+              console.error(error);
+            }
+          }, 250);
+        });
+      </script>
     </head>
     <body>
       <div class="no-print" style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:14px;">
@@ -310,15 +322,15 @@ function buildPrintableHtml(session: TriageSession, analysis: TriageAnalysis, sn
 
 function openPrintableReport(session: TriageSession, analysis: TriageAnalysis, snowEvidenceRows: string[]): void {
   const html = buildPrintableHtml(session, analysis, snowEvidenceRows);
-  const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const printWindow = window.open(url, '_blank', 'width=1200,height=900');
   if (!printWindow) {
+    URL.revokeObjectURL(url);
     window.alert('Popup blocked. Allow popups to print or save the report as PDF.');
     return;
   }
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
 export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
