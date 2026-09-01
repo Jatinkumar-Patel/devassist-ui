@@ -237,7 +237,10 @@ async function getOcrWorker(): Promise<any> {
   if (!ocrWorkerPromise) {
     ocrWorkerPromise = (async () => {
       const tesseract = await import('tesseract.js');
-      return (tesseract as any).createWorker('eng', 1, { logger: () => undefined });
+      return (tesseract as any).createWorker('eng', 1, {
+        logger: () => undefined,
+        cachePath: path.join(os.tmpdir(), 'devassist-tesseract-cache'),
+      });
     })();
   }
   return ocrWorkerPromise;

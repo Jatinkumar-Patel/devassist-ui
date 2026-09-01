@@ -203,7 +203,10 @@ async function getOcrWorker() {
     if (!ocrWorkerPromise) {
         ocrWorkerPromise = (async () => {
             const tesseract = await Promise.resolve().then(() => __importStar(require('tesseract.js')));
-            return tesseract.createWorker('eng', 1, { logger: () => undefined });
+            return tesseract.createWorker('eng', 1, {
+                logger: () => undefined,
+                cachePath: path_1.default.join(os_1.default.tmpdir(), 'devassist-tesseract-cache'),
+            });
         })();
     }
     return ocrWorkerPromise;

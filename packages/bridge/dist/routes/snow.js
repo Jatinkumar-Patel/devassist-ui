@@ -66,6 +66,33 @@ function escapePsSingleQuoted(value) {
 function escapeSnowQuery(value) {
     return value.replace(/[\^=~]/g, ' ').replace(/\s+/g, ' ').trim();
 }
+function snowFieldValue(field) {
+    if (!field)
+        return '';
+    if (typeof field === 'string')
+        return field;
+    if (typeof field === 'object') {
+        const rec = field;
+        const displayValue = rec['display_value'];
+        const value = rec['value'];
+        if (typeof displayValue === 'string' && displayValue.trim())
+            return displayValue.trim();
+        if (typeof value === 'string' && value.trim())
+            return value.trim();
+    }
+    return String(field);
+}
+function getIncidentCaseNumber(incident) {
+    if (!incident)
+        return null;
+    const candidates = [
+        snowFieldValue(incident['u_case_number']),
+        snowFieldValue(incident['u_customer_case']),
+        snowFieldValue(incident['parent']),
+        snowFieldValue(incident['parent.number']),
+    ].filter(Boolean);
+    return candidates.find((value) => /^CS\d+$/i.test(value)) ?? null;
+}
 async function snowFetchDecoded(url) {
     const escapedUrl = escapePsSingleQuoted(url);
     const json = await (0, powershell_1.execPowerShell)(`$raw = (Invoke-WebRequest -Uri '${escapedUrl}' -UseDefaultCredentials -UseBasicParsing).Content; ` +
@@ -292,7 +319,7 @@ exports.snowRouter.get('/escalate/:taskSysId', async (req, res) => {
         const incData = await snowFetchDecoded(`${SNOW_BASE}/GetTableJSON/?tablename=incident&sysparm_query=sys_id=${incSysId}&sysparm_fields=${incFields}`);
         const incident = incData?.result?.[0] ?? null;
         let clientCase = null;
-        const caseNum = incident?.['u_case_number']?.value ?? incident?.['u_customer_case']?.value;
+        const caseNum = getIncidentCaseNumber(incident);
         if (caseNum) {
             const caseFields = [
                 'sys_id',
