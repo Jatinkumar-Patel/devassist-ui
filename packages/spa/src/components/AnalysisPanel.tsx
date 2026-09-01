@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react';
-import { ClipboardCopy, Code2, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Wrench, Lightbulb, Sparkles, GitCommit, Bug, TestTube, Mail } from 'lucide-react';
+import { ClipboardCopy, Code2, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Wrench, Lightbulb, Sparkles, GitCommit, Bug, TestTube, Mail, Printer, Download } from 'lucide-react';
 import type { TriageAnalysis, TriageSession } from '../types';
 import { matchPattern, runCodeSearch, runDatabaseRepoSearch, buildSkillDrivenAssessment } from '../lib/analysis';
 import { useSettingsStore } from '../store/settings';
@@ -87,6 +87,238 @@ function buildAnalysisEmail(session: TriageSession, analysis: TriageAnalysis, sn
   ].join('\n');
 
   return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildPrintableHtml(session: TriageSession, analysis: TriageAnalysis, snowEvidenceRows: string[]): string {
+  const title = session.adoItem?.fields['System.Title'] ?? 'Triage Analysis';
+  const workItemId = session.adoItem?.id ? `#${session.adoItem.id}` : '';
+  const verdict = analysis.verdict ?? 'NEED MORE INFO';
+  const confidence = analysis.confidence ?? 'Low';
+  const artifactLedger = session.artifactLedger;
+  const attachments = session.attachments ?? [];
+  const relatedItems = session.relatedItems ?? [];
+  const areaEvidence = session.areaEvidence ?? [];
+  const versionEvidence = session.versionEvidence ?? [];
+  const recentCommits = session.recentCommits ?? [];
+  const blindSpots = analysis.blindSpots.length ? analysis.blindSpots : ['None'];
+
+  const listToHtml = (items: string[]) => items.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
+
+  const attachmentHtml = attachments.length
+    ? attachments.map((attachment) => {
+        const name = snowVal((attachment as any).file_name);
+        const type = snowVal((attachment as any).content_type);
+        const source = String((attachment as any)._source ?? 'SNOW');
+        return `<li><strong>${escapeHtml(name)}</strong> <span>${escapeHtml(type)}</span> <em>${escapeHtml(source)}</em></li>`;
+      }).join('')
+    : '<li>No attachments loaded</li>';
+
+  const evidenceHtml = snowEvidenceRows.length
+    ? snowEvidenceRows.map((row) => `<li>${escapeHtml(row)}</li>`).join('')
+    : '<li>No SNOW evidence captured</li>';
+
+  const areaItemsHtml = areaEvidence.length
+    ? areaEvidence.slice(0, 12).map((item) => `<li><strong>#${escapeHtml(item.id)}</strong> ${escapeHtml(item.title)} <em>${escapeHtml(item.state)}</em></li>`).join('')
+    : '<li>No area evidence</li>';
+
+  const versionItemsHtml = versionEvidence.length
+    ? versionEvidence.slice(0, 12).map((item) => `<li><strong>#${escapeHtml(item.id)}</strong> ${escapeHtml(item.title)} <em>${escapeHtml(item.supportVersion || item.reportedRelease || item.state)}</em></li>`).join('')
+    : '<li>No version-linked evidence</li>';
+
+  const relatedItemsHtml = relatedItems.length
+    ? relatedItems.slice(0, 12).map((item) => `<li><strong>#${escapeHtml(item.id)}</strong> ${escapeHtml(item.title)} <em>${escapeHtml(item.state)}</em></li>`).join('')
+    : '<li>No related open bugs</li>';
+
+  const recentCommitsHtml = recentCommits.length
+    ? recentCommits.slice(0, 8).map((commit) => `<li><strong>${escapeHtml(commit.sha)}</strong> ${escapeHtml(commit.message)} <em>${escapeHtml(commit.date)}</em></li>`).join('')
+    : '<li>No recent commits</li>';
+
+  const artifactLedgerHtml = artifactLedger
+    ? `
+      <div class="section">
+        <h3>Attachment Coverage</h3>
+        <p><strong>Coverage timeframe:</strong> ${escapeHtml(artifactLedger.coverageTimeframe)}</p>
+        <p><strong>Coverage subject:</strong> ${escapeHtml(artifactLedger.coverageSubject)}</p>
+        <div class="grid two">
+          <div>
+            <h4>Analyzed</h4>
+            <ul>${listToHtml(artifactLedger.analyzed.map((item) => `${item.source} | ${item.file} | ${item.finding}`))}</ul>
+          </div>
+          <div>
+            <h4>Not Analyzed</h4>
+            <ul>${listToHtml(artifactLedger.notAnalyzed.map((item) => `${item.source} | ${item.file} | ${item.reason}`))}</ul>
+          </div>
+        </div>
+      </div>
+    `
+    : '';
+
+  const style = `
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      margin: 0;
+      padding: 28px;
+      color: #111827;
+      background: #ffffff;
+    }
+    h1, h2, h3, h4, p, ul { margin: 0 0 10px; }
+    h1 { font-size: 24px; }
+    h2 { font-size: 18px; margin-top: 20px; border-bottom: 1px solid #d1d5db; padding-bottom: 6px; }
+    h3 { font-size: 15px; margin-top: 0; }
+    h4 { font-size: 13px; margin-top: 0; color: #374151; }
+    .muted { color: #6b7280; }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin: 16px 0 18px;
+    }
+    .card, .section {
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 12px;
+      background: #f9fafb;
+    }
+    .pill {
+      display: inline-block;
+      border: 1px solid #cbd5e1;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      margin-right: 8px;
+      margin-bottom: 8px;
+      background: #fff;
+    }
+    .grid.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    ul { padding-left: 18px; }
+    li { margin-bottom: 6px; }
+    .pre {
+      white-space: pre-wrap;
+      font-family: Consolas, Monaco, 'Courier New', monospace;
+      font-size: 11px;
+      line-height: 1.45;
+      background: #fff;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none !important; }
+      .card, .section, .pre { break-inside: avoid; }
+    }
+  `;
+
+  return `<!doctype html>
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>DevAssist Analysis Report</title>
+      <style>${style}</style>
+    </head>
+    <body>
+      <div class="no-print" style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:14px;">
+        <button onclick="window.print()" style="padding:8px 12px;border:1px solid #0ea5e9;border-radius:8px;background:#e0f2fe;color:#0f172a;font-weight:600;">Print / Save as PDF</button>
+        <button onclick="window.close()" style="padding:8px 12px;border:1px solid #94a3b8;border-radius:8px;background:#fff;color:#0f172a;font-weight:600;">Close</button>
+      </div>
+      <h1>DevAssist Analysis Report</h1>
+      <p class="muted">Generated ${escapeHtml(new Date().toLocaleString())}</p>
+      <div class="card">
+        <h2>${escapeHtml(title)} ${escapeHtml(workItemId)}</h2>
+        <div>
+          <span class="pill">Verdict: ${escapeHtml(verdict)}</span>
+          <span class="pill">Confidence: ${escapeHtml(confidence)}</span>
+          <span class="pill">Product: ${escapeHtml(session.product?.displayName ?? '-')}</span>
+          <span class="pill">Task: ${escapeHtml(session.snowTaskNumber ?? '-')}</span>
+          <span class="pill">Incident: ${escapeHtml(snowVal((session.snowIncident as any)?.number) || '-')}</span>
+          <span class="pill">Case: ${escapeHtml(snowVal((session.snowCase as any)?.number) || '-')}</span>
+        </div>
+        <p><strong>Client reported</strong></p>
+        <div class="pre">${escapeHtml(analysis.clientReported)}</div>
+      </div>
+
+      <div class="section">
+        <h2>SNOW Evidence</h2>
+        <ul>${evidenceHtml}</ul>
+      </div>
+
+      <div class="section">
+        <h2>Code Analysis</h2>
+        <div class="pre">${escapeHtml(analysis.codeAnalysis)}</div>
+      </div>
+
+      <div class="section">
+        <h2>Gap / Recommendation</h2>
+        <div class="pre">${escapeHtml(analysis.gap)}</div>
+      </div>
+
+      <div class="section">
+        <h2>Blind Spots</h2>
+        <ul>${listToHtml(blindSpots)}</ul>
+      </div>
+
+      ${artifactLedgerHtml}
+
+      <div class="section">
+        <h2>Attachments</h2>
+        <ul>${attachmentHtml}</ul>
+      </div>
+
+      <div class="grid two">
+        <div class="section">
+          <h2>Area Evidence</h2>
+          <ul>${areaItemsHtml}</ul>
+        </div>
+        <div class="section">
+          <h2>Version Evidence</h2>
+          <ul>${versionItemsHtml}</ul>
+        </div>
+      </div>
+
+      <div class="grid two">
+        <div class="section">
+          <h2>Related Bugs</h2>
+          <ul>${relatedItemsHtml}</ul>
+        </div>
+        <div class="section">
+          <h2>Recent Commits</h2>
+          <ul>${recentCommitsHtml}</ul>
+        </div>
+      </div>
+
+      ${session.analysis?.l2Draft ? `
+        <div class="section">
+          <h2>L2 Commentary Draft</h2>
+          <div class="pre">${escapeHtml(session.analysis.l2Draft)}</div>
+        </div>
+      ` : ''}
+    </body>
+  </html>`;
+}
+
+function openPrintableReport(session: TriageSession, analysis: TriageAnalysis, snowEvidenceRows: string[]): void {
+  const html = buildPrintableHtml(session, analysis, snowEvidenceRows);
+  const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
+  if (!printWindow) {
+    window.alert('Popup blocked. Allow popups to print or save the report as PDF.');
+    return;
+  }
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
 }
 
 export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
@@ -403,6 +635,28 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           )}
         </div>
       )}
+
+      <div className="rounded-lg border border-cyan-900/60 bg-cyan-950/20 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Report export</p>
+          <p className="text-xs text-gray-300">Print the full analysis report or save it as a PDF from the browser dialog.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => openPrintableReport(session, analysis, snowEvidenceRows)}
+            className="inline-flex items-center gap-2 rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs font-medium text-cyan-100 hover:bg-cyan-500/20"
+          >
+            <Printer size={12} /> Print / Save as PDF
+          </button>
+          <a
+            href={emailHref}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs font-medium text-gray-200 hover:bg-gray-700"
+          >
+            <Download size={12} /> Email draft
+          </a>
+        </div>
+      </div>
 
       {/* AI Assessment — calls OpenAI via bridge, shows response inline */}
       <AiAssessmentPanel session={session} />
