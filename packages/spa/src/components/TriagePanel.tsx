@@ -171,6 +171,7 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
               {fields['Allscripts.Field.CustomerName']   && <Badge label="Customer" value={String(fields['Allscripts.Field.CustomerName'])} />}
               {fields['Microsoft.VSTS.Common.Severity']  && <Badge label="Sev" value={String(fields['Microsoft.VSTS.Common.Severity'])} />}
               {product && <Badge label="Product" value={product.displayName} />}
+              {session.cacheMeta?.source === 'cache' && <Badge label="Analysis" value="cached reuse" />}
               {clarityGaps !== undefined && (
                 clarityGaps.length === 0
                   ? <span className="bg-emerald-950 border border-emerald-800 rounded px-2 py-0.5 text-emerald-300">Clarity OK</span>
@@ -217,6 +218,7 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
               {session.snowIncident && <Badge label="Incident" value={snowVal((session.snowIncident as any).number)} />}
               {session.snowCase && <Badge label="Case" value={snowVal((session.snowCase as any).number)} />}
               {product && <Badge label="Product" value={product.displayName} />}
+              {session.cacheMeta?.source === 'cache' && <Badge label="Analysis" value="cached reuse" />}
             </div>
           </>
         )}

@@ -14,21 +14,73 @@ import { useTriageStore } from '../store/triage';
 import { getBridgeInstallCommands } from '../lib/bridge-install';
 import type { TriageSession, SessionPhase, Product } from '../types';
 
+const TRIAGE_CACHE_TTL_MS = 10 * 60 * 1000;
+
+function normalizeKeyPart(values: string[] = []): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+}
+
+function buildTriageCacheKey(raw: string, selectedProductIds: string[] = [], selectedReportedReleases: string[] = []): string {
+  const normalizedRaw = raw.trim().toUpperCase();
+  const products = normalizeKeyPart(selectedProductIds).join('|');
+  const releases = normalizeKeyPart(selectedReportedReleases).join('|');
+  return `${normalizedRaw}::${products}::${releases}`;
+}
+
+function buildCacheMeta(key: string, source: 'fresh' | 'cache', reusedFromSessionId?: string) {
+  const now = new Date();
+  return {
+    key,
+    source,
+    cachedAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + TRIAGE_CACHE_TTL_MS).toISOString(),
+    reusedFromSessionId,
+  };
+}
+
+function findReusableSession(
+  sessions: TriageSession[],
+  key: string
+): TriageSession | undefined {
+  const now = Date.now();
+  return sessions.find((session) => {
+    if (session.status !== 'ready' || session.error) return false;
+    if (session.cacheMeta?.key !== key) return false;
+    const expiresAt = Date.parse(session.cacheMeta?.expiresAt ?? '');
+    return Number.isFinite(expiresAt) && expiresAt > now;
+  });
+}
+
+function cloneCachedSession(session: TriageSession, key: string): TriageSession {
+  return {
+    ...session,
+    id: crypto.randomUUID(),
+    status: 'ready',
+    error: undefined,
+    startedAt: new Date().toISOString(),
+    cacheMeta: buildCacheMeta(key, 'cache', session.id),
+  };
+}
+
 function newSession(
   raw: string,
+  selectedProductIds: string[] = [],
   selectedReportedReleases: string[] = []
 ): TriageSession {
   const { type, id } = detectInput(raw);
+  const cacheKey = buildTriageCacheKey(raw, selectedProductIds, selectedReportedReleases);
   return {
     id: crypto.randomUUID(),
     inputRaw: raw,
     inputType: type,
+    selectedProductIds,
     selectedReportedReleases,
     currentPhase: 'preflight',
     workItemId: (type === 'DA' || type === 'TFS') ? parseInt(id, 10) : undefined,
     snowTaskNumber: type === 'TASK' ? id : undefined,
     snowIncidentNumber: type === 'INC' ? id : undefined,
     snowCaseNumber: type === 'CS' ? id : undefined,
+    cacheMeta: buildCacheMeta(cacheKey, 'fresh'),
     status: 'loading',
     startedAt: new Date().toISOString(),
   };
@@ -503,7 +555,15 @@ export default function TriagePage() {
     selectedProductIds: string[],
     selectedReportedReleases: string[]
   ) => {
-    const preview = newSession(raw, selectedReportedReleases);
+    const cacheKey = buildTriageCacheKey(raw, selectedProductIds, selectedReportedReleases);
+    const cachedSession = findReusableSession(sessions, cacheKey);
+    if (cachedSession) {
+      upsert(cloneCachedSession(cachedSession, cacheKey));
+      setLoading(false);
+      return;
+    }
+
+    const preview = newSession(raw, selectedProductIds, selectedReportedReleases);
 
     cancelledRef.current = false;
     setLoading(true);
@@ -1064,13 +1124,18 @@ export default function TriagePage() {
         } catch { /* non-fatal */ }
       }
 
-      upsert({ ...s, currentPhase: 'done', status: 'ready' });
+      upsert({
+        ...s,
+        cacheMeta: buildCacheMeta(cacheKey, 'fresh'),
+        currentPhase: 'done',
+        status: 'ready',
+      });
     } catch (err: any) {
       upsert({ ...s, status: 'error', error: toUserFacingError(err, bridgeUrl) });
     } finally {
       setLoading(false);
     }
-  }, [adoPat, bridgeUrl, githubPat, upsert]);
+  }, [adoPat, bridgeUrl, githubPat, sessions, upsert]);
 
   return (
     <div className="space-y-3">

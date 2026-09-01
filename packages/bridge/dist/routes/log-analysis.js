@@ -102,6 +102,9 @@ const SEED_CATEGORY = {
     'spinner': 'other',
     'RecycleClient': 'other',
 };
+const LOG_ANALYSIS_CACHE_TTL_MS = 10 * 60 * 1000;
+const LOG_ANALYSIS_PARSER_VERSION = '3';
+const logAnalysisCache = new Map();
 const MAX_PLAIN_BYTES = 50 * 1024 * 1024; // 50 MB — read whole file
 const MAX_CHUNK_BYTES = 200 * 1024 * 1024; // 200 MB — read last N lines
 const TAIL_LINES = 5000; // lines to tail on very large files
@@ -126,6 +129,12 @@ function extensionOf(fileName) {
     const lower = fileName.toLowerCase();
     const idx = lower.lastIndexOf('.');
     return idx >= 0 ? lower.slice(idx) : '';
+}
+function attachmentFingerprint(attachments) {
+    const parts = attachments
+        .map((att) => [val(att.sys_id), val(att.file_name), val(att.content_type), val(att.size_bytes)].join(':'))
+        .sort((a, b) => a.localeCompare(b));
+    return `${LOG_ANALYSIS_PARSER_VERSION}|${parts.join('|')}`;
 }
 function val(f) {
     if (!f)
@@ -217,6 +226,7 @@ function parseSpreadsheet(filePath, fileName) {
                 // Skip repeated header lines embedded in exports.
                 return !(joined.includes('siteid') && joined.includes('repflags') && (joined.includes('firstname') || joined.includes('displayname')));
             });
+            const conversionInsight = analyzeConversionRows(fileName, sheetName, headerRow, rows);
             const displayNameCounts = new Map();
             const personGuidSet = new Set();
             const guidSet = new Set();
@@ -286,6 +296,7 @@ function parseSpreadsheet(filePath, fileName) {
             if (multiTypePersons.length) {
                 findings.push(`PersonGUIDs with multiple NameTypeCode values: ${multiTypePersons.join(' | ')}`);
             }
+            findings.push(...conversionInsight.findings);
             summaries.push({
                 file: fileName,
                 sheet: sheetName,
@@ -295,6 +306,7 @@ function parseSpreadsheet(filePath, fileName) {
                 sampleRows,
                 findings,
             });
+            hits.push(...conversionInsight.syntheticHits);
         }
         const maxRows = Math.min(rows.length, 20000);
         for (let i = 0; i < maxRows; i++) {
@@ -320,6 +332,94 @@ function parseSpreadsheet(filePath, fileName) {
     }
     return { hits, summaries };
 }
+function analyzeConversionRows(fileName, sheetName, headers, rows) {
+    const out = { findings: [], syntheticHits: [] };
+    if (!headers.length || !rows.length)
+        return out;
+    const norm = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const headerMap = new Map();
+    headers.forEach((h, idx) => {
+        const key = norm(String(h ?? ''));
+        if (key)
+            headerMap.set(key, idx);
+    });
+    const findIndex = (aliases) => {
+        for (const alias of aliases) {
+            const idx = headerMap.get(norm(alias));
+            if (typeof idx === 'number')
+                return idx;
+        }
+        return -1;
+    };
+    const idxOld = findIndex(['OldValue', 'Old', 'SourceValue', 'Source', 'Before', 'From']);
+    const idxNew = findIndex(['NewValue', 'New', 'TargetValue', 'Target', 'After', 'To']);
+    const idxStatus = findIndex(['Status', 'Result', 'Outcome', 'State']);
+    const idxReason = findIndex(['Reason', 'Message', 'Comments', 'Note']);
+    let changed = 0;
+    let unchanged = 0;
+    let blankTargets = 0;
+    const statusCounts = new Map();
+    const conversionExamples = [];
+    const issueExamples = [];
+    const maxRows = Math.min(rows.length, 20000);
+    for (let i = 0; i < maxRows; i++) {
+        const row = rows[i];
+        const valueAt = (idx) => (idx >= 0 ? String(row[idx] ?? '').trim() : '');
+        const oldVal = valueAt(idxOld);
+        const newVal = valueAt(idxNew);
+        const status = valueAt(idxStatus);
+        const reason = valueAt(idxReason);
+        if (oldVal || newVal) {
+            if (oldVal && newVal) {
+                if (oldVal !== newVal) {
+                    changed += 1;
+                    if (conversionExamples.length < 3)
+                        conversionExamples.push(`${oldVal} -> ${newVal}`);
+                }
+                else {
+                    unchanged += 1;
+                }
+            }
+            else if (oldVal && !newVal) {
+                blankTargets += 1;
+                if (issueExamples.length < 3)
+                    issueExamples.push(`missing target for ${oldVal}`);
+            }
+        }
+        if (status) {
+            const key = status.toLowerCase();
+            statusCounts.set(key, (statusCounts.get(key) ?? 0) + 1);
+            if (/fail|error|reject|invalid|missing|not found|unmapped/i.test(status) || /fail|error|reject|invalid|missing|not found|unmapped/i.test(reason)) {
+                out.syntheticHits.push({
+                    file: `${fileName}#${sheetName}`,
+                    line: i + 2,
+                    text: `${status}${reason ? ` | ${reason}` : ''}`.slice(0, 300),
+                    seed: 'SpreadsheetDataSignal',
+                    category: 'other',
+                });
+            }
+        }
+    }
+    if (changed > 0 || blankTargets > 0 || statusCounts.size > 0) {
+        out.findings.push(`Conversion summary: changed=${changed}, unchanged=${unchanged}, missing_target=${blankTargets}`);
+    }
+    if (conversionExamples.length > 0) {
+        out.findings.push(`Conversion examples: ${conversionExamples.join(' | ')}`);
+    }
+    if (issueExamples.length > 0) {
+        out.findings.push(`Potential mapping gaps: ${issueExamples.join(' | ')}`);
+    }
+    if (statusCounts.size > 0) {
+        const topStatuses = Array.from(statusCounts.entries())
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 4)
+            .map(([status, count]) => `${status}:${count}`)
+            .join(', ');
+        out.findings.push(`Status distribution: ${topStatuses}`);
+    }
+    out.syntheticHits = out.syntheticHits.slice(0, 40);
+    return out;
+}
 // GET /api/log-analysis/:recordSysId — download + parse all log attachments for a SNOW record
 exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
     const { recordSysId } = req.params;
@@ -330,6 +430,11 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
         const outer = JSON.parse(attachListRaw.trim());
         const parsed = typeof outer === 'string' ? JSON.parse(outer) : outer;
         const attachments = Array.isArray(parsed?.result) ? parsed.result : [];
+        const fingerprint = attachmentFingerprint(attachments);
+        const cached = logAnalysisCache.get(recordSysId);
+        if (cached && cached.fingerprint === fingerprint && cached.expiresAt > Date.now()) {
+            return res.json({ ...cached.result, cached: true });
+        }
         const scannableFiles = [];
         const allHits = [];
         const spreadsheetSummaries = [];
@@ -450,7 +555,7 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
         const lockPairs = extractLockPairs(allHits);
         const byCategory = groupByCategory(allHits);
         const suggestions = buildSuggestions(allHits);
-        return res.json({
+        const result = {
             totalAttachments: attachments.length,
             scannableAttachments: scannableFiles.length,
             analyzed,
@@ -462,7 +567,14 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
             topSeeds: summariseBySeeds(allHits),
             spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
             suggestions,
+            cached: false,
+        };
+        logAnalysisCache.set(recordSysId, {
+            fingerprint,
+            expiresAt: Date.now() + LOG_ANALYSIS_CACHE_TTL_MS,
+            result,
         });
+        return res.json(result);
     }
     finally {
         // Clean up temp files

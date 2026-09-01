@@ -91,6 +91,31 @@ interface ConversionInsight {
   syntheticHits: LogHit[];
 }
 
+interface LogAnalysisResult {
+  totalAttachments: number;
+  scannableAttachments: number;
+  analyzed: string[];
+  skipped: string[];
+  totalHits: number;
+  hits: LogHit[];
+  byCategory: Record<string, LogHit[]>;
+  lockPairs: LogHit[];
+  topSeeds: Record<string, number>;
+  spreadsheetSummaries: SpreadsheetSummary[];
+  suggestions: CodeSuggestion[];
+  cached?: boolean;
+}
+
+interface LogAnalysisCacheEntry {
+  fingerprint: string;
+  expiresAt: number;
+  result: LogAnalysisResult;
+}
+
+const LOG_ANALYSIS_CACHE_TTL_MS = 10 * 60 * 1000;
+const LOG_ANALYSIS_PARSER_VERSION = '3';
+const logAnalysisCache = new Map<string, LogAnalysisCacheEntry>();
+
 const MAX_PLAIN_BYTES  = 50 * 1024 * 1024;  // 50 MB — read whole file
 const MAX_CHUNK_BYTES  = 200 * 1024 * 1024; // 200 MB — read last N lines
 const TAIL_LINES       = 5000;               // lines to tail on very large files
@@ -125,6 +150,13 @@ function extensionOf(fileName: string): string {
   const lower = fileName.toLowerCase();
   const idx = lower.lastIndexOf('.');
   return idx >= 0 ? lower.slice(idx) : '';
+}
+
+function attachmentFingerprint(attachments: AttachmentMeta[]): string {
+  const parts = attachments
+    .map((att) => [val(att.sys_id), val(att.file_name), val(att.content_type), val(att.size_bytes)].join(':'))
+    .sort((a, b) => a.localeCompare(b));
+  return `${LOG_ANALYSIS_PARSER_VERSION}|${parts.join('|')}`;
 }
 
 function val(f: unknown): string {
@@ -437,6 +469,11 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
     const outer = JSON.parse(attachListRaw.trim());
     const parsed = typeof outer === 'string' ? JSON.parse(outer) : outer;
     const attachments: AttachmentMeta[] = Array.isArray(parsed?.result) ? parsed.result : [];
+    const fingerprint = attachmentFingerprint(attachments);
+    const cached = logAnalysisCache.get(recordSysId);
+    if (cached && cached.fingerprint === fingerprint && cached.expiresAt > Date.now()) {
+      return res.json({ ...cached.result, cached: true });
+    }
 
     const scannableFiles: AttachmentMeta[] = [];
 
@@ -573,7 +610,7 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
     const byCategory = groupByCategory(allHits);
     const suggestions = buildSuggestions(allHits);
 
-    return res.json({
+    const result: LogAnalysisResult = {
       totalAttachments: attachments.length,
       scannableAttachments: scannableFiles.length,
       analyzed,
@@ -585,7 +622,16 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
       topSeeds: summariseBySeeds(allHits),
       spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
       suggestions,
+      cached: false,
+    };
+
+    logAnalysisCache.set(recordSysId, {
+      fingerprint,
+      expiresAt: Date.now() + LOG_ANALYSIS_CACHE_TTL_MS,
+      result,
     });
+
+    return res.json(result);
 
   } finally {
     // Clean up temp files

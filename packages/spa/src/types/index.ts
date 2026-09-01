@@ -161,6 +161,14 @@ export interface ArtifactLedger {
   coverageSubject: 'ok' | string;
 }
 
+export interface TriageCacheMeta {
+  key: string;
+  source: 'fresh' | 'cache';
+  cachedAt: string;
+  expiresAt: string;
+  reusedFromSessionId?: string;
+}
+
 // ── Triage Session ────────────────────────────────────────────────────────────
 
 export type InputType = 'DA' | 'INC' | 'TASK' | 'CS' | 'KB' | 'TFS' | 'unknown';
@@ -179,6 +187,7 @@ export interface TriageSession {
   id: string;
   inputRaw: string;
   inputType: InputType;
+  selectedProductIds?: string[];
   selectedReportedReleases?: string[];
   currentPhase: SessionPhase;
   workItemId?: number;
@@ -203,6 +212,7 @@ export interface TriageSession {
   databaseEvidence?: Array<{ repo: string; path: string; url: string }>; // DB repo hits
   kbEvidence?: Array<{ number: string; shortDescription: string; state: string; updatedOn: string }>; // SNOW KB related entries
   recentCommits?: Array<{ sha: string; message: string; date: string; url: string }>;
+  cacheMeta?: TriageCacheMeta;
   status: 'idle' | 'loading' | 'ready' | 'error';
   error?: string;
   startedAt: string;
