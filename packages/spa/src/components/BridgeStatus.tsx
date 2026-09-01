@@ -23,17 +23,21 @@ export default function BridgeStatus() {
   }, [bridgeUrl]);
 
   const ok = status.bridge === 'ok';
+  const snowReady = status.snowAuth === 'ok';
+  const degraded = ok && !snowReady;
   return (
     <div
       className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-full border ${
-        ok
+        degraded
+          ? 'border-amber-700 text-amber-300 bg-amber-950/40'
+          : ok
           ? 'border-emerald-700 text-emerald-400 bg-emerald-950/40'
           : 'border-red-800 text-red-400 bg-red-950/40'
       }`}
       title={ok ? `Bridge v${status.version} · SNOW: ${status.snowAuth}` : 'Bridge offline — open Settings for the start command'}
     >
       {ok ? <Wifi size={12} /> : <WifiOff size={12} />}
-      {ok ? 'Bridge' : 'Bridge offline'}
+      {degraded ? 'Bridge / SNOW issue' : ok ? 'Bridge' : 'Bridge offline'}
     </div>
   );
 }

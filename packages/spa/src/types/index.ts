@@ -214,5 +214,7 @@ export interface BridgeStatus {
   version?: string;
   platform?: string;
   snowAuth?: string;
+  adoAuth?: string;
+  githubAuth?: string;
   timestamp?: string;
 }

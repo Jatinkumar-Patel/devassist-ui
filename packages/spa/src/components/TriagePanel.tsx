@@ -1,10 +1,12 @@
-﻿import { ExternalLink, GitBranch, Package, AlertTriangle, Paperclip, ChevronDown } from 'lucide-react';
+﻿import { useEffect, useState } from 'react';
+import { ExternalLink, GitBranch, Package, AlertTriangle, Paperclip, ChevronDown } from 'lucide-react';
 import type { TriageSession, TriageAnalysis } from '../types';
 import { workItemUrl } from '../lib/ado-client';
 import { snowTaskUrl, snowVal } from '../lib/snow-client';
 import AnalysisPanel from './AnalysisPanel';
 import LogAnalysisPanel from './LogAnalysisPanel';
 import { useSettingsStore } from '../store/settings';
+import type { BridgeStatus } from '../types';
 
 // Phase label for the progress indicator
 const PHASE_LABELS: Record<string, string> = {
@@ -44,7 +46,27 @@ function friendlyErrorMessage(error: string, bridgeUrl: string): string {
 
 export default function TriagePanel({ session, onAnalysisComplete }: Props) {
   const bridgeUrl = useSettingsStore((s) => s.bridgeUrl);
+  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>({ bridge: 'offline' });
   const { adoItem, snowTask, product, error, currentPhase, clarityGaps, attachments, artifactLedger } = session;
+
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const res = await fetch(`${bridgeUrl}/api/status`, { signal: AbortSignal.timeout(3000) });
+        if (!cancelled) setBridgeStatus(res.ok ? await res.json() : { bridge: 'offline' });
+      } catch {
+        if (!cancelled) setBridgeStatus({ bridge: 'offline' });
+      }
+    };
+    check();
+    return () => { cancelled = true; };
+  }, [bridgeUrl]);
+
+  const snowBlockedReason = bridgeStatus.bridge === 'ok' && bridgeStatus.snowAuth && bridgeStatus.snowAuth !== 'ok'
+    ? `SNOW-backed artifacts are unavailable on this machine. ${bridgeStatus.snowAuth}. Connect VPN, refresh status, then re-run analysis.`
+    : null;
+
   if (error) {
     const message = friendlyErrorMessage(error, bridgeUrl);
     const isAuthError = /\b401\b|Authentication failed/i.test(message);
@@ -220,6 +242,17 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
         <AnalysisPanel session={session} onAnalysisComplete={onAnalysisComplete} />
       )}
 
+      {session.status === 'ready' && snowBlockedReason && (
+        <div className="rounded-lg border border-amber-800/60 bg-amber-950/20 p-4 space-y-2">
+          <div className="flex items-center gap-2 text-sm text-amber-300">
+            <AlertTriangle size={14} className="shrink-0" />
+            <span className="font-medium">SNOW artifacts unavailable</span>
+          </div>
+          <p className="text-xs text-amber-100/90">{snowBlockedReason}</p>
+          <p className="text-xs text-amber-200/70">Expected impact: attachment list stays empty and log scan cannot run until SNOW access is restored.</p>
+        </div>
+      )}
+
       {/* Log Scan — always show; manual sysId entry if SNOW task not auto-fetched */}
       {session.status === 'ready' && (
         <LogAnalysisPanel
@@ -228,6 +261,7 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
           snowCase={session.snowCase as any}
           snowTaskNumber={session.snowTaskNumber ?? snowVal((snowTask as any)?.number)}
           autoResult={(snowTask as any)?._logAnalysis ?? null}
+          blockedReason={snowBlockedReason}
           onResult={(hits, topSeeds) => {
             if (snowTask) {
               (snowTask as any)._logHits = hits;
@@ -370,6 +404,15 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
                   </span>
                 </div>
               )}
+            </div>
+          )}
+
+          {(!attachments || attachments.length === 0) && snowBlockedReason && (
+            <div className="rounded-lg border border-amber-800/50 bg-amber-950/20 p-3 space-y-1">
+              <p className="text-xs font-medium text-amber-300 flex items-center gap-1.5">
+                <Paperclip size={11} /> Attachments unavailable
+              </p>
+              <p className="text-xs text-amber-100/90">{snowBlockedReason}</p>
             </div>
           )}
         </div>

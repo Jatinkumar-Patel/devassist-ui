@@ -49,6 +49,7 @@ interface Props {
   snowTaskNumber?: string;
   autoResult?: LogAnalysisResult | null;
   onResult?: (hits: LogHit[], topSeeds: Record<string, number>) => void;
+  blockedReason?: string | null;
 }
 
 const CATEGORY_CONFIG = {
@@ -65,7 +66,7 @@ const SEVERITY_COLOR = {
   medium:   'border-yellow-700 bg-yellow-950/20 text-yellow-300',
 };
 
-export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, snowTaskNumber, autoResult, onResult }: Props) {
+export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, snowTaskNumber, autoResult, onResult, blockedReason }: Props) {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<LogAnalysisResult | null>(autoResult ?? null);
   const [error, setError] = useState('');
@@ -116,7 +117,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
   };
 
   const analyze = async () => {
-    if (!sysId) return;
+    if (!sysId || blockedReason) return;
     setRunning(true);
     setError('');
     try {
@@ -168,11 +169,11 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
   };
 
   useEffect(() => {
-    if (!sysId || running || result || autoResult) return;
+    if (!sysId || running || result || autoResult || blockedReason) return;
     if (autoAttemptedForSysIdRef.current === sysId) return;
     autoAttemptedForSysIdRef.current = sysId;
     void analyze();
-  }, [autoResult, result, running, sysId]);
+  }, [autoResult, blockedReason, result, running, sysId]);
 
   return (
     <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-3">
@@ -182,7 +183,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
           {snowTaskNumber && <span className="text-gray-600 font-mono">{snowTaskNumber}</span>}
           {autoSysId && <span className="text-gray-600 font-mono text-[10px]">sysId: {autoSysId.slice(0, 8)}…</span>}
         </p>
-        <button onClick={analyze} disabled={running || !sysId}
+        <button onClick={analyze} disabled={running || !sysId || !!blockedReason}
           className="flex items-center gap-1.5 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-40
                      border border-gray-600 text-gray-300 px-3 py-1.5 rounded font-medium">
           {running ? <Loader2 size={11} className="animate-spin" /> : <FileSearch size={11} />}
@@ -218,6 +219,13 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
       )}
 
       {error && <p className="text-xs text-red-400">{error}</p>}
+
+      {blockedReason && (
+        <div className="rounded-lg border border-amber-800/60 bg-amber-950/20 p-3 space-y-1">
+          <p className="text-xs font-medium text-amber-300">Log scan unavailable</p>
+          <p className="text-xs text-amber-200/90">{blockedReason}</p>
+        </div>
+      )}
 
       {result && (
         <div className="space-y-4">
