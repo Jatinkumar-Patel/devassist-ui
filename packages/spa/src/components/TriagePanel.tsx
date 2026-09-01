@@ -60,11 +60,16 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
       }
     };
     check();
-    return () => { cancelled = true; };
+    const iv = setInterval(check, 10_000);
+    return () => { cancelled = true; clearInterval(iv); };
   }, [bridgeUrl]);
 
-  const snowBlockedReason = bridgeStatus.bridge === 'ok' && bridgeStatus.snowAuth && bridgeStatus.snowAuth !== 'ok'
-    ? `SNOW-backed artifacts are unavailable on this machine. ${bridgeStatus.snowAuth}. Connect VPN, refresh status, then re-run analysis.`
+  const snowBlockedReason = bridgeStatus.bridge === 'ok' && bridgeStatus.snowAuth
+    ? bridgeStatus.snowAuth === 'checking…'
+      ? 'SNOW access is still being verified. Wait a few seconds for the bridge status to settle, then re-run analysis.'
+      : bridgeStatus.snowAuth !== 'ok'
+        ? `SNOW-backed artifacts are unavailable on this machine. ${bridgeStatus.snowAuth}. Connect VPN, refresh status, then re-run analysis.`
+        : null
     : null;
 
   if (error) {

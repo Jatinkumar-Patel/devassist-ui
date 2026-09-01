@@ -79,6 +79,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
 
   const autoSysId = snowTask ? snowVal(snowTask.sys_id) : '';
   const sysId = autoSysId || manualSysId.trim();
+  const waitingForSnowCheck = blockedReason?.includes('still being verified') ?? false;
 
   const readSysId = (record: any): string => {
     if (!record) return '';
@@ -208,7 +209,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
             />
             <button
               onClick={analyze}
-              disabled={running || !manualSysId.trim()}
+              disabled={running || !manualSysId.trim() || !!blockedReason}
               className="text-xs bg-cyan-800/50 hover:bg-cyan-700/60 border border-cyan-700/60 text-cyan-200 px-3 py-1 rounded disabled:opacity-40 font-medium"
             >
               {running ? 'Running…' : 'Run'}
@@ -222,13 +223,42 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
 
       {blockedReason && (
         <div className="rounded-lg border border-amber-800/60 bg-amber-950/20 p-3 space-y-1">
-          <p className="text-xs font-medium text-amber-300">Log scan unavailable</p>
+          <p className="text-xs font-medium text-amber-300">{waitingForSnowCheck ? 'Log scan pending' : 'Log scan unavailable'}</p>
           <p className="text-xs text-amber-200/90">{blockedReason}</p>
         </div>
       )}
 
       {result && (
         <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <div className="bg-gray-800 rounded p-2">
+              <p className="text-gray-500 font-medium">Attachments found</p>
+              <p className="text-gray-200 font-mono">{result.totalAttachments ?? 0}</p>
+            </div>
+            <div className="bg-gray-800 rounded p-2">
+              <p className="text-gray-500 font-medium">Scannable</p>
+              <p className="text-gray-200 font-mono">{result.scannableAttachments ?? 0}</p>
+            </div>
+            <div className="bg-gray-800 rounded p-2">
+              <p className="text-gray-500 font-medium">Pattern hits</p>
+              <p className="text-gray-200 font-mono">{result.totalHits ?? 0}</p>
+            </div>
+          </div>
+
+          {(result.totalAttachments ?? 0) === 0 && (
+            <div className="rounded-lg border border-gray-800 bg-gray-950/40 p-3">
+              <p className="text-xs font-medium text-gray-300">No SNOW attachments found for this record chain</p>
+              <p className="text-xs text-gray-500 mt-1">There is nothing for DevAssist to scan yet. Use Raw evidence to confirm whether the task, incident, or case actually has attachments.</p>
+            </div>
+          )}
+
+          {(result.totalAttachments ?? 0) > 0 && (result.scannableAttachments ?? 0) === 0 && (
+            <div className="rounded-lg border border-gray-800 bg-gray-950/40 p-3">
+              <p className="text-xs font-medium text-gray-300">Attachments found, but none are scannable log files</p>
+              <p className="text-xs text-gray-500 mt-1">Supported scan types are `.log`, `.txt`, `.zip`, `.csv`, `.json`, `.xml`, `.xlsx`, and `.xls`.</p>
+            </div>
+          )}
+
           {/* Coverage */}
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="bg-gray-800 rounded p-2 space-y-0.5">
