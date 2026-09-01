@@ -90,7 +90,7 @@ function buildAnalysisEmail(session: TriageSession, analysis: TriageAnalysis, sn
 }
 
 export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
-  const { githubPat, databaseRepoPaths } = useSettingsStore();
+  const { githubPat } = useSettingsStore();
   const [running, setRunning] = useState(false);
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -114,7 +114,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           .filter((t) => t.length >= 4),
       ])).slice(0, 8);
 
-      const databaseEvidence = await runDatabaseRepoSearch(githubPat ?? '', databaseRepoPaths, dbTerms);
+      const databaseEvidence = await runDatabaseRepoSearch(githubPat ?? '', product.databaseRepoPaths ?? [], dbTerms);
 
       const workNotes = snowTask?.['_workNotes']
         ? JSON.stringify(snowTask['_workNotes'])

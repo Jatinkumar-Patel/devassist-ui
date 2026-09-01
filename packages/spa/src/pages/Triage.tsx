@@ -171,6 +171,19 @@ function snowGapMessage(taskNumber: string | undefined, fetchError: string | und
 function buildSelectedScope(selectedProducts: Product[]): Product | undefined {
   if (selectedProducts.length === 0) return undefined;
 
+  const normalizeStringList = (values: string[] | undefined): string[] => {
+    const seen = new Set<string>();
+    return (values ?? [])
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .filter((value) => {
+        const key = value.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  };
+
   const normalizeSkillEntries = <T extends { role: 'primary' | 'secondary'; enabled?: boolean }>(entries: T[] | undefined, getKey: (entry: T) => string): T[] => {
     const ordered = (entries ?? [])
       .filter((entry) => entry.enabled !== false)
@@ -203,6 +216,7 @@ function buildSelectedScope(selectedProducts: Product[]): Product | undefined {
 
     return {
       ...product,
+      databaseRepoPaths: normalizeStringList(product.databaseRepoPaths),
       githubSkills,
       githubSkillPaths: githubSkills.map((x) => x.path),
       localSkills,
@@ -239,6 +253,7 @@ function buildSelectedScope(selectedProducts: Product[]): Product | undefined {
     snowTaskTable: primary.snowTaskTable,
     repos: Array.from(repoMap.values()),
     mtmPlans: selectedProducts.flatMap((p) => p.mtmPlans),
+    databaseRepoPaths: Array.from(new Set(selectedProducts.flatMap((p) => normalizeProduct(p).databaseRepoPaths ?? []))),
     skillPaths: localSkillsOrdered.map((x) => x.path),
     localSkills: localSkillsOrdered,
     githubSkills: githubSkillsOrdered,
@@ -414,7 +429,7 @@ async function enrichSnowTaskArtifacts(s: TriageSession, taskRecord: any): Promi
 }
 
 export default function TriagePage() {
-  const { adoPat, githubPat, bridgeUrl, databaseRepoPaths } = useSettingsStore();
+  const { adoPat, githubPat, bridgeUrl } = useSettingsStore();
   const { sessions, active, upsert, remove } = useTriageStore();
   const installCmds = getBridgeInstallCommands();
   const [bridgeHint, setBridgeHint] = useState<string | null>(null);
@@ -1010,7 +1025,7 @@ export default function TriagePage() {
           ])).slice(0, 8);
 
           const databaseEvidence = githubPat
-            ? await runDatabaseRepoSearch(githubPat, databaseRepoPaths, dbTerms)
+            ? await runDatabaseRepoSearch(githubPat, s.product.databaseRepoPaths ?? [], dbTerms)
             : [];
 
           const workNotes = s.snowTask
@@ -1049,7 +1064,7 @@ export default function TriagePage() {
     } finally {
       setLoading(false);
     }
-  }, [adoPat, bridgeUrl, databaseRepoPaths, githubPat, upsert]);
+  }, [adoPat, bridgeUrl, githubPat, upsert]);
 
   return (
     <div className="space-y-3">

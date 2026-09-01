@@ -1,10 +1,13 @@
 {
-  "version": 2,
+  "version": 3,
   "products": [
     {
       "id": "shm",
       "displayName": "Secure Health Messaging (SHM)",
       "areaPathPrefix": "SR\\SCM\\Ambulatory\\SHM",
+      "databaseRepoPaths": [
+        "https://github.com/allscriptshealthcare/sunrise-sxa/tree/main/Products/Database"
+      ],
       "snowProduct": "Sunrise Ambulatory Care",
       "snowTaskTable": "sc_task",
       "repos": [
@@ -21,6 +24,9 @@
       "id": "sunrise-mobile",
       "displayName": "Sunrise Mobile",
       "areaPathPrefix": "SR\\MobileX",
+      "databaseRepoPaths": [
+        "https://github.com/allscriptshealthcare/sunrise-sxa/tree/main/Products/Database"
+      ],
       "snowProduct": "Sunrise Mobile",
       "snowTaskTable": "incident_task",
       "repos": [
@@ -38,6 +44,9 @@
       "id": "aimanager",
       "displayName": "AI Manager",
       "areaPathPrefix": "SR\\AIManager",
+      "databaseRepoPaths": [
+        "https://github.com/allscriptshealthcare/sunrise-sxa/tree/main/Products/Database"
+      ],
       "snowProduct": "Sunrise AI Manager",
       "snowTaskTable": "incident_task",
       "repos": [
@@ -54,6 +63,9 @@
       "id": "compass-scm",
       "displayName": "Compass / SCM (Ambulatory)",
       "areaPathPrefix": "SR\\SCM\\Ambulatory\\Compass",
+      "databaseRepoPaths": [
+        "https://github.com/allscriptshealthcare/sunrise-sxa/tree/main/Products/Database"
+      ],
       "snowProduct": "Sunrise Ambulatory Care",
       "snowTaskTable": "sc_task",
       "repos": [],
@@ -68,6 +80,9 @@
       "id": "clindoc-scm",
       "displayName": "ClinDoc / SCM",
       "areaPathPrefix": "SR\\SCM\\ClinDoc",
+      "databaseRepoPaths": [
+        "https://github.com/allscriptshealthcare/sunrise-sxa/tree/main/Products/Database"
+      ],
       "snowProduct": "Sunrise Acute Care (SCM)",
       "snowTaskTable": "incident_task",
       "repos": [
@@ -84,6 +99,9 @@
       "id": "schedule-webclient",
       "displayName": "Schedule Web Client",
       "areaPathPrefix": "SR\\Schedule",
+      "databaseRepoPaths": [
+        "https://github.com/allscriptshealthcare/sunrise-sxa/tree/main/Products/Database"
+      ],
       "snowProduct": "Sunrise Schedule",
       "snowTaskTable": "incident_task",
       "repos": [
