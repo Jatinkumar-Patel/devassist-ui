@@ -86,6 +86,11 @@ interface SpreadsheetSummary {
   findings?: string[];
 }
 
+interface ConversionInsight {
+  findings: string[];
+  syntheticHits: LogHit[];
+}
+
 const MAX_PLAIN_BYTES  = 50 * 1024 * 1024;  // 50 MB — read whole file
 const MAX_CHUNK_BYTES  = 200 * 1024 * 1024; // 200 MB — read last N lines
 const TAIL_LINES       = 5000;               // lines to tail on very large files
@@ -211,6 +216,8 @@ function parseSpreadsheet(filePath: string, fileName: string): { hits: LogHit[];
         return !(joined.includes('siteid') && joined.includes('repflags') && (joined.includes('firstname') || joined.includes('displayname')));
       });
 
+      const conversionInsight = analyzeConversionRows(fileName, sheetName, headerRow, rows);
+
       const displayNameCounts = new Map<string, number>();
       const personGuidSet = new Set<string>();
       const guidSet = new Set<string>();
@@ -279,6 +286,7 @@ function parseSpreadsheet(filePath: string, fileName: string): { hits: LogHit[];
       if (multiTypePersons.length) {
         findings.push(`PersonGUIDs with multiple NameTypeCode values: ${multiTypePersons.join(' | ')}`);
       }
+      findings.push(...conversionInsight.findings);
 
       summaries.push({
         file: fileName,
@@ -289,6 +297,8 @@ function parseSpreadsheet(filePath: string, fileName: string): { hits: LogHit[];
         sampleRows,
         findings,
       });
+
+      hits.push(...conversionInsight.syntheticHits);
     }
 
     const maxRows = Math.min(rows.length, 20000);
@@ -316,6 +326,102 @@ function parseSpreadsheet(filePath: string, fileName: string): { hits: LogHit[];
   }
 
   return { hits, summaries };
+}
+
+function analyzeConversionRows(
+  fileName: string,
+  sheetName: string,
+  headers: string[],
+  rows: string[][]
+): ConversionInsight {
+  const out: ConversionInsight = { findings: [], syntheticHits: [] };
+  if (!headers.length || !rows.length) return out;
+
+  const norm = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const headerMap = new Map<string, number>();
+  headers.forEach((h, idx) => {
+    const key = norm(String(h ?? ''));
+    if (key) headerMap.set(key, idx);
+  });
+
+  const findIndex = (aliases: string[]): number => {
+    for (const alias of aliases) {
+      const idx = headerMap.get(norm(alias));
+      if (typeof idx === 'number') return idx;
+    }
+    return -1;
+  };
+
+  const idxOld = findIndex(['OldValue', 'Old', 'SourceValue', 'Source', 'Before', 'From']);
+  const idxNew = findIndex(['NewValue', 'New', 'TargetValue', 'Target', 'After', 'To']);
+  const idxStatus = findIndex(['Status', 'Result', 'Outcome', 'State']);
+  const idxReason = findIndex(['Reason', 'Message', 'Comments', 'Note']);
+
+  let changed = 0;
+  let unchanged = 0;
+  let blankTargets = 0;
+  const statusCounts = new Map<string, number>();
+  const conversionExamples: string[] = [];
+  const issueExamples: string[] = [];
+
+  const maxRows = Math.min(rows.length, 20000);
+  for (let i = 0; i < maxRows; i++) {
+    const row = rows[i];
+    const valueAt = (idx: number): string => (idx >= 0 ? String(row[idx] ?? '').trim() : '');
+    const oldVal = valueAt(idxOld);
+    const newVal = valueAt(idxNew);
+    const status = valueAt(idxStatus);
+    const reason = valueAt(idxReason);
+
+    if (oldVal || newVal) {
+      if (oldVal && newVal) {
+        if (oldVal !== newVal) {
+          changed += 1;
+          if (conversionExamples.length < 3) conversionExamples.push(`${oldVal} -> ${newVal}`);
+        } else {
+          unchanged += 1;
+        }
+      } else if (oldVal && !newVal) {
+        blankTargets += 1;
+        if (issueExamples.length < 3) issueExamples.push(`missing target for ${oldVal}`);
+      }
+    }
+
+    if (status) {
+      const key = status.toLowerCase();
+      statusCounts.set(key, (statusCounts.get(key) ?? 0) + 1);
+      if (/fail|error|reject|invalid|missing|not found|unmapped/i.test(status) || /fail|error|reject|invalid|missing|not found|unmapped/i.test(reason)) {
+        out.syntheticHits.push({
+          file: `${fileName}#${sheetName}`,
+          line: i + 2,
+          text: `${status}${reason ? ` | ${reason}` : ''}`.slice(0, 300),
+          seed: 'SpreadsheetDataSignal',
+          category: 'other',
+        });
+      }
+    }
+  }
+
+  if (changed > 0 || blankTargets > 0 || statusCounts.size > 0) {
+    out.findings.push(`Conversion summary: changed=${changed}, unchanged=${unchanged}, missing_target=${blankTargets}`);
+  }
+  if (conversionExamples.length > 0) {
+    out.findings.push(`Conversion examples: ${conversionExamples.join(' | ')}`);
+  }
+  if (issueExamples.length > 0) {
+    out.findings.push(`Potential mapping gaps: ${issueExamples.join(' | ')}`);
+  }
+  if (statusCounts.size > 0) {
+    const topStatuses = Array.from(statusCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([status, count]) => `${status}:${count}`)
+      .join(', ');
+    out.findings.push(`Status distribution: ${topStatuses}`);
+  }
+
+  out.syntheticHits = out.syntheticHits.slice(0, 40);
+  return out;
 }
 
 // GET /api/log-analysis/:recordSysId — download + parse all log attachments for a SNOW record

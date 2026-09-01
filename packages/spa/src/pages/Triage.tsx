@@ -998,7 +998,13 @@ export default function TriagePage() {
           artifactLedger: {
             analyzed: analyzedFiles,
             notAnalyzed,
-            coverageTimeframe: totalHits > 0 ? `${totalHits} log matches across ${sysIdsToScan.length} record(s)` : analyzedFiles.length > 0 ? 'scanned — no matches' : 'no attachments',
+            coverageTimeframe: totalHits > 0
+              ? `${totalHits} analysis signals across ${sysIdsToScan.length} record(s)`
+              : allSpreadsheetSummaries.length > 0
+                ? `scanned — spreadsheet insights extracted (${allSpreadsheetSummaries.length} sheet summary row(s))`
+                : analyzedFiles.length > 0
+                  ? 'scanned — no matches'
+                  : 'no attachments',
             coverageSubject: totalHits > 0 ? `Errors: ${(allTopSeeds['ERROR'] ?? 0) + (allTopSeeds['FATAL'] ?? 0)} | Warnings: ${allTopSeeds['WARNING'] ?? 0} | Timeouts: ${allTopSeeds['Timeout'] ?? 0}` : 'no log hits',
           },
         };
