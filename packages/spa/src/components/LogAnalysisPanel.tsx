@@ -39,7 +39,15 @@ interface LogAnalysisResult {
     sampleRows?: string[];
     findings?: string[];
   }>;
+  imageSummaries?: Array<{
+    file: string;
+    textPreview: string;
+    charCount: number;
+    findings?: string[];
+    hitCount: number;
+  }>;
   suggestions: CodeSuggestion[];
+  cached?: boolean;
 }
 
 interface Props {
@@ -91,6 +99,8 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
     const analyzed = items.flatMap((x) => x.analyzed ?? []);
     const skipped = items.flatMap((x) => x.skipped ?? []);
     const hits = items.flatMap((x) => x.hits ?? []);
+    const spreadsheetSummaries = items.flatMap((x) => x.spreadsheetSummaries ?? []);
+    const imageSummaries = items.flatMap((x) => x.imageSummaries ?? []);
 
     const topSeeds: Record<string, number> = {};
     for (const item of items) {
@@ -113,7 +123,10 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
       hits,
       byCategory,
       topSeeds,
+      spreadsheetSummaries,
+      imageSummaries,
       suggestions: items.flatMap((x) => x.suggestions ?? []),
+      cached: items.every((x) => x.cached),
     };
   };
 
@@ -254,8 +267,8 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
 
           {(result.totalAttachments ?? 0) > 0 && (result.scannableAttachments ?? 0) === 0 && (
             <div className="rounded-lg border border-gray-800 bg-gray-950/40 p-3">
-              <p className="text-xs font-medium text-gray-300">Attachments found, but none are scannable log files</p>
-              <p className="text-xs text-gray-500 mt-1">Supported scan types are `.log`, `.txt`, `.zip`, `.csv`, `.json`, `.xml`, `.xlsx`, and `.xls`.</p>
+              <p className="text-xs font-medium text-gray-300">Attachments found, but none are processable yet</p>
+              <p className="text-xs text-gray-500 mt-1">Supported scan types are `.log`, `.txt`, `.zip`, `.csv`, `.json`, `.xml`, `.xlsx`, `.xls`, `.png`, `.jpg`, `.jpeg`, `.bmp`, `.tif`, and `.tiff`.</p>
             </div>
           )}
 
@@ -294,6 +307,33 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
                       <div className="space-y-0.5 pt-1 border-t border-cyan-900/50">
                         {s.findings.slice(0, 4).map((f, idx) => (
                           <p key={idx} className="text-gray-300">- {f}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {result.imageSummaries && result.imageSummaries.length > 0 && (
+            <details className="rounded-lg border border-emerald-900/60 bg-emerald-950/20 p-3 group" open>
+              <summary className="flex items-center justify-between cursor-pointer list-none select-none">
+                <span className="text-xs font-medium text-emerald-200">Image OCR Extracted ({result.imageSummaries.length})</span>
+                <ChevronDown size={11} className="group-open:rotate-180 transition-transform text-emerald-300" />
+              </summary>
+              <div className="mt-2 space-y-2 max-h-56 overflow-auto">
+                {result.imageSummaries.slice(0, 20).map((image, i) => (
+                  <div key={`${image.file}-${i}`} className="text-xs rounded border border-emerald-900/50 bg-black/20 p-2 space-y-1">
+                    <p className="text-emerald-200 font-mono break-all">{image.file}</p>
+                    <p className="text-gray-300">OCR chars: {image.charCount} | Pattern hits: {image.hitCount}</p>
+                    {image.textPreview && (
+                      <p className="text-gray-400 font-mono break-all">Preview: {image.textPreview}</p>
+                    )}
+                    {image.findings && image.findings.length > 0 && (
+                      <div className="space-y-0.5 pt-1 border-t border-emerald-900/50">
+                        {image.findings.slice(0, 4).map((finding, idx) => (
+                          <p key={idx} className="text-gray-300">- {finding}</p>
                         ))}
                       </div>
                     )}

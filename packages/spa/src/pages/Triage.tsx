@@ -980,11 +980,22 @@ export default function TriagePage() {
         const primaryLogData = allLogData[snowSysId] ?? Object.values(allLogData)[0];
         const allHits = Object.values(allLogData).flatMap((d: any) => d.hits ?? []);
         const allSpreadsheetSummaries = Object.values(allLogData).flatMap((d: any) => d.spreadsheetSummaries ?? []);
+        const allImageSummaries = Object.values(allLogData).flatMap((d: any) => d.imageSummaries ?? []);
         const spreadsheetByFile = new Map<string, number>();
         for (const summary of allSpreadsheetSummaries as any[]) {
           const fileKey = String(summary?.file ?? '').trim();
           if (!fileKey) continue;
           spreadsheetByFile.set(fileKey, (spreadsheetByFile.get(fileKey) ?? 0) + 1);
+        }
+        const imageByFile = new Map<string, { count: number; chars: number }>();
+        for (const summary of allImageSummaries as any[]) {
+          const fileKey = String(summary?.file ?? '').trim();
+          if (!fileKey) continue;
+          const current = imageByFile.get(fileKey) ?? { count: 0, chars: 0 };
+          imageByFile.set(fileKey, {
+            count: current.count + 1,
+            chars: current.chars + Number(summary?.charCount ?? 0),
+          });
         }
         const allTopSeeds: Record<string, number> = {};
         for (const d of Object.values(allLogData) as any[]) {
@@ -994,7 +1005,13 @@ export default function TriagePage() {
         }
 
         if (primaryLogData || allHits.length) {
-          const mergedLogAnalysis = { ...primaryLogData, hits: allHits.slice(0, 200), topSeeds: allTopSeeds };
+          const mergedLogAnalysis = {
+            ...primaryLogData,
+            hits: allHits.slice(0, 200),
+            topSeeds: allTopSeeds,
+            spreadsheetSummaries: allSpreadsheetSummaries,
+            imageSummaries: allImageSummaries,
+          };
           s = {
             ...s,
             snowTask: s.snowTask ? {
@@ -1002,6 +1019,7 @@ export default function TriagePage() {
               _logHits: allHits,
               _topSeeds: allTopSeeds,
               _spreadsheetSummaries: allSpreadsheetSummaries,
+              _imageSummaries: allImageSummaries,
               _logAnalysis: mergedLogAnalysis,
             } : s.snowTask,
           };
@@ -1017,6 +1035,7 @@ export default function TriagePage() {
           const fname = snowVal(a.file_name);
           const fileHits = hitsByFile[fname] ?? [];
           const sheetCount = spreadsheetByFile.get(fname) ?? 0;
+          const imageInfo = imageByFile.get(fname);
           return {
             source: String(a._source ?? `TASK ${s.snowTaskNumber ?? ''}`),
             file: fname,
@@ -1025,6 +1044,8 @@ export default function TriagePage() {
               ? `${fileHits.length} hit(s): ${fileHits.slice(0, 2).join(' | ').slice(0, 200)}`
               : sheetCount > 0
                 ? `Spreadsheet parsed (${sheetCount} sheet summary entries); no log-pattern matches`
+                : imageInfo
+                  ? `Image OCR extracted (${imageInfo.chars} chars across ${imageInfo.count} image segment(s)); no log-pattern matches`
                 : 'No pattern matches',
           };
         }) ?? [];
@@ -1062,6 +1083,8 @@ export default function TriagePage() {
               ? `${totalHits} analysis signals across ${sysIdsToScan.length} record(s)`
               : allSpreadsheetSummaries.length > 0
                 ? `scanned — spreadsheet insights extracted (${allSpreadsheetSummaries.length} sheet summary row(s))`
+                : allImageSummaries.length > 0
+                  ? `scanned — image OCR extracted (${allImageSummaries.length} image summary row(s))`
                 : analyzedFiles.length > 0
                   ? 'scanned — no matches'
                   : 'no attachments',
@@ -1102,6 +1125,7 @@ export default function TriagePage() {
           const logHits = (s.snowTask as any)?._logHits ?? [];
           const topSeeds = (s.snowTask as any)?._topSeeds ?? {};
           const spreadsheetSummaries = (s.snowTask as any)?._spreadsheetSummaries ?? [];
+          const imageSummaries = (s.snowTask as any)?._imageSummaries ?? [];
           // Use skill-driven analysis — reads skill files, derives verdict from SNOW evidence
           const analysis = await buildSkillDrivenAssessment(
             s.adoItem,
@@ -1114,6 +1138,7 @@ export default function TriagePage() {
             s.versionEvidence ?? [],
             databaseEvidence,
             spreadsheetSummaries,
+            imageSummaries,
             {
               snowTask: s.snowTask,
               snowIncident: s.snowIncident,

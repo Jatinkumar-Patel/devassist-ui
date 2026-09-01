@@ -11,6 +11,14 @@ interface SpreadsheetSummaryInput {
   findings?: string[];
 }
 
+interface ImageSummaryInput {
+  file: string;
+  textPreview: string;
+  charCount: number;
+  findings?: string[];
+  hitCount: number;
+}
+
 interface SnowContextInput {
   snowTask?: Record<string, unknown> | null;
   snowIncident?: Record<string, unknown> | null;
@@ -686,6 +694,7 @@ export async function buildSkillDrivenAssessment(
   versionEvidence: Array<{ id: number; title: string; state: string; type: string; supportVersion?: string }> = [],
   databaseEvidence: CodeHit[] = [],
   spreadsheetSummaries: SpreadsheetSummaryInput[] = [],
+  imageSummaries: ImageSummaryInput[] = [],
   snowContext: SnowContextInput = {}
 ): Promise<TriageAnalysis> {
   const snowField = (value: unknown): string => {
@@ -722,6 +731,10 @@ export async function buildSkillDrivenAssessment(
       return `${s.file}#${s.sheet}: rows=${s.rowCount}, cols=${s.columnCount}${headers ? `, headers=[${headers}]` : ''}${sample ? `, sample=${sample.slice(0, 140)}` : ''}${findings ? `, findings=${findings}` : ''}`;
     });
 
+  const imageEvidenceLines = imageSummaries
+    .slice(0, 12)
+    .map((image) => `${image.file}: chars=${image.charCount}, hits=${image.hitCount}${image.textPreview ? `, preview=${image.textPreview.slice(0, 140)}` : ''}${image.findings?.length ? `, findings=${image.findings.slice(0, 2).join(' | ')}` : ''}`);
+
   const bulletize = (items: Array<string | undefined | null>): string =>
     items
       .map((v) => String(v ?? '').trim())
@@ -745,6 +758,7 @@ export async function buildSkillDrivenAssessment(
     snowWorkNotes ?? '',
     (logHits ?? []).map(h => h.text).join(' '),
     spreadsheetEvidenceLines.join(' '),
+    imageEvidenceLines.join(' '),
   ].join(' ').toLowerCase();
 
   const seeds = topSeeds ?? {};
@@ -833,6 +847,10 @@ export async function buildSkillDrivenAssessment(
   if (spreadsheetSummaries.length > 0) {
     logEvidence.push(`Spreadsheet evidence: ${spreadsheetSummaries.length} sheet summary row(s) extracted from attachments`);
     logEvidence.push(`Spreadsheet highlights: ${spreadsheetEvidenceLines.slice(0, 3).join(' || ')}`);
+  }
+  if (imageSummaries.length > 0) {
+    logEvidence.push(`Image OCR evidence: ${imageSummaries.length} attachment(s) produced OCR text`);
+    logEvidence.push(`Image OCR highlights: ${imageEvidenceLines.slice(0, 3).join(' || ')}`);
   }
 
   // ── Step 5: code analysis ─────────────────────────────────────────────────
@@ -925,6 +943,7 @@ export async function buildSkillDrivenAssessment(
   if (!snowWorkNotes)   blindSpots.push('SNOW work notes empty — review SNOW task for additional context from support engineer');
   if (!databaseEvidence.length) blindSpots.push('No direct DB repo hit found — broaden DB search terms (SP/view/table names) for deeper database verification');
   if (!spreadsheetSummaries.length) blindSpots.push('No spreadsheet evidence extracted from attachments — include PSS workbook exports when available');
+  if (!imageSummaries.length) blindSpots.push('No image OCR evidence extracted from attachments — screenshots may still need manual review if OCR is poor');
   if (!matchedPlaybookPattern && playbook.length > 0) {
     blindSpots.push(`None of the ${playbook.length} playbook patterns matched with high confidence — this may be a new/unknown pattern`);
   }

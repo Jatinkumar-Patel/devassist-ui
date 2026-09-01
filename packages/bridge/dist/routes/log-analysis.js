@@ -103,12 +103,14 @@ const SEED_CATEGORY = {
     'RecycleClient': 'other',
 };
 const LOG_ANALYSIS_CACHE_TTL_MS = 10 * 60 * 1000;
-const LOG_ANALYSIS_PARSER_VERSION = '3';
+const LOG_ANALYSIS_PARSER_VERSION = '4';
 const logAnalysisCache = new Map();
+let ocrWorkerPromise = null;
 const MAX_PLAIN_BYTES = 50 * 1024 * 1024; // 50 MB — read whole file
 const MAX_CHUNK_BYTES = 200 * 1024 * 1024; // 200 MB — read last N lines
 const TAIL_LINES = 5000; // lines to tail on very large files
 const MAX_SKIP_BYTES = 500 * 1024 * 1024; // 500 MB — truly skip
+const MAX_OCR_IMAGE_BYTES = 15 * 1024 * 1024;
 /** Read up to TAIL_LINES from the end of a large log file */
 function readTail(filePath, maxLines) {
     const stat = fs_1.default.statSync(filePath);
@@ -123,7 +125,10 @@ function readTail(filePath, maxLines) {
     // Drop the first line (likely partial) and take the last maxLines
     return lines.slice(Math.max(1, lines.length - maxLines)).join('\n');
 }
-const SCANNABLE_EXTENSIONS = ['.log', '.txt', '.zip', '.csv', '.json', '.xml', '.xlsx', '.xls'];
+const TEXT_EXTENSIONS = ['.log', '.txt', '.csv', '.json', '.xml'];
+const SPREADSHEET_EXTENSIONS = ['.xlsx', '.xls'];
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff'];
+const SCANNABLE_EXTENSIONS = ['.log', '.txt', '.zip', '.csv', '.json', '.xml', '.xlsx', '.xls', '.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff'];
 const MAX_XLSX_BYTES = 30 * 1024 * 1024;
 function extensionOf(fileName) {
     const lower = fileName.toLowerCase();
@@ -144,6 +149,91 @@ function val(f) {
     if (typeof f === 'object' && 'value' in f)
         return f.value ?? '';
     return String(f);
+}
+function countPrintable(text) {
+    return Array.from(text).filter((char) => {
+        const code = char.charCodeAt(0);
+        return char === '\n' || char === '\r' || char === '\t' || (code >= 32 && code <= 126);
+    }).length;
+}
+function readTextFile(filePath) {
+    const buf = fs_1.default.readFileSync(filePath);
+    if (buf.length === 0)
+        return '';
+    if (buf.length >= 2) {
+        if (buf[0] === 0xff && buf[1] === 0xfe)
+            return buf.toString('utf16le').replace(/^\uFEFF/, '');
+        if (buf[0] === 0xfe && buf[1] === 0xff) {
+            const swapped = Buffer.from(buf);
+            for (let i = 0; i < swapped.length - 1; i += 2) {
+                const first = swapped[i];
+                swapped[i] = swapped[i + 1];
+                swapped[i + 1] = first;
+            }
+            return swapped.toString('utf16le').replace(/^\uFEFF/, '');
+        }
+    }
+    const utf8 = buf.toString('utf8').replace(/^\uFEFF/, '');
+    const utf16 = buf.toString('utf16le').replace(/^\uFEFF/, '');
+    const latin1 = buf.toString('latin1');
+    const candidates = [utf8, utf16, latin1].map((text) => ({ text, score: countPrintable(text) }));
+    candidates.sort((a, b) => b.score - a.score);
+    return candidates[0]?.text ?? utf8;
+}
+function walkFilesRecursive(rootDir) {
+    const out = [];
+    const stack = [rootDir];
+    while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current)
+            continue;
+        for (const entry of fs_1.default.readdirSync(current, { withFileTypes: true })) {
+            const fullPath = path_1.default.join(current, entry.name);
+            if (entry.isDirectory()) {
+                stack.push(fullPath);
+            }
+            else if (entry.isFile()) {
+                out.push(fullPath);
+            }
+        }
+    }
+    return out;
+}
+async function getOcrWorker() {
+    if (!ocrWorkerPromise) {
+        ocrWorkerPromise = (async () => {
+            const tesseract = await Promise.resolve().then(() => __importStar(require('tesseract.js')));
+            return tesseract.createWorker('eng', 1, { logger: () => undefined });
+        })();
+    }
+    return ocrWorkerPromise;
+}
+async function analyzeImage(filePath, fileName) {
+    const worker = await getOcrWorker();
+    const recognized = await worker.recognize(filePath);
+    const text = String(recognized?.data?.text ?? '').replace(/\s+/g, ' ').trim();
+    const findings = [];
+    const preview = text.slice(0, 240);
+    if (text) {
+        findings.push(`OCR extracted ${text.length} characters`);
+        if (/error|exception|timeout|failed|missing|invalid|denied|cannot|unable/i.test(text)) {
+            findings.push('Image text contains diagnostic keywords');
+        }
+    }
+    else {
+        findings.push('No OCR text detected');
+    }
+    const hits = text ? parseHwsLog(text, fileName) : [];
+    return {
+        hits,
+        summary: {
+            file: fileName,
+            textPreview: preview,
+            charCount: text.length,
+            findings,
+            hitCount: hits.length,
+        },
+    };
 }
 function parseHwsLog(content, fileName) {
     const hits = [];
@@ -438,6 +528,7 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
         const scannableFiles = [];
         const allHits = [];
         const spreadsheetSummaries = [];
+        const imageSummaries = [];
         const analyzed = [];
         const skipped = [];
         for (const att of attachments) {
@@ -473,48 +564,52 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
                     const extractDir = outPath + '_extracted';
                     fs_1.default.mkdirSync(extractDir, { recursive: true });
                     await (0, powershell_1.execPowerShell)(`Expand-Archive -Path '${outPath}' -DestinationPath '${extractDir}' -Force`);
-                    const extracted = fs_1.default.readdirSync(extractDir);
-                    for (const inner of extracted) {
-                        if (inner.toLowerCase().endsWith('.log') ||
-                            inner.toLowerCase().endsWith('.txt') ||
-                            inner.toLowerCase().endsWith('.csv') ||
-                            inner.toLowerCase().endsWith('.json') ||
-                            inner.toLowerCase().endsWith('.xml') ||
-                            inner.toLowerCase().endsWith('.xlsx') ||
-                            inner.toLowerCase().endsWith('.xls')) {
-                            const innerPath = path_1.default.join(extractDir, inner);
-                            const innerStat = fs_1.default.statSync(innerPath);
-                            let note = '';
-                            if (innerStat.size > MAX_SKIP_BYTES) {
-                                skipped.push(`${fileName}/${inner} (too large: ${Math.round(innerStat.size / 1024 / 1024)}MB)`);
+                    const extracted = walkFilesRecursive(extractDir);
+                    for (const innerPath of extracted) {
+                        const relativeName = path_1.default.relative(extractDir, innerPath).replace(/\\/g, '/');
+                        const innerStat = fs_1.default.statSync(innerPath);
+                        const innerExt = extensionOf(relativeName);
+                        if (!SCANNABLE_EXTENSIONS.includes(innerExt))
+                            continue;
+                        let note = '';
+                        if (innerStat.size > MAX_SKIP_BYTES) {
+                            skipped.push(`${fileName}/${relativeName} (too large: ${Math.round(innerStat.size / 1024 / 1024)}MB)`);
+                            continue;
+                        }
+                        let hits = [];
+                        if (SPREADSHEET_EXTENSIONS.includes(innerExt)) {
+                            if (innerStat.size > MAX_XLSX_BYTES) {
+                                skipped.push(`${fileName}/${relativeName} (spreadsheet too large: ${Math.round(innerStat.size / 1024 / 1024)}MB)`);
                                 continue;
                             }
-                            let hits = [];
-                            const innerExt = extensionOf(inner);
-                            if (innerExt === '.xlsx' || innerExt === '.xls') {
-                                if (innerStat.size > MAX_XLSX_BYTES) {
-                                    skipped.push(`${fileName}/${inner} (spreadsheet too large: ${Math.round(innerStat.size / 1024 / 1024)}MB)`);
-                                    continue;
-                                }
-                                const parsed = parseSpreadsheet(innerPath, `${fileName}/${inner}`);
-                                hits = parsed.hits;
-                                spreadsheetSummaries.push(...parsed.summaries);
-                                analyzed.push(`${fileName}/${inner} (spreadsheet parsed: ${parsed.summaries.length} sheet(s), ${hits.length} log-pattern hit(s))`);
+                            const parsed = parseSpreadsheet(innerPath, `${fileName}/${relativeName}`);
+                            hits = parsed.hits;
+                            spreadsheetSummaries.push(...parsed.summaries);
+                            analyzed.push(`${fileName}/${relativeName} (spreadsheet parsed: ${parsed.summaries.length} sheet(s), ${hits.length} log-pattern hit(s))`);
+                        }
+                        else if (IMAGE_EXTENSIONS.includes(innerExt)) {
+                            if (innerStat.size > MAX_OCR_IMAGE_BYTES) {
+                                skipped.push(`${fileName}/${relativeName} (image too large for OCR: ${Math.round(innerStat.size / 1024 / 1024)}MB)`);
+                                continue;
+                            }
+                            const parsed = await analyzeImage(innerPath, `${fileName}/${relativeName}`);
+                            hits = parsed.hits;
+                            imageSummaries.push(parsed.summary);
+                            analyzed.push(`${fileName}/${relativeName} (image OCR: ${parsed.summary.charCount} chars, ${hits.length} log-pattern hit(s))`);
+                        }
+                        else if (TEXT_EXTENSIONS.includes(innerExt)) {
+                            let content;
+                            if (innerStat.size > MAX_PLAIN_BYTES) {
+                                content = readTail(innerPath, TAIL_LINES);
+                                note = ` [last ${TAIL_LINES} lines of ${Math.round(innerStat.size / 1024 / 1024)}MB]`;
                             }
                             else {
-                                let content;
-                                if (innerStat.size > MAX_PLAIN_BYTES) {
-                                    content = readTail(innerPath, TAIL_LINES);
-                                    note = ` [last ${TAIL_LINES} lines of ${Math.round(innerStat.size / 1024 / 1024)}MB]`;
-                                }
-                                else {
-                                    content = fs_1.default.readFileSync(innerPath, 'utf-8');
-                                }
-                                hits = parseHwsLog(content, `${fileName}/${inner}`);
-                                analyzed.push(`${fileName}/${inner}${note} (${hits.length} hit(s))`);
+                                content = readTextFile(innerPath);
                             }
-                            allHits.push(...hits);
+                            hits = parseHwsLog(content, `${fileName}/${relativeName}`);
+                            analyzed.push(`${fileName}/${relativeName}${note} (${hits.length} hit(s))`);
                         }
+                        allHits.push(...hits);
                     }
                 }
                 else {
@@ -522,7 +617,7 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
                     const rawStat = fs_1.default.statSync(outPath);
                     const ext = extensionOf(fileName);
                     let hits = [];
-                    if (ext === '.xlsx' || ext === '.xls') {
+                    if (SPREADSHEET_EXTENSIONS.includes(ext)) {
                         if (rawStat.size > MAX_XLSX_BYTES) {
                             skipped.push(`${fileName} (spreadsheet too large: ${Math.round(rawStat.size / 1024 / 1024)}MB)`);
                             continue;
@@ -532,6 +627,16 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
                         spreadsheetSummaries.push(...parsed.summaries);
                         analyzed.push(`${fileName} (spreadsheet parsed: ${parsed.summaries.length} sheet(s), ${hits.length} log-pattern hit(s))`);
                     }
+                    else if (IMAGE_EXTENSIONS.includes(ext)) {
+                        if (rawStat.size > MAX_OCR_IMAGE_BYTES) {
+                            skipped.push(`${fileName} (image too large for OCR: ${Math.round(rawStat.size / 1024 / 1024)}MB)`);
+                            continue;
+                        }
+                        const parsed = await analyzeImage(outPath, fileName);
+                        hits = parsed.hits;
+                        imageSummaries.push(parsed.summary);
+                        analyzed.push(`${fileName} (image OCR: ${parsed.summary.charCount} chars, ${hits.length} log-pattern hit(s))`);
+                    }
                     else {
                         let content;
                         if (rawStat.size > MAX_PLAIN_BYTES) {
@@ -539,7 +644,7 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
                             note = ` [last ${TAIL_LINES} lines of ${Math.round(rawStat.size / 1024 / 1024)}MB]`;
                         }
                         else {
-                            content = fs_1.default.readFileSync(outPath, 'utf-8');
+                            content = readTextFile(outPath);
                         }
                         hits = parseHwsLog(content, fileName);
                         analyzed.push(`${fileName}${note} (${hits.length} hit(s))`);
@@ -566,6 +671,7 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
             lockPairs: lockPairs.slice(0, 20),
             topSeeds: summariseBySeeds(allHits),
             spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
+            imageSummaries: imageSummaries.slice(0, 40),
             suggestions,
             cached: false,
         };
