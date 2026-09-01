@@ -227,18 +227,6 @@ function buildPrintableHtml(session: TriageSession, analysis: TriageAnalysis, sn
       <meta charset="utf-8" />
       <title>DevAssist Analysis Report</title>
       <style>${style}</style>
-      <script>
-        window.addEventListener('load', function () {
-          setTimeout(function () {
-            try {
-              window.focus();
-              window.print();
-            } catch (error) {
-              console.error(error);
-            }
-          }, 250);
-        });
-      </script>
     </head>
     <body>
       <div class="no-print" style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:14px;">
@@ -322,15 +310,44 @@ function buildPrintableHtml(session: TriageSession, analysis: TriageAnalysis, sn
 
 function openPrintableReport(session: TriageSession, analysis: TriageAnalysis, snowEvidenceRows: string[]): void {
   const html = buildPrintableHtml(session, analysis, snowEvidenceRows);
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const printWindow = window.open(url, '_blank', 'width=1200,height=900');
-  if (!printWindow) {
-    URL.revokeObjectURL(url);
-    window.alert('Popup blocked. Allow popups to print or save the report as PDF.');
-    return;
-  }
-  window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+  const frame = document.createElement('iframe');
+  frame.setAttribute('aria-hidden', 'true');
+  frame.style.position = 'fixed';
+  frame.style.right = '0';
+  frame.style.bottom = '0';
+  frame.style.width = '0';
+  frame.style.height = '0';
+  frame.style.border = '0';
+  frame.style.opacity = '0';
+
+  const cleanup = () => {
+    try {
+      frame.remove();
+    } catch {
+      // ignore
+    }
+  };
+
+  frame.onload = () => {
+    const frameWindow = frame.contentWindow;
+    if (!frameWindow) {
+      cleanup();
+      return;
+    }
+
+    window.setTimeout(() => {
+      try {
+        frameWindow.focus();
+        frameWindow.print();
+      } catch {
+        cleanup();
+      }
+    }, 250);
+  };
+
+  window.addEventListener('afterprint', cleanup, { once: true });
+  frame.srcdoc = html;
+  document.body.appendChild(frame);
 }
 
 export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
