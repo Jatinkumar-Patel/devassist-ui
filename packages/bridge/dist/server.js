@@ -16,6 +16,7 @@ const log_analysis_1 = require("./routes/log-analysis");
 const ai_analysis_1 = require("./routes/ai-analysis");
 const registry_1 = require("./routes/registry");
 const skills_1 = require("./routes/skills");
+const secrets_1 = require("./routes/secrets");
 function createServer({ spaOrigin }) {
     const app = (0, express_1.default)();
     const allowedExactOrigins = new Set([
@@ -45,6 +46,7 @@ function createServer({ spaOrigin }) {
     app.use('/api/ai-analyze', ai_analysis_1.aiAnalysisRouter);
     app.use('/api/skills', skills_1.skillsRouter);
     app.use('/api/registry', registry_1.registryRouter);
+    app.use('/api/secrets', secrets_1.secretsRouter);
     // Serve the built SPA if it exists alongside the bridge dist
     const spaPath = path_1.default.resolve(__dirname, '../../spa/dist');
     app.use((req, res, next) => {

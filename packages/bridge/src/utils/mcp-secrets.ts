@@ -1,11 +1,168 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { execFileSync } from 'child_process';
 
 interface McpSecrets {
   adoPat: string | null;
   githubPat: string | null;
   adoOrgUrl: string | null;
+}
+
+interface BridgeSecretsFile {
+  version: 1;
+  adoPat?: string | null;
+  githubPat?: string | null;
+  savedAt?: string;
+}
+
+const SECRET_STORE_DIR = process.env.LOCALAPPDATA
+  ? path.join(process.env.LOCALAPPDATA, 'DevAssist')
+  : path.join(os.homedir(), '.devassist');
+const SECRET_STORE_PATH = path.join(SECRET_STORE_DIR, 'bridge-secrets.json');
+const DPAPI_ENTROPY = 'DevAssist.Secrets.v1';
+
+function isWindows(): boolean {
+  return process.platform === 'win32';
+}
+
+function ensureSecretStoreDir(): void {
+  fs.mkdirSync(SECRET_STORE_DIR, { recursive: true });
+}
+
+function protectSecret(value: string): string {
+  if (!isWindows()) return value;
+
+  const output = execFileSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command',
+      `
+$plain = [System.Text.Encoding]::UTF8.GetBytes($env:DEVASSIST_SECRET_PLAIN)
+$entropy = [System.Text.Encoding]::UTF8.GetBytes('${DPAPI_ENTROPY}')
+$protected = [System.Security.Cryptography.ProtectedData]::Protect($plain, $entropy, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+[Convert]::ToBase64String($protected)
+      `.trim(),
+    ],
+    {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        DEVASSIST_SECRET_PLAIN: value,
+      },
+      windowsHide: true,
+      timeout: 30_000,
+    }
+  );
+
+  return output.trim();
+}
+
+function unprotectSecret(value: string): string {
+  if (!isWindows()) return value;
+
+  const output = execFileSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command',
+      `
+$cipher = [Convert]::FromBase64String($env:DEVASSIST_SECRET_CIPHER)
+$entropy = [System.Text.Encoding]::UTF8.GetBytes('${DPAPI_ENTROPY}')
+$plain = [System.Security.Cryptography.ProtectedData]::Unprotect($cipher, $entropy, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+[System.Text.Encoding]::UTF8.GetString($plain)
+      `.trim(),
+    ],
+    {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        DEVASSIST_SECRET_CIPHER: value,
+      },
+      windowsHide: true,
+      timeout: 30_000,
+    }
+  );
+
+  return output.trim();
+}
+
+function readBridgeSecretFile(): BridgeSecretsFile | null {
+  try {
+    if (!fs.existsSync(SECRET_STORE_PATH)) return null;
+    return JSON.parse(fs.readFileSync(SECRET_STORE_PATH, 'utf-8')) as BridgeSecretsFile;
+  } catch {
+    return null;
+  }
+}
+
+function writeBridgeSecretFile(data: BridgeSecretsFile): void {
+  ensureSecretStoreDir();
+  fs.writeFileSync(SECRET_STORE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+}
+
+export function readBridgeSecrets(): McpSecrets {
+  const file = readBridgeSecretFile();
+  if (!file) {
+    return { adoPat: null, githubPat: null, adoOrgUrl: null };
+  }
+
+  const adoPat = typeof file.adoPat === 'string' && file.adoPat.trim()
+    ? unprotectSecret(file.adoPat.trim())
+    : null;
+  const githubPat = typeof file.githubPat === 'string' && file.githubPat.trim()
+    ? unprotectSecret(file.githubPat.trim())
+    : null;
+
+  return { adoPat, githubPat, adoOrgUrl: null };
+}
+
+export function saveBridgeSecrets(secrets: { adoPat?: string | null; githubPat?: string | null }): void {
+  const current = readBridgeSecretFile() ?? { version: 1 };
+  const next: BridgeSecretsFile = {
+    version: 1,
+    savedAt: new Date().toISOString(),
+    adoPat: current.adoPat ?? null,
+    githubPat: current.githubPat ?? null,
+  };
+
+  if (secrets.adoPat !== undefined) {
+    next.adoPat = secrets.adoPat?.trim() ? protectSecret(secrets.adoPat.trim()) : null;
+  }
+
+  if (secrets.githubPat !== undefined) {
+    next.githubPat = secrets.githubPat?.trim() ? protectSecret(secrets.githubPat.trim()) : null;
+  }
+
+  if (!next.adoPat && !next.githubPat) {
+    try { fs.unlinkSync(SECRET_STORE_PATH); } catch { /* ignore */ }
+    return;
+  }
+
+  writeBridgeSecretFile(next);
+}
+
+export function clearBridgeSecrets(): void {
+  try {
+    fs.unlinkSync(SECRET_STORE_PATH);
+  } catch {
+    // ignore
+  }
+}
+
+export function getBridgeSecretStatus(): { hasAdoPat: boolean; hasGithubPat: boolean } {
+  const file = readBridgeSecretFile();
+  return {
+    hasAdoPat: Boolean(file?.adoPat),
+    hasGithubPat: Boolean(file?.githubPat),
+  };
 }
 
 /** Candidate locations for VS Code mcp.json */
@@ -77,7 +234,7 @@ function cleanSecret(v: unknown): string | null {
   return t;
 }
 
-export function readMcpSecrets(): McpSecrets {
+function readMcpConfigSecrets(): McpSecrets {
   for (const candidate of mcpCandidates()) {
     try {
       const raw = fs.readFileSync(candidate, 'utf-8');
@@ -97,4 +254,15 @@ export function readMcpSecrets(): McpSecrets {
   }
 
   return { adoPat: null, githubPat: null, adoOrgUrl: null };
+}
+
+export function readMcpSecrets(): McpSecrets {
+  const bridgeSecrets = readBridgeSecrets();
+  const mcpSecrets = readMcpConfigSecrets();
+
+  return {
+    adoPat: bridgeSecrets.adoPat ?? mcpSecrets.adoPat,
+    githubPat: bridgeSecrets.githubPat ?? mcpSecrets.githubPat,
+    adoOrgUrl: mcpSecrets.adoOrgUrl,
+  };
 }

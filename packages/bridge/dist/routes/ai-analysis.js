@@ -7,6 +7,7 @@ exports.aiAnalysisRouter = void 0;
 const express_1 = require("express");
 const https_1 = __importDefault(require("https"));
 const http_1 = __importDefault(require("http"));
+const mcp_secrets_1 = require("../utils/mcp-secrets");
 exports.aiAnalysisRouter = (0, express_1.Router)();
 const MODELS_API_URL = 'https://models.inference.ai.azure.com/chat/completions';
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
@@ -229,6 +230,7 @@ exports.aiAnalysisRouter.post('/', async (req, res) => {
     try {
         let assessment;
         let source;
+        const bridgeSecrets = (0, mcp_secrets_1.readMcpSecrets)();
         const ollamaUp = await isOllamaRunning();
         if (ollamaUp) {
             // Prefer local Ollama — no internet, no auth, no firewall
@@ -239,8 +241,8 @@ exports.aiAnalysisRouter.post('/', async (req, res) => {
             assessment = await callOpenAI(body.openaiKey, messages);
             source = 'openai';
         }
-        else if (body.githubPat) {
-            assessment = await callGitHubModels(body.githubPat, messages);
+        else if (body.githubPat || bridgeSecrets.githubPat) {
+            assessment = await callGitHubModels(body.githubPat || bridgeSecrets.githubPat || '', messages);
             source = 'github-models';
         }
         else {

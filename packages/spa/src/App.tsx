@@ -6,6 +6,7 @@ import TriagePage from './pages/Triage';
 import RegistryPage from './pages/Registry';
 import SettingsPage from './pages/Settings';
 import { useSettingsStore } from './store/settings';
+import { fetchSecretStatus } from './lib/secret-store';
 
 // On GitHub Pages (HTTPS), probe local bridge. If alive, redirect immediately so
 // the user never has to manually switch URLs again.
@@ -25,10 +26,8 @@ async function redirectToBridgeIfRunning(): Promise<boolean> {
 
 export default function App() {
   const navigate = useNavigate();
-  const { adoPat, githubPat, bridgeUrl } = useSettingsStore();
-  const [wizardDone, setWizardDone] = useState(
-    (localStorage.getItem('devassist-setup-done') === '1') || (!!adoPat && !!githubPat)
-  );
+  const { bridgeUrl, setSecretStatus } = useSettingsStore();
+  const [wizardDone, setWizardDone] = useState(localStorage.getItem('devassist-setup-done') === '1');
   const [bridgeChecked, setBridgeChecked] = useState(false);
   const [setupChecked, setSetupChecked] = useState(false);
 
@@ -40,12 +39,25 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const done = (!!adoPat && !!githubPat);
-    if (done) {
-      localStorage.setItem('devassist-setup-done', '1');
-      setWizardDone(true);
+    let cancelled = false;
+
+    async function refreshSecretStatus() {
+      try {
+        const status = await fetchSecretStatus();
+        if (cancelled) return;
+        setSecretStatus(status);
+        if (status.hasAdoPat && status.hasGithubPat) {
+          localStorage.setItem('devassist-setup-done', '1');
+          setWizardDone(true);
+        }
+      } catch {
+        // Non-fatal: the bridge may still be starting.
+      }
     }
-  }, [adoPat, githubPat]);
+
+    void refreshSecretStatus();
+    return () => { cancelled = true; };
+  }, [setSecretStatus]);
 
   // First-run auto-check: if the connector is up and server-managed credentials
   // are already configured, skip the setup wizard automatically.
@@ -60,7 +72,8 @@ export default function App() {
         const res = await fetch(`${bridgeUrl}/api/status`, { signal: AbortSignal.timeout(2500) });
         if (!res.ok) return;
         const status = await res.json() as { adoAuth?: string; githubAuth?: string };
-        if (status.adoAuth === 'ok' && status.githubAuth === 'ok') {
+        const secretsReady = status.adoAuth === 'ok' && status.githubAuth === 'ok';
+        if (secretsReady) {
           localStorage.setItem('devassist-setup-done', '1');
           if (!cancelled) setWizardDone(true);
         }

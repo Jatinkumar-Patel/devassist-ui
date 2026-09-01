@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Eye, EyeOff, Check, AlertCircle, Terminal, RefreshCw, ChevronDown } from 'lucide-react';
 import { useSettingsStore, ORG_DEFAULTS } from '../store/settings';
 import { getBridgeInstallCommands } from '../lib/bridge-install';
+import { clearBridgeSecrets, fetchSecretStatus, saveBridgeSecrets } from '../lib/secret-store';
 
 interface DiagnosticResult {
   key: 'bridge' | 'snow' | 'ado' | 'github';
@@ -12,22 +13,44 @@ interface DiagnosticResult {
 
 export default function SettingsPage() {
   const {
-    adoPat,
-    githubPat,
     openaiKey,
     bridgeUrl,
-    setAdoPat,
-    setGithubPat,
     setOpenaiKey,
     setBridgeUrl,
+    hasAdoPat,
+    hasGithubPat,
+    setSecretStatus,
     clearPats,
   } = useSettingsStore();
   const installCmds = getBridgeInstallCommands();
   const [bridgeCardOpen, setBridgeCardOpen] = useState<boolean>(() => localStorage.getItem('devassist-settings-bridge-open') !== '0');
+  const [adoDraft, setAdoDraft] = useState('');
+  const [githubDraft, setGithubDraft] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const status = await fetchSecretStatus();
+        if (!cancelled) setSecretStatus(status);
+      } catch {
+        // non-fatal
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [setSecretStatus]);
 
   const reRunWizard = () => {
     localStorage.removeItem('devassist-setup-done');
     window.location.reload();
+  };
+
+  const clearAllSecrets = async () => {
+    await clearBridgeSecrets();
+    clearPats();
+    setAdoDraft('');
+    setGithubDraft('');
+    setSecretStatus({ hasAdoPat: false, hasGithubPat: false });
   };
 
   const toggleBridgeCard = () => {
@@ -52,23 +75,45 @@ export default function SettingsPage() {
         <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Authentication</h2>
         <p className="text-xs text-gray-600">
           PATs are <strong className="text-gray-400">personal</strong> — each person uses their own token.
-          For enterprise security, PATs are held in-memory for the current session and not persisted in browser localStorage.
+          DevAssist stores them on this device in the local bridge, not in browser localStorage.
         </p>
         <PatField
           label="Azure DevOps PAT"
           hint="Scopes needed: Work Items (Read) · Code (Read)"
-          value={adoPat}
-          onChange={setAdoPat}
+          value={adoDraft}
+          onChange={setAdoDraft}
           testUrl={`${bridgeUrl}/api/ado/_apis/projects?api-version=6.0`}
           testAuth={(v) => `Basic ${btoa(`:${v}`)}`}
+          saved={hasAdoPat}
+          onSave={async (token) => {
+            const status = await saveBridgeSecrets({ adoPat: token });
+            setSecretStatus(status);
+            setAdoDraft('');
+          }}
+          onClear={async () => {
+            const status = await saveBridgeSecrets({ adoPat: '' });
+            setSecretStatus(status);
+            setAdoDraft('');
+          }}
         />
         <PatField
           label="GitHub PAT"
           hint="Scopes needed: repo (read only)"
-          value={githubPat}
-          onChange={setGithubPat}
+          value={githubDraft}
+          onChange={setGithubDraft}
           testUrl="https://api.github.com/user"
           testAuth={(v) => `Bearer ${v}`}
+          saved={hasGithubPat}
+          onSave={async (token) => {
+            const status = await saveBridgeSecrets({ githubPat: token });
+            setSecretStatus(status);
+            setGithubDraft('');
+          }}
+          onClear={async () => {
+            const status = await saveBridgeSecrets({ githubPat: '' });
+            setSecretStatus(status);
+            setGithubDraft('');
+          }}
         />
         <PatField
           label="OpenAI API Key"
@@ -77,8 +122,15 @@ export default function SettingsPage() {
           onChange={setOpenaiKey}
           testUrl="https://api.openai.com/v1/models"
           testAuth={(v) => `Bearer ${v}`}
+          saved={Boolean(openaiKey)}
+          onSave={async (token) => {
+            setOpenaiKey(token);
+          }}
+          onClear={async () => {
+            setOpenaiKey('');
+          }}
         />
-        <button onClick={clearPats}
+        <button onClick={() => { void clearAllSecrets(); }}
           className="text-xs text-red-500 hover:text-red-400 border border-red-900 hover:border-red-700 px-3 py-1.5 rounded-lg">
           Clear all PATs
         </button>
@@ -141,12 +193,12 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      <EnvironmentDiagnostics bridgeUrl={bridgeUrl} adoPat={adoPat} githubPat={githubPat} />
+      <EnvironmentDiagnostics bridgeUrl={bridgeUrl} hasAdoPat={hasAdoPat} hasGithubPat={hasGithubPat} />
     </div>
   );
 }
 
-function EnvironmentDiagnostics({ bridgeUrl, adoPat, githubPat }: { bridgeUrl: string; adoPat: string; githubPat: string }) {
+function EnvironmentDiagnostics({ bridgeUrl, hasAdoPat, hasGithubPat }: { bridgeUrl: string; hasAdoPat: boolean; hasGithubPat: boolean }) {
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState<DiagnosticResult[]>([]);
   const [lastRun, setLastRun] = useState<string>('');
@@ -172,12 +224,22 @@ function EnvironmentDiagnostics({ bridgeUrl, adoPat, githubPat }: { bridgeUrl: s
           details: status.snowAuth === 'ok' ? 'Windows auth ready' : `Bridge reported: ${status.snowAuth ?? 'unknown'}`,
         });
 
-        if (!adoPat.trim() && status.adoAuth === 'ok') {
-          out.push({ key: 'ado', label: 'ADO', ok: true, details: 'Server-managed credential ready (mcp/env)' });
-        }
-        if (!githubPat.trim() && status.githubAuth === 'ok') {
-          out.push({ key: 'github', label: 'GitHub', ok: true, details: 'Server-managed credential ready (mcp/env)' });
-        }
+        out.push({
+          key: 'ado',
+          label: 'ADO',
+          ok: status.adoAuth === 'ok',
+          details: status.adoAuth === 'ok'
+            ? (hasAdoPat ? 'PAT saved on this device' : 'Bridge-managed credential ready')
+            : 'PAT missing in Settings',
+        });
+        out.push({
+          key: 'github',
+          label: 'GitHub',
+          ok: status.githubAuth === 'ok',
+          details: status.githubAuth === 'ok'
+            ? (hasGithubPat ? 'PAT saved on this device' : 'Bridge-managed credential ready')
+            : 'PAT missing (optional)',
+        });
       } else {
         out.push({ key: 'bridge', label: 'Bridge', ok: false, details: `HTTP ${statusRes.status}` });
         out.push({ key: 'snow', label: 'SNOW', ok: false, details: 'Bridge unavailable' });
@@ -185,45 +247,6 @@ function EnvironmentDiagnostics({ bridgeUrl, adoPat, githubPat }: { bridgeUrl: s
     } catch {
       out.push({ key: 'bridge', label: 'Bridge', ok: false, details: 'Unreachable (check URL / process)' });
       out.push({ key: 'snow', label: 'SNOW', ok: false, details: 'Bridge unavailable' });
-    }
-
-    if (adoPat.trim()) {
-      try {
-        const token = btoa(`:${adoPat.trim()}`);
-        const adoRes = await fetch(`${bridgeUrl}/api/ado/_apis/projects?api-version=6.0`, {
-          headers: { Authorization: `Basic ${token}` },
-          signal: AbortSignal.timeout(6000),
-        });
-        out.push({
-          key: 'ado',
-          label: 'ADO',
-          ok: adoRes.ok,
-          details: adoRes.ok ? 'PAT valid' : `HTTP ${adoRes.status}`,
-        });
-      } catch {
-        out.push({ key: 'ado', label: 'ADO', ok: false, details: 'Request failed (VPN/network/bridge)' });
-      }
-    } else if (!out.some((r) => r.key === 'ado')) {
-      out.push({ key: 'ado', label: 'ADO', ok: false, details: 'PAT missing in Settings' });
-    }
-
-    if (githubPat.trim()) {
-      try {
-        const ghRes = await fetch('https://api.github.com/user', {
-          headers: { Authorization: `Bearer ${githubPat.trim()}` },
-          signal: AbortSignal.timeout(6000),
-        });
-        out.push({
-          key: 'github',
-          label: 'GitHub',
-          ok: ghRes.ok,
-          details: ghRes.ok ? 'PAT valid' : `HTTP ${ghRes.status}`,
-        });
-      } catch {
-        out.push({ key: 'github', label: 'GitHub', ok: false, details: 'Request failed (network/proxy)' });
-      }
-    } else if (!out.some((r) => r.key === 'github')) {
-      out.push({ key: 'github', label: 'GitHub', ok: false, details: 'PAT missing (optional)' });
     }
 
     setResults(out);
@@ -286,15 +309,18 @@ interface PatFieldProps {
   onChange: (v: string) => void;
   testUrl: string;
   testAuth: (v: string) => string;
+  saved: boolean;
+  onSave: (token: string) => Promise<void>;
+  onClear: () => Promise<void>;
 }
 
-function PatField({ label, hint, value, onChange, testUrl, testAuth }: PatFieldProps) {
+function PatField({ label, hint, value, onChange, testUrl, testAuth, saved, onSave, onClear }: PatFieldProps) {
   const [show, setShow] = useState(false);
   const [testState, setTestState] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
   const [statusText, setStatusText] = useState('');
   const requestIdRef = useRef(0);
 
-  const runValidation = async (token: string) => {
+  const runValidation = async (token: string): Promise<boolean> => {
     const requestId = ++requestIdRef.current;
     setTestState('testing');
     setStatusText('Validating token...');
@@ -304,26 +330,32 @@ function PatField({ label, hint, value, onChange, testUrl, testAuth }: PatFieldP
         signal: AbortSignal.timeout(5000),
       });
 
-      if (requestId !== requestIdRef.current) return;
+      if (requestId !== requestIdRef.current) return false;
 
       if (res.ok) {
         setTestState('ok');
         setStatusText('Token looks valid.');
+        return true;
       } else {
         setTestState('fail');
         setStatusText(`Token validation failed (HTTP ${res.status}).`);
       }
     } catch {
-      if (requestId !== requestIdRef.current) return;
+      if (requestId !== requestIdRef.current) return false;
       setTestState('fail');
       setStatusText('Token validation failed (network/bridge).');
     }
+    return false;
   };
 
-  const test = async () => {
+  const save = async () => {
     const token = value.trim();
     if (!token) return;
-    await runValidation(token);
+    const ok = await runValidation(token);
+    if (ok) {
+      await onSave(token);
+      setStatusText('Saved on this device.');
+    }
   };
 
   useEffect(() => {
@@ -346,16 +378,20 @@ function PatField({ label, hint, value, onChange, testUrl, testAuth }: PatFieldP
 
   return (
     <div className="space-y-1.5">
-      <label className="text-xs text-gray-400">{label}</label>
+      <div className="flex items-center justify-between gap-2">
+        <label className="text-xs text-gray-400">{label}</label>
+        <span className={`text-[11px] px-2 py-0.5 rounded-full border ${saved ? 'border-emerald-700 text-emerald-400 bg-emerald-950/30' : 'border-gray-700 text-gray-500 bg-gray-900'}`}>
+          {saved ? 'Stored on this device' : 'Not stored'}
+        </span>
+      </div>
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
           <input
             type={show ? 'text' : 'password'}
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            placeholder="Paste PAT here"
-            className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm
-                       text-gray-200 font-mono focus:outline-none focus:border-altera-teal pr-9"
+            placeholder={saved ? 'Enter a new token to replace the saved one' : 'Paste PAT here'}
+            className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 font-mono focus:outline-none focus:border-altera-teal pr-9"
           />
           <button
             type="button"
@@ -367,19 +403,31 @@ function PatField({ label, hint, value, onChange, testUrl, testAuth }: PatFieldP
         </div>
         <button
           type="button"
-          onClick={test}
+          onClick={save}
           disabled={!value || testState === 'testing'}
-          className={`px-3 py-2 rounded text-xs font-medium border transition-colors w-full sm:w-auto
-            ${testState === 'ok'   ? 'border-emerald-700 text-emerald-400 bg-emerald-950/30' :
-              testState === 'fail' ? 'border-red-700 text-red-400 bg-red-950/30' :
-              'border-gray-700 text-gray-400 hover:border-gray-500 disabled:opacity-40'}`}
+          className={`px-3 py-2 rounded text-xs font-medium border transition-colors w-full sm:w-auto ${
+            testState === 'ok'
+              ? 'border-emerald-700 text-emerald-400 bg-emerald-950/30'
+              : testState === 'fail'
+                ? 'border-red-700 text-red-400 bg-red-950/30'
+                : 'border-gray-700 text-gray-400 hover:border-gray-500 disabled:opacity-40'
+          }`}
         >
-          {testState === 'ok'      ? <Check size={14} /> :
-           testState === 'fail'    ? <AlertCircle size={14} /> :
-           testState === 'testing' ? '…' : 'Retest'}
+          {testState === 'ok' ? <Check size={14} /> : testState === 'fail' ? <AlertCircle size={14} /> : testState === 'testing' ? '…' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={() => { void onClear(); }}
+          disabled={!saved && !value}
+          className="px-3 py-2 rounded text-xs font-medium border border-gray-700 text-gray-400 hover:border-gray-500 disabled:opacity-40 w-full sm:w-auto"
+        >
+          Clear
         </button>
       </div>
       <p className="text-xs text-gray-600">{hint}</p>
+      <p className={`text-xs ${saved ? 'text-emerald-400' : 'text-yellow-500'}`}>
+        {saved ? 'Stored on this device via the local bridge.' : 'Not stored on this device yet.'}
+      </p>
       {statusText && (
         <p className={`text-xs ${testState === 'ok' ? 'text-emerald-400' : testState === 'fail' ? 'text-red-400' : 'text-gray-500'}`}>
           {statusText}

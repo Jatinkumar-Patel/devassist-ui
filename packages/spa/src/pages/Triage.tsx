@@ -481,7 +481,7 @@ async function enrichSnowTaskArtifacts(s: TriageSession, taskRecord: any): Promi
 }
 
 export default function TriagePage() {
-  const { adoPat, githubPat, bridgeUrl } = useSettingsStore();
+  const { adoPat, githubPat, hasGithubPat, hasAdoPat, bridgeUrl } = useSettingsStore();
   const { sessions, active, upsert, remove } = useTriageStore();
   const installCmds = getBridgeInstallCommands();
   const [bridgeHint, setBridgeHint] = useState<string | null>(null);
@@ -635,7 +635,7 @@ export default function TriagePage() {
             };
           }
           // GitHub recent commits for primary repos
-          if (githubPat && routedProduct.repos.length) {
+          if ((githubPat || hasGithubPat) && routedProduct.repos.length) {
             const repo = routedProduct.repos.find(r => r.required);
             if (repo) {
               const keywords = [
@@ -806,7 +806,7 @@ export default function TriagePage() {
       }
 
       // ── Bridge from SNOW records back to DA/TFS for full analysis ──────────
-      if (!s.adoItem && adoPat) {
+      if (!s.adoItem && (adoPat || hasAdoPat)) {
         const hydrateFromAdoItem = async (adoItem: any): Promise<void> => {
           const areaPath = adoItem.fields['System.AreaPath'] ?? '';
           const autoProduct = routeByAreaPath(areaPath, registry, adoItem.fields['System.Title']);
@@ -846,7 +846,7 @@ export default function TriagePage() {
                 })),
               };
             }
-            if (githubPat && routedProduct.repos.length) {
+            if ((githubPat || hasGithubPat) && routedProduct.repos.length) {
               const repo = routedProduct.repos.find((r) => r.required);
               if (repo) {
                 const keywords = [

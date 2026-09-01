@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import https from 'https';
 import http from 'http';
 import { execPowerShell } from '../utils/powershell';
+import { readMcpSecrets } from '../utils/mcp-secrets';
 
 export const aiAnalysisRouter = Router();
 
@@ -261,6 +262,7 @@ aiAnalysisRouter.post('/', async (req: Request, res: Response) => {
   try {
     let assessment: string;
     let source: string;
+    const bridgeSecrets = readMcpSecrets();
 
     const ollamaUp = await isOllamaRunning();
     if (ollamaUp) {
@@ -270,8 +272,8 @@ aiAnalysisRouter.post('/', async (req: Request, res: Response) => {
     } else if (body.openaiKey) {
       assessment = await callOpenAI(body.openaiKey, messages);
       source = 'openai';
-    } else if (body.githubPat) {
-      assessment = await callGitHubModels(body.githubPat, messages);
+    } else if (body.githubPat || bridgeSecrets.githubPat) {
+      assessment = await callGitHubModels(body.githubPat || bridgeSecrets.githubPat || '', messages);
       source = 'github-models';
     } else {
       return res.status(503).json({

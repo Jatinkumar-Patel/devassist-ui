@@ -705,7 +705,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
 }
 
 function AiAssessmentPanel({ session }: { session: TriageSession }) {
-  const { openaiKey, githubPat } = useSettingsStore();
+  const { openaiKey, githubPat, hasGithubPat } = useSettingsStore();
   const [running, setRunning]   = useState(false);
   const [result, setResult]     = useState<string | null>(null);
   const [error, setError]       = useState<string | null>(null);
@@ -723,7 +723,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
       .catch(() => setOllamaOk(false));
   }, [BRIDGE]);
 
-  const canRun = ollamaOk || !!(openaiKey || githubPat);
+  const canRun = ollamaOk || !!(openaiKey || githubPat || hasGithubPat);
 
   const runAi = async () => {
     if (!session.adoItem) return;

@@ -10,6 +10,7 @@ import { logAnalysisRouter } from './routes/log-analysis';
 import { aiAnalysisRouter } from './routes/ai-analysis';
 import { registryRouter } from './routes/registry';
 import { skillsRouter } from './routes/skills';
+import { secretsRouter } from './routes/secrets';
 
 interface ServerOptions {
   spaOrigin: string;
@@ -46,6 +47,7 @@ export function createServer({ spaOrigin }: ServerOptions) {
   app.use('/api/ai-analyze', aiAnalysisRouter);
   app.use('/api/skills', skillsRouter);
   app.use('/api/registry', registryRouter);
+  app.use('/api/secrets', secretsRouter);
 
   // Serve the built SPA if it exists alongside the bridge dist
   const spaPath = path.resolve(__dirname, '../../spa/dist');

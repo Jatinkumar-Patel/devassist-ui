@@ -3,6 +3,7 @@ import { CheckCircle2, ExternalLink, Eye, EyeOff, Wifi, Wand2 } from 'lucide-rea
 import { useSettingsStore } from '../store/settings';
 import { getBridgeUrl } from '../lib/bridge-url';
 import { getBridgeInstallCommands } from '../lib/bridge-install';
+import { saveBridgeSecrets } from '../lib/secret-store';
 
 interface Props {
   onDone: () => void;
@@ -57,7 +58,7 @@ function CopyableCommand({ label, value }: { label: string; value: string }) {
 }
 
 export default function SetupWizard({ onDone }: Props) {
-  const { setAdoPat, setGithubPat } = useSettingsStore();
+  const { setSecretStatus } = useSettingsStore();
   const bridgeBase = getBridgeUrl();
   const installCmds = getBridgeInstallCommands();
   const [step, setStep] = useState<Step>('bridge');
@@ -98,9 +99,11 @@ export default function SetupWizard({ onDone }: Props) {
       const ok = r.ok;
       setBridgeOk(ok);
       if (ok) {
+        const status = await r.json() as { adoAuth?: string; githubAuth?: string };
         const cfg = await loadMcpConfig();
-        const adoReady = Boolean(cfg?.hasAdoPat);
-        const ghReady = Boolean(cfg?.hasGithubPat);
+        const adoReady = status.adoAuth === 'ok' || Boolean(cfg?.hasAdoPat);
+        const ghReady = status.githubAuth === 'ok' || Boolean(cfg?.hasGithubPat);
+        setSecretStatus({ hasAdoPat: adoReady, hasGithubPat: ghReady });
 
         if (adoReady && ghReady) {
           localStorage.setItem('devassist-setup-done', '1');
@@ -129,7 +132,9 @@ export default function SetupWizard({ onDone }: Props) {
       });
       setAdoOk(r.ok);
       if (r.ok) {
-        setAdoPat(pat);
+        await saveBridgeSecrets({ adoPat: pat });
+        setSecretStatus({ hasAdoPat: true });
+        setAdoVal('');
         setTimeout(() => setStep('github-pat'), 600);
       }
     } catch {
@@ -142,16 +147,24 @@ export default function SetupWizard({ onDone }: Props) {
   const saveAdoAndContinue = () => {
     const pat = adoVal.trim();
     if (!pat) return;
-    setAdoPat(pat);
-    setStep('github-pat');
+    void (async () => {
+      await saveBridgeSecrets({ adoPat: pat });
+      setSecretStatus({ hasAdoPat: true });
+      setAdoVal('');
+      setStep('github-pat');
+    })();
   };
 
   const saveGithubAndContinue = () => {
     const pat = githubVal.trim();
     if (!pat) return;
-    setGithubPat(pat);
-    localStorage.setItem('devassist-setup-done', '1');
-    setStep('done');
+    void (async () => {
+      await saveBridgeSecrets({ githubPat: pat });
+      setSecretStatus({ hasGithubPat: true });
+      setGithubVal('');
+      localStorage.setItem('devassist-setup-done', '1');
+      setStep('done');
+    })();
   };
 
   return (

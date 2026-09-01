@@ -26,6 +26,7 @@ const PLACEHOLDERS = [
 
 export default function TriageInput({ onSubmit, onStop, loading }: Props) {
   const adoPat = useSettingsStore((s) => s.adoPat);
+  const hasAdoPat = useSettingsStore((s) => s.hasAdoPat);
   const [value, setValue] = useState('');
   const [registry, setRegistry] = useState<ProductRegistry | null>(null);
   const [registryError, setRegistryError] = useState<string | null>(null);
@@ -162,7 +163,7 @@ export default function TriageInput({ onSubmit, onStop, loading }: Props) {
   useEffect(() => {
     let disposed = false;
 
-    if (!adoPat.trim()) {
+    if (!adoPat.trim() && !hasAdoPat) {
       setReleaseOptions([]);
       setReleaseOptionsLoading(false);
       setReleaseOptionsError('No ADO PAT configured. Go to Settings to add your PAT.');
@@ -190,7 +191,7 @@ export default function TriageInput({ onSubmit, onStop, loading }: Props) {
     return () => {
       disposed = true;
     };
-  }, [adoPat, releaseScopeAreaPaths]);
+  }, [adoPat, hasAdoPat, releaseScopeAreaPaths]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -14,10 +14,13 @@ interface SettingsState {
   githubPat: string;
   openaiKey: string;      // personal OpenAI API key — optional, enables inline AI analysis
   bridgeUrl: string;
+  hasAdoPat: boolean;
+  hasGithubPat: boolean;
   setAdoPat: (pat: string) => void;
   setGithubPat: (pat: string) => void;
   setOpenaiKey: (key: string) => void;
   setBridgeUrl: (url: string) => void;
+  setSecretStatus: (status: { hasAdoPat?: boolean; hasGithubPat?: boolean }) => void;
   clearPats: () => void;
 }
 
@@ -28,13 +31,19 @@ export const useSettingsStore = create<SettingsState>()(
       githubPat: '',
       openaiKey: '',
       bridgeUrl: ORG_DEFAULTS.bridgeUrl,
+      hasAdoPat: false,
+      hasGithubPat: false,
       setAdoPat:     (adoPat) => set({ adoPat }),
       setGithubPat:  (githubPat) => set({ githubPat }),
       setOpenaiKey:  (openaiKey) => set({ openaiKey }),
       setBridgeUrl:  (bridgeUrl) => set({ bridgeUrl }),
+      setSecretStatus: (status) => set((current) => ({
+        hasAdoPat: status.hasAdoPat ?? current.hasAdoPat,
+        hasGithubPat: status.hasGithubPat ?? current.hasGithubPat,
+      })),
       clearPats: () => {
         localStorage.removeItem('devassist-setup-done');
-        set({ adoPat: '', githubPat: '', openaiKey: '' });
+        set({ adoPat: '', githubPat: '', openaiKey: '', hasAdoPat: false, hasGithubPat: false });
       },
     }),
     {
@@ -44,12 +53,16 @@ export const useSettingsStore = create<SettingsState>()(
         adoPat: '',
         githubPat: '',
         openaiKey: '',
+        hasAdoPat: Boolean(persistedState?.hasAdoPat),
+        hasGithubPat: Boolean(persistedState?.hasGithubPat),
         bridgeUrl: persistedState?.bridgeUrl ?? ORG_DEFAULTS.bridgeUrl,
       }),
       partialize: (s) => ({
         adoPat: '',
         githubPat: '',
         openaiKey: '',
+        hasAdoPat: s.hasAdoPat,
+        hasGithubPat: s.hasGithubPat,
         bridgeUrl: s.bridgeUrl,
       }),
     }
