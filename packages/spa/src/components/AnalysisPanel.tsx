@@ -24,6 +24,92 @@ function normalizeEvidenceValue(v?: string): string {
   return text && text !== 'null' && text !== 'undefined' ? text : '-';
 }
 
+function compactText(value: string, max = 240): string {
+  const clean = value.replace(/\s+/g, ' ').trim();
+  if (clean.length <= max) return clean;
+  return `${clean.slice(0, max - 1)}...`;
+}
+
+type SnowEvidenceUiEntry = {
+  category: 'record' | 'summary' | 'timeline' | 'generic';
+  label: string;
+  detail: string;
+  actor?: string;
+  time?: string;
+};
+
+type CodeAnalysisUiItem = { label: string; detail: string };
+
+function parseSnowEvidenceForUi(rows: string[]): SnowEvidenceUiEntry[] {
+  const parsed: SnowEvidenceUiEntry[] = [];
+
+  for (const rawRow of rows) {
+    const row = rawRow.trim();
+    if (!row) continue;
+
+    if (/^SNOW (Task|Incident|Case):/i.test(row)) {
+      const idx = row.indexOf(':');
+      const label = idx >= 0 ? row.slice(0, idx).trim() : 'SNOW Record';
+      const detail = idx >= 0 ? row.slice(idx + 1).trim() : row;
+      parsed.push({ category: 'record', label, detail: compactText(detail, 180) });
+      continue;
+    }
+
+    if (/^SNOW (Task|Incident|Case) summary:/i.test(row)) {
+      const idx = row.indexOf(':');
+      const label = idx >= 0 ? row.slice(0, idx).trim() : 'SNOW Summary';
+      const detail = idx >= 0 ? row.slice(idx + 1).trim() : row;
+      parsed.push({ category: 'summary', label, detail: compactText(detail, 220) });
+      continue;
+    }
+
+    const parts = row.split('|').map((p) => p.trim()).filter(Boolean);
+    if (parts.length >= 3 && /^[A-Za-z _-]+:/.test(parts[0])) {
+      const idx = parts[0].indexOf(':');
+      const label = idx >= 0 ? parts[0].slice(0, idx).trim() : 'Event';
+      const detail = idx >= 0 ? parts[0].slice(idx + 1).trim() : parts[0];
+      parsed.push({
+        category: 'timeline',
+        label,
+        detail: compactText(detail, 220),
+        actor: compactText(parts[1], 64),
+        time: compactText(parts[2], 48),
+      });
+      continue;
+    }
+
+    if (/^[A-Za-z _-]+:/.test(row)) {
+      const idx = row.indexOf(':');
+      const label = idx >= 0 ? row.slice(0, idx).trim() : 'Evidence';
+      const detail = idx >= 0 ? row.slice(idx + 1).trim() : row;
+      parsed.push({ category: 'generic', label, detail: compactText(detail, 220) });
+      continue;
+    }
+
+    parsed.push({ category: 'generic', label: 'Evidence', detail: compactText(row, 220) });
+  }
+
+  return parsed;
+}
+
+function parseCodeAnalysisForUi(codeAnalysis: string): CodeAnalysisUiItem[] {
+  const lines = codeAnalysis
+    .split('\n')
+    .map((line) => line.replace(/^[-*]\s*/, '').trim())
+    .filter(Boolean);
+
+  return lines.map((line) => {
+    const idx = line.indexOf(':');
+    if (idx > 0 && idx < 40) {
+      return {
+        label: line.slice(0, idx).trim(),
+        detail: compactText(line.slice(idx + 1).trim(), 260),
+      };
+    }
+    return { label: 'Finding', detail: compactText(line, 260) };
+  });
+}
+
 function formatSnowEvidence(evidence: string[]): string[] {
   if (!evidence.length) return [];
 
@@ -428,6 +514,11 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
 
   const verdictStyle = VERDICT_STYLE[analysis.verdict ?? 'NEED MORE INFO'] ?? VERDICT_STYLE['NEED MORE INFO'];
   const snowEvidenceRows = formatSnowEvidence(analysis.snowEvidence);
+    const snowEvidenceStructured = parseSnowEvidenceForUi(snowEvidenceRows);
+    const snowRecords = snowEvidenceStructured.filter((item) => item.category === 'record' || item.category === 'summary');
+    const snowTimeline = snowEvidenceStructured.filter((item) => item.category === 'timeline');
+    const snowOther = snowEvidenceStructured.filter((item) => item.category === 'generic');
+    const codeAnalysisRows = parseCodeAnalysisForUi(analysis.codeAnalysis);
   const emailHref = buildAnalysisEmail(session, analysis, snowEvidenceRows);
 
   const copyL2 = () => {
@@ -493,18 +584,61 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
         {snowEvidenceRows.length > 0 && (
           <section className="space-y-2">
             <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">SNOW Evidence</p>
-            <div className="analysis-scroll max-h-60 rounded border border-gray-800 bg-gray-950/70 p-2">
-              <pre className="text-xs text-gray-300 font-mono leading-relaxed whitespace-pre">
-{snowEvidenceRows.map((e) => `- ${e}`).join('\n')}
-              </pre>
+            <div className="analysis-scroll max-h-[28rem] space-y-2 rounded border border-gray-800 bg-gray-950/70 p-2.5">
+              {snowRecords.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[11px] uppercase tracking-wide text-gray-500">Record snapshot</p>
+                  {snowRecords.map((item, idx) => (
+                    <div key={`snow-record-${idx}`} className="rounded border border-gray-800 bg-gray-900/70 px-2.5 py-2">
+                      <p className="text-[11px] text-cyan-300 font-semibold">{item.label}</p>
+                      <p className="text-xs text-gray-300 leading-relaxed">{item.detail}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {snowTimeline.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[11px] uppercase tracking-wide text-gray-500">Timeline</p>
+                  {snowTimeline.map((item, idx) => (
+                    <div key={`snow-timeline-${idx}`} className="rounded border border-gray-800 bg-gray-900/70 px-2.5 py-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-xs text-gray-200">
+                          <span className="text-cyan-300 font-semibold">{item.label}:</span> {item.detail}
+                        </p>
+                        {item.time && <span className="shrink-0 text-[11px] text-gray-500">{item.time}</span>}
+                      </div>
+                      {item.actor && <p className="text-[11px] text-gray-500 mt-1">By: {item.actor}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {snowOther.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[11px] uppercase tracking-wide text-gray-500">Additional evidence</p>
+                  {snowOther.map((item, idx) => (
+                    <div key={`snow-other-${idx}`} className="rounded border border-gray-800 bg-gray-900/70 px-2.5 py-2">
+                      <p className="text-xs text-gray-200">
+                        <span className="text-cyan-300 font-semibold">{item.label}:</span> {item.detail}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </section>
         )}
 
         <section className="space-y-2">
           <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Code Analysis</p>
-          <div className="analysis-scroll max-h-56 rounded border border-gray-800 bg-gray-950/70 p-2">
-            <pre className="text-xs text-gray-300 font-mono leading-relaxed whitespace-pre-wrap">{analysis.codeAnalysis}</pre>
+          <div className="analysis-scroll max-h-56 rounded border border-gray-800 bg-gray-950/70 p-2.5 space-y-1.5">
+            {codeAnalysisRows.map((item, idx) => (
+              <div key={`code-analysis-${idx}`} className="rounded border border-gray-800 bg-gray-900/70 px-2.5 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-gray-500">{item.label}</p>
+                <p className="text-xs text-gray-200 leading-relaxed">{item.detail}</p>
+              </div>
+            ))}
           </div>
         </section>
 
