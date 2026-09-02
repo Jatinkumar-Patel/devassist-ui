@@ -5,7 +5,7 @@ $bootstrapPath = Join-Path $repoRoot 'bootstrap.ps1'
 $startupFolder = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup'
 $startupCmd = Join-Path $startupFolder 'DevAssist Bridge.cmd'
 $desktopUrl = Join-Path ([Environment]::GetFolderPath('Desktop')) 'DevAssist.url'
-$appUrl = 'https://jatinkumar-patel.github.io/devassist-ui/?bridgeUrl=http%3A%2F%2Flocalhost%3A7447#/triage'
+$appUrl = 'http://localhost:7447/index.html?bridgeUrl=http%3A%2F%2Flocalhost%3A7447#/triage'
 
 if (-not (Test-Path $bootstrapPath)) {
   throw "bootstrap.ps1 not found at $bootstrapPath"
