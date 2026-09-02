@@ -4,15 +4,32 @@ import path from 'path';
 
 export const skillsRouter = Router();
 
-// Skill files live in the workspace — search common locations
-const SKILL_SEARCH_ROOTS = [
-  'C:\\Users\\jpatel.CORPORATE\\source\\AIrepos\\allscriptshealthcare\\plhlt-aimanager-npm\\skills\\devassist-triage',
-  path.join(process.cwd(), 'skills', 'devassist-triage'),
-  path.join(process.cwd(), '..', 'skills', 'devassist-triage'),
-];
+function buildSkillSearchRoots(): string[] {
+  const userProfile = process.env.USERPROFILE ?? '';
+  const configured = process.env.DEVASSIST_SKILL_ROOT ?? '';
+  const configuredList = (process.env.DEVASSIST_SKILL_ROOTS ?? '')
+    .split(path.delimiter)
+    .map((v) => v.trim())
+    .filter(Boolean);
+
+  const roots = [
+    configured,
+    ...configuredList,
+    path.join(userProfile, 'devassist-triage'),
+    path.join(userProfile, 'source', 'devassist-triage'),
+    path.join(process.cwd(), 'skills', 'devassist-triage'),
+    path.join(process.cwd(), '..', 'skills', 'devassist-triage'),
+    path.join(process.cwd(), 'devassist-triage'),
+    path.join(process.cwd(), '..', 'devassist-triage'),
+  ]
+    .map((v) => String(v ?? '').trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(roots));
+}
 
 function findSkillRoot(): string | null {
-  for (const r of SKILL_SEARCH_ROOTS) {
+  for (const r of buildSkillSearchRoots()) {
     if (fs.existsSync(path.join(r, 'SKILL.md'))) return r;
   }
   return null;

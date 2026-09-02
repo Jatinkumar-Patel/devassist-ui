@@ -80,6 +80,53 @@ type SnowEvidenceUiEntry = {
 
 type CodeAnalysisUiItem = { label: string; detail: string };
 
+function parseBulletLines(text: string): string[] {
+  return text
+    .split('\n')
+    .map((line) => line.replace(/^[-*]\s*/, '').trim())
+    .filter(Boolean);
+}
+
+function buildRecommendedNextSteps(analysis: TriageAnalysis): string[] {
+  const steps: string[] = [];
+  const gapLines = parseBulletLines(analysis.gap);
+
+  for (const line of gapLines) {
+    if (/fix direction|inspect|validate|review|provide|confirm|collect|repro/i.test(line)) {
+      steps.push(line.replace(/^Related fix direction:\s*/i, '').trim());
+    }
+  }
+
+  for (const blind of analysis.blindSpots) {
+    if (/attach logs|not attached/i.test(blind)) {
+      steps.push('Attach logs for the incident window (HWS/service logs) and rerun analysis.');
+      continue;
+    }
+    if (/code search found no hits/i.test(blind)) {
+      steps.push('Run focused code search in mapped repos for the failing component and exception path.');
+      continue;
+    }
+    if (/work notes empty/i.test(blind)) {
+      steps.push('Add SNOW work-note evidence (repro steps, observed behavior, actions tried).');
+      continue;
+    }
+    if (/No direct DB repo hit found/i.test(blind)) {
+      steps.push('Expand DB search terms (table/view/SP names) and verify database-side dependencies.');
+      continue;
+    }
+  }
+
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const step of steps.map((s) => s.trim()).filter(Boolean)) {
+    const key = step.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(step);
+  }
+  return unique.slice(0, 6);
+}
+
 function parseSnowEvidenceForUi(rows: string[]): SnowEvidenceUiEntry[] {
   const parsed: SnowEvidenceUiEntry[] = [];
 
@@ -560,6 +607,11 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
     const snowTimeline = snowEvidenceStructured.filter((item) => item.category === 'timeline');
     const snowOther = snowEvidenceStructured.filter((item) => item.category === 'generic');
     const codeAnalysisRows = parseCodeAnalysisForUi(analysis.codeAnalysis);
+  const problemStatementRows = parseBulletLines(analysis.clientReported);
+  const gapRows = parseBulletLines(analysis.gap);
+  const recommendedSteps = buildRecommendedNextSteps(analysis);
+  const analyzedArtifacts = session.artifactLedger?.analyzed ?? [];
+  const notAnalyzedArtifacts = session.artifactLedger?.notAnalyzed ?? [];
   const emailHref = buildAnalysisEmail(session, analysis, snowEvidenceRows);
 
   const copyL2 = () => {
@@ -620,11 +672,20 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
         <pre className="text-xs opacity-80 whitespace-pre-wrap font-sans">{analysis.clientReported}</pre>
       </div>
 
-      {/* Reasoning chain */}
+      <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-2 text-sm">
+        <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Problem Statement</p>
+        <div className="rounded border border-gray-800 bg-gray-950/70 p-2.5 space-y-1">
+          {problemStatementRows.map((line, idx) => (
+            <p key={`problem-${idx}`} className="text-xs text-gray-200 leading-relaxed">- {line}</p>
+          ))}
+        </div>
+      </div>
+
+      {/* Diagnostic evidence and assessment */}
       <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-4 text-sm">
         {snowEvidenceRows.length > 0 && (
           <section className="space-y-2">
-            <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">SNOW Evidence</p>
+            <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Diagnostic Evidence</p>
             <div className="analysis-scroll max-h-[28rem] space-y-2 rounded border border-gray-800 bg-gray-950/70 p-2.5">
               {snowRecords.length > 0 && (
                 <div className="space-y-1.5">
@@ -685,7 +746,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
         )}
 
         <section className="space-y-2">
-          <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Code Analysis</p>
+          <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Assessment</p>
           <div className="analysis-scroll max-h-56 rounded border border-gray-800 bg-gray-950/70 p-2.5 space-y-1.5">
             {codeAnalysisRows.map((item, idx) => (
               <div key={`code-analysis-${idx}`} className="rounded border border-gray-800 bg-gray-900/70 px-2.5 py-2">
@@ -693,23 +754,83 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                 <p className="text-xs text-gray-200 leading-relaxed">{item.detail}</p>
               </div>
             ))}
+            {gapRows.map((line, idx) => (
+              <div key={`assessment-gap-${idx}`} className="rounded border border-gray-800 bg-gray-900/70 px-2.5 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-gray-500">Reasoning step</p>
+                <p className="text-xs text-gray-200 leading-relaxed">{line}</p>
+              </div>
+            ))}
           </div>
         </section>
 
+        {(analyzedArtifacts.length > 0 || notAnalyzedArtifacts.length > 0) && (
+          <section className="space-y-2">
+            <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Artifact Coverage</p>
+            <div className="rounded border border-gray-800 bg-gray-950/70 p-2.5 space-y-2">
+              {analyzedArtifacts.slice(0, 8).map((item, idx) => (
+                <p key={`artifact-ok-${idx}`} className="text-xs text-emerald-300 leading-relaxed">- Analyzed: {item.file} ({item.type}) - {item.finding}</p>
+              ))}
+              {notAnalyzedArtifacts.slice(0, 8).map((item, idx) => (
+                <p key={`artifact-gap-${idx}`} className="text-xs text-yellow-300 leading-relaxed">- Not analyzed: {item.file} ({item.type}) - {item.reason}</p>
+              ))}
+            </div>
+          </section>
+        )}
+
         <section className="space-y-2">
-          <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Gap</p>
-          <pre className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap font-sans">{analysis.gap}</pre>
+          <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Recommended Next Steps</p>
+          <div className="rounded border border-gray-800 bg-gray-950/70 p-2.5 space-y-1">
+            {recommendedSteps.length > 0 ? recommendedSteps.map((step, idx) => (
+              <p key={`next-step-${idx}`} className="text-xs text-gray-200 leading-relaxed">{idx + 1}. {step}</p>
+            )) : (
+              <p className="text-xs text-gray-400">No additional action list generated.</p>
+            )}
+          </div>
         </section>
 
         {analysis.blindSpots.length > 0 && (
           <div className="space-y-1.5">
             <p className="text-xs font-semibold text-yellow-300 uppercase tracking-wide flex items-center gap-1">
-              <AlertTriangle size={10} /> Blind Spots
+              <AlertTriangle size={10} /> Evidence Gaps
             </p>
             {analysis.blindSpots.map((b, i) => (
               <p key={i} className="text-xs text-yellow-200/90 leading-relaxed">- {b}</p>
             ))}
           </div>
+        )}
+
+        {analysis.skillSections && (
+          <section className="space-y-2">
+            <details className="group rounded border border-gray-800 bg-gray-950/70 p-2.5" open={false}>
+              <summary className="cursor-pointer text-xs font-semibold text-cyan-200 uppercase tracking-wide list-none">Analysis Framework Trace (skills)</summary>
+              <div className="grid gap-2 md:grid-cols-2 mt-2">
+              <div className="rounded border border-gray-800 bg-gray-900/70 px-2.5 py-2 space-y-1">
+                <p className="text-[11px] uppercase tracking-wide text-gray-500">Preflight checks</p>
+                {analysis.skillSections.preflightChecks.map((line, idx) => (
+                  <p key={`skill-preflight-${idx}`} className="text-xs text-gray-200">- {line}</p>
+                ))}
+              </div>
+              <div className="rounded border border-gray-800 bg-gray-900/70 px-2.5 py-2 space-y-1">
+                <p className="text-[11px] uppercase tracking-wide text-gray-500">Routing decision</p>
+                {analysis.skillSections.routingDecision.map((line, idx) => (
+                  <p key={`skill-route-${idx}`} className="text-xs text-gray-200">- {line}</p>
+                ))}
+              </div>
+              <div className="rounded border border-gray-800 bg-gray-900/70 px-2.5 py-2 space-y-1">
+                <p className="text-[11px] uppercase tracking-wide text-gray-500">Skill files used</p>
+                {analysis.skillSections.skillFilesUsed.map((line, idx) => (
+                  <p key={`skill-files-${idx}`} className="text-xs text-gray-200">- {line}</p>
+                ))}
+              </div>
+              <div className="rounded border border-gray-800 bg-gray-900/70 px-2.5 py-2 space-y-1">
+                <p className="text-[11px] uppercase tracking-wide text-gray-500">Evidence quality</p>
+                {analysis.skillSections.evidenceQuality.map((line, idx) => (
+                  <p key={`skill-quality-${idx}`} className="text-xs text-gray-200">- {line}</p>
+                ))}
+              </div>
+              </div>
+            </details>
+          </section>
         )}
       </div>
 

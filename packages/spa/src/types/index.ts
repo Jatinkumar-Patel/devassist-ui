@@ -149,6 +149,12 @@ export interface TriageAnalysis {
   codeAnalysis: string;
   gap: string;
   blindSpots: string[];
+  skillSections?: {
+    preflightChecks: string[];
+    routingDecision: string[];
+    skillFilesUsed: string[];
+    evidenceQuality: string[];
+  };
   l2Draft?: string;               // human-gated — shown for approval, never auto-posted
   defectDraft?: {
     title: string;

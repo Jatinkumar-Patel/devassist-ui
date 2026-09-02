@@ -753,6 +753,60 @@ function summarizeSpreadsheetFindings(spreadsheetSummaries: SpreadsheetSummaryIn
   return Array.from(new Set(out)).slice(0, 8);
 }
 
+function tryExtractAreaIdFromPath(value: string): string | null {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+
+  const normalized = text.replace(/\\/g, '/');
+  const areaMatch = normalized.match(/\/areas\/([^\/\?#]+)/i);
+  if (areaMatch?.[1]) return areaMatch[1].trim();
+
+  return null;
+}
+
+function deriveSkillAreaCandidates(product: Product, areaPath: string): string[] {
+  const candidates: string[] = [];
+
+  const fromAreaPath = areaPath.includes('mobilex') ? 'sunrise-mobile'
+    : areaPath.includes('compass') ? 'compass-scm'
+    : areaPath.includes('clindoc') ? 'clindoc-scm'
+    : '';
+  if (fromAreaPath) candidates.push(fromAreaPath);
+
+  for (const ref of product.localSkills ?? []) {
+    const areaId = tryExtractAreaIdFromPath(ref.path);
+    if (areaId) candidates.push(areaId);
+  }
+  for (const ref of product.githubSkills ?? []) {
+    const areaId = tryExtractAreaIdFromPath(ref.path);
+    if (areaId) candidates.push(areaId);
+  }
+  for (const value of product.skillPaths ?? []) {
+    const areaId = tryExtractAreaIdFromPath(value);
+    if (areaId) candidates.push(areaId);
+  }
+  for (const value of product.githubSkillPaths ?? []) {
+    const areaId = tryExtractAreaIdFromPath(value);
+    if (areaId) candidates.push(areaId);
+  }
+  if (product.skillPath) {
+    const areaId = tryExtractAreaIdFromPath(product.skillPath);
+    if (areaId) candidates.push(areaId);
+  }
+
+  if (product.id) candidates.push(product.id);
+
+  const deduped: string[] = [];
+  const seen = new Set<string>();
+  for (const value of candidates.map((x) => x.trim()).filter(Boolean)) {
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(value);
+  }
+  return deduped;
+}
+
 export async function buildSkillDrivenAssessment(
   adoItem: AdoWorkItem,
   product: Product,
@@ -815,10 +869,7 @@ export async function buildSkillDrivenAssessment(
   const bridge = BRIDGE();
   const f = adoItem.fields;
   const areaPath = String(f['System.AreaPath'] ?? '').toLowerCase();
-  const areaId = areaPath.includes('mobilex') ? 'sunrise-mobile'
-    : areaPath.includes('compass') ? 'compass-scm'
-    : areaPath.includes('clindoc') ? 'clindoc-scm'
-    : null;
+  const areaCandidates = deriveSkillAreaCandidates(product, areaPath);
 
   // Collect all evidence text for pattern scoring
   const allText = [
@@ -840,17 +891,23 @@ export async function buildSkillDrivenAssessment(
   let playbook: PlaybookPattern[] = [];
   let reposMd = '';
   let profileMd = '';
+  let resolvedAreaId = '';
+  let loadedSkillFiles: string[] = [];
 
-  if (areaId) {
+  for (const areaId of areaCandidates) {
     try {
-      const r = await fetch(`${bridge}/api/skills/area/${areaId}`, { signal: AbortSignal.timeout(4000) });
-      if (r.ok) {
-        const data = await r.json() as { files: Record<string, string> };
-        if (data.files['analysis-playbook.md']) playbook = parsePlaybook(data.files['analysis-playbook.md']);
-        reposMd   = data.files['repositories.md'] ?? '';
-        profileMd = data.files['profile.md'] ?? '';
-      }
-    } catch { /* non-fatal — fall through to keyword-only */ }
+      const r = await fetch(`${bridge}/api/skills/area/${encodeURIComponent(areaId)}`, { signal: AbortSignal.timeout(4000) });
+      if (!r.ok) continue;
+      const data = await r.json() as { files: Record<string, string> };
+      if (data.files['analysis-playbook.md']) playbook = parsePlaybook(data.files['analysis-playbook.md']);
+      reposMd = data.files['repositories.md'] ?? '';
+      profileMd = data.files['profile.md'] ?? '';
+      loadedSkillFiles = Object.keys(data.files ?? {});
+      resolvedAreaId = areaId;
+      break;
+    } catch {
+      // Non-fatal: continue trying the next candidate.
+    }
   }
 
   // ── Step 2: score playbook patterns ──────────────────────────────────────
@@ -956,9 +1013,11 @@ export async function buildSkillDrivenAssessment(
       `No pattern match for: ${title.slice(0, 100)}`,
       snowTechTerms.length ? `SNOW technical identifiers: ${snowTechTerms.join(', ')}` : '',
       `Repos: ${product.repos.map(r => `${r.owner}/${r.repo}`).join(', ')}`,
-      areaId
-        ? `Skill area: ${areaId} (${playbook.length} patterns loaded, none high-confidence)`
-        : `No skill-area mapping for this product/area path. Configure skill mapping in product registry or skill-area rules.`,
+      resolvedAreaId
+        ? `Skill area: ${resolvedAreaId} (${playbook.length} patterns loaded, none high-confidence)`
+        : areaCandidates.length
+          ? `No skill area matched from candidates: ${areaCandidates.join(', ')}`
+          : `No skill-area mapping for this product/area path. Configure skill mapping in product registry or skill-area rules.`,
       codeHits.length ? `Code hits: ${codeHits.map(h => h.path).slice(0,4).join(', ')}` : 'Code hits: none',
       versionEvidence.length ? `Historical same-version items (context only): ${versionEvidence.slice(0, 4).map((i) => `#${i.id} ${i.type} (${i.state})`).join(', ')}` : '',
       databaseEvidence.length ? `Database repo hits: ${databaseEvidence.slice(0, 4).map((h) => `${h.repo}:${h.path}`).join(', ')}` : '',
@@ -1020,7 +1079,7 @@ export async function buildSkillDrivenAssessment(
   if (!matchedPlaybookPattern && playbook.length > 0) {
     blindSpots.push(`None of the ${playbook.length} playbook patterns matched with high confidence — this may be a new/unknown pattern`);
   }
-  if (areaId === 'sunrise-mobile') {
+  if (resolvedAreaId === 'sunrise-mobile') {
     blindSpots.push('Device-side logs unavailable — client traces in HWS are anonymous (Spike 9375402)');
     blindSpots.push('Cannot tie HWS log entries to specific users without session IDs');
   }
@@ -1053,6 +1112,32 @@ export async function buildSkillDrivenAssessment(
     }\n\n${confText}.`;
   }
 
+  const skillSections = {
+    preflightChecks: [
+      `Input type: ${String((adoItem as any)?.id ? 'DA/TFS' : 'Direct SNOW')}`,
+      `Bridge endpoint: ${bridge}`,
+      `Skill root status: ${resolvedAreaId ? 'matched' : 'not matched'}`,
+      `Playbook patterns loaded: ${playbook.length}`,
+    ],
+    routingDecision: [
+      `Product selected: ${product.displayName} (${product.id})`,
+      `ADO area path: ${String(f['System.AreaPath'] ?? '-')}`,
+      `Skill area candidates: ${areaCandidates.join(', ') || '-'}`,
+      `Resolved skill area: ${resolvedAreaId || 'none'}`,
+    ],
+    skillFilesUsed: loadedSkillFiles.length
+      ? loadedSkillFiles.sort((a, b) => a.localeCompare(b))
+      : ['No skill files loaded for current area mapping'],
+    evidenceQuality: [
+      `SNOW evidence rows: ${snowEvidence.length}`,
+      `Log hit rows: ${logHits?.length ?? 0}`,
+      `Code hits: ${codeHits.length}`,
+      `Spreadsheet summaries: ${spreadsheetSummaries.length}`,
+      `Image OCR summaries: ${imageSummaries.length}`,
+      blindSpots.length ? `Primary gap: ${blindSpots[0]}` : 'No major evidence gap detected',
+    ],
+  };
+
   return {
     verdict: rawVerdict,
     confidence,
@@ -1061,6 +1146,7 @@ export async function buildSkillDrivenAssessment(
     codeAnalysis,
     gap,
     blindSpots,
+    skillSections,
     l2Draft,
   };
 }
