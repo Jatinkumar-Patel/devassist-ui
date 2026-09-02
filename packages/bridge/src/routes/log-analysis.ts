@@ -111,6 +111,7 @@ interface LogAnalysisResult {
   lockPairs: LogHit[];
   topSeeds: Record<string, number>;
   stackTraces: StackTraceSummary[];
+  operationTimelineSummaries: OperationTimelineSummary[];
   spreadsheetSummaries: SpreadsheetSummary[];
   imageSummaries: ImageSummary[];
   suggestions: CodeSuggestion[];
@@ -124,6 +125,15 @@ interface StackTraceSummary {
   signature: string;
   firstLine: number;
   preview: string;
+}
+
+interface OperationTimelineSummary {
+  file: string;
+  rowsParsed: number;
+  delayedCount: number;
+  errorRows: number;
+  thresholdSeconds: number;
+  topDelayed: Array<{ operation: string; durationSeconds: number; logs: number; line: number }>;
 }
 
 interface LogAnalysisCacheEntry {
@@ -144,6 +154,7 @@ const MAX_SKIP_BYTES   = 500 * 1024 * 1024; // 500 MB — truly skip
 const MAX_OCR_IMAGE_BYTES = 15 * 1024 * 1024;
 const MAX_STACK_TRACES = 5;
 const SKIP_OPERATIONS = ['CheckShellForIdle', 'GetConnectedHCServerName', 'ResolveLocalHost'];
+const TIMELINE_DELAY_THRESHOLD_SECONDS = 2.0;
 
 function shouldSkipOperationLine(line: string): boolean {
   return SKIP_OPERATIONS.some((op) => line.toLowerCase().includes(op.toLowerCase()));
@@ -311,6 +322,83 @@ function parseHwsLog(content: string, fileName: string): LogHit[] {
     }
   }
   return hits;
+}
+
+function parseOperationTimelineRows(content: string, fileName: string): {
+  hits: LogHit[];
+  summary: OperationTimelineSummary | null;
+} {
+  const hits: LogHit[] = [];
+  const parsedRows: Array<{ operation: string; durationSeconds: number; logs: number; line: number }> = [];
+  let errorRows = 0;
+
+  const lines = content.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i]?.replace(/\r/g, '').trim() ?? '';
+    if (!raw) continue;
+    if (!raw.includes(' - ')) continue;
+
+    const cols = raw.split(/\t+|\s{2,}/).map((x) => x.trim()).filter(Boolean);
+    if (cols.length < 5) continue;
+
+    const operation = cols[0];
+    const duration = Number(cols[1]);
+    const logs = Number(cols[4]);
+    if (!Number.isFinite(duration) || !Number.isFinite(logs)) continue;
+
+    if (shouldSkipOperationLine(operation)) continue;
+
+    parsedRows.push({ operation, durationSeconds: duration, logs, line: i + 1 });
+
+    if (/logerror|logexception/i.test(operation)) {
+      errorRows += 1;
+      hits.push({
+        file: fileName,
+        line: i + 1,
+        text: `${operation} reported at timeline row (${duration.toFixed(3)}s, logs=${logs})`,
+        seed: 'OperationTimelineError',
+        category: 'error',
+      });
+      continue;
+    }
+
+    if (duration > TIMELINE_DELAY_THRESHOLD_SECONDS) {
+      hits.push({
+        file: fileName,
+        line: i + 1,
+        text: `${operation} exceeded ${TIMELINE_DELAY_THRESHOLD_SECONDS}s threshold (${duration.toFixed(3)}s, logs=${logs})`,
+        seed: 'OperationTimelineDelay',
+        category: 'warning',
+      });
+    }
+  }
+
+  if (!parsedRows.length) {
+    return { hits, summary: null };
+  }
+
+  const delayed = parsedRows.filter((row) => row.durationSeconds > TIMELINE_DELAY_THRESHOLD_SECONDS);
+  const topDelayed = delayed
+    .sort((a, b) => b.durationSeconds - a.durationSeconds)
+    .slice(0, 5)
+    .map((row) => ({
+      operation: row.operation,
+      durationSeconds: row.durationSeconds,
+      logs: row.logs,
+      line: row.line,
+    }));
+
+  return {
+    hits,
+    summary: {
+      file: fileName,
+      rowsParsed: parsedRows.length,
+      delayedCount: delayed.length,
+      errorRows,
+      thresholdSeconds: TIMELINE_DELAY_THRESHOLD_SECONDS,
+      topDelayed,
+    },
+  };
 }
 
 function extractStackTraces(content: string, fileName: string, maxCount: number): StackTraceSummary[] {
@@ -647,6 +735,7 @@ function buildExplanation(result: {
   byCategory: Record<string, LogHit[]>;
   topSeeds: Record<string, number>;
   stackTraces: StackTraceSummary[];
+  operationTimelineSummaries: OperationTimelineSummary[];
   spreadsheetSummaries: SpreadsheetSummary[];
   imageSummaries: ImageSummary[];
   lockPairs: LogHit[];
@@ -695,6 +784,13 @@ function buildExplanation(result: {
 
   if (result.stackTraces.length > 0) {
     explanation.push(`Top exception stack traces extracted: ${result.stackTraces.map((t) => `${t.exception} in ${t.file}:${t.firstLine}`).join(' | ')}.`);
+  }
+
+  if (result.operationTimelineSummaries.length > 0) {
+    const totalRows = result.operationTimelineSummaries.reduce((sum, s) => sum + s.rowsParsed, 0);
+    const delayedRows = result.operationTimelineSummaries.reduce((sum, s) => sum + s.delayedCount, 0);
+    const errorRows = result.operationTimelineSummaries.reduce((sum, s) => sum + s.errorRows, 0);
+    explanation.push(`Operation timeline format detected: ${totalRows} row(s) parsed, ${delayedRows} delay row(s) over ${TIMELINE_DELAY_THRESHOLD_SECONDS}s, ${errorRows} error row(s).`);
   }
 
   if (result.spreadsheetSummaries.length > 0) {
@@ -759,6 +855,7 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
     const rawTextBlocks: Array<{ file: string; content: string }> = [];
     const spreadsheetSummaries: SpreadsheetSummary[] = [];
     const imageSummaries: ImageSummary[] = [];
+    const operationTimelineSummaries: OperationTimelineSummary[] = [];
     const analyzed: string[] = [];
     const skipped: string[] = [];
     let suppressedNoiseCount = 0;
@@ -845,8 +942,11 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
               }
               suppressedNoiseCount += content.split('\n').filter((line) => shouldSkipOperationLine(line)).length;
               rawTextBlocks.push({ file: `${fileName}/${relativeName}`, content });
-              hits = parseHwsLog(content, `${fileName}/${relativeName}`);
-              analyzed.push(`${fileName}/${relativeName}${note} (${hits.length} hit(s))`);
+              const timelineParsed = parseOperationTimelineRows(content, `${fileName}/${relativeName}`);
+              if (timelineParsed.summary) operationTimelineSummaries.push(timelineParsed.summary);
+              hits = [...parseHwsLog(content, `${fileName}/${relativeName}`), ...timelineParsed.hits];
+              const timelineNote = timelineParsed.summary ? `, timeline rows=${timelineParsed.summary.rowsParsed}, delayed=${timelineParsed.summary.delayedCount}` : '';
+              analyzed.push(`${fileName}/${relativeName}${note} (${hits.length} hit(s)${timelineNote})`);
             }
 
             allHits.push(...hits);
@@ -886,8 +986,11 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
             }
             suppressedNoiseCount += content.split('\n').filter((line) => shouldSkipOperationLine(line)).length;
             rawTextBlocks.push({ file: fileName, content });
-            hits = parseHwsLog(content, fileName);
-            analyzed.push(`${fileName}${note} (${hits.length} hit(s))`);
+            const timelineParsed = parseOperationTimelineRows(content, fileName);
+            if (timelineParsed.summary) operationTimelineSummaries.push(timelineParsed.summary);
+            hits = [...parseHwsLog(content, fileName), ...timelineParsed.hits];
+            const timelineNote = timelineParsed.summary ? `, timeline rows=${timelineParsed.summary.rowsParsed}, delayed=${timelineParsed.summary.delayedCount}` : '';
+            analyzed.push(`${fileName}${note} (${hits.length} hit(s)${timelineNote})`);
           }
 
           allHits.push(...hits);
@@ -918,6 +1021,7 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
       lockPairs: lockPairs.slice(0, 20),
       topSeeds: summariseBySeeds(allHits),
       stackTraces,
+      operationTimelineSummaries: operationTimelineSummaries.slice(0, 20),
       spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
       imageSummaries: imageSummaries.slice(0, 40),
       suggestions,
@@ -930,6 +1034,7 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
         byCategory,
         topSeeds: summariseBySeeds(allHits),
         stackTraces,
+        operationTimelineSummaries: operationTimelineSummaries.slice(0, 20),
         spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
         imageSummaries: imageSummaries.slice(0, 40),
         lockPairs: lockPairs.slice(0, 20),

@@ -38,6 +38,14 @@ interface LogAnalysisResult {
     firstLine: number;
     preview: string;
   }>;
+  operationTimelineSummaries?: Array<{
+    file: string;
+    rowsParsed: number;
+    delayedCount: number;
+    errorRows: number;
+    thresholdSeconds: number;
+    topDelayed: Array<{ operation: string; durationSeconds: number; logs: number; line: number }>;
+  }>;
   explanation?: string[];
   spreadsheetSummaries?: Array<{
     file: string;
@@ -205,6 +213,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
       byCategory,
       topSeeds,
       stackTraces: items.flatMap((x) => x.stackTraces ?? []).slice(0, 8),
+      operationTimelineSummaries: items.flatMap((x) => x.operationTimelineSummaries ?? []).slice(0, 20),
       spreadsheetSummaries,
       imageSummaries,
       suggestions: items.flatMap((x) => x.suggestions ?? []),
@@ -515,6 +524,34 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
                     <p className="text-fuchsia-200 font-mono break-all">{trace.file}:{trace.firstLine}</p>
                     <p className="text-fuchsia-100/90">{trace.exception}</p>
                     <p className="text-gray-400 font-mono break-all">{trace.preview}</p>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {result.operationTimelineSummaries && result.operationTimelineSummaries.length > 0 && (
+            <details className="rounded-lg border border-sky-900/60 bg-sky-950/20 p-3 group" open>
+              <summary className="flex items-center justify-between cursor-pointer list-none select-none">
+                <span className="text-xs font-medium text-sky-200">Operation timeline analysis ({result.operationTimelineSummaries.length} file(s))</span>
+                <ChevronDown size={11} className="group-open:rotate-180 transition-transform text-sky-300" />
+              </summary>
+              <div className="mt-2 space-y-2 max-h-56 overflow-auto">
+                {result.operationTimelineSummaries.map((summary, i) => (
+                  <div key={`${summary.file}-${i}`} className="text-xs rounded border border-sky-900/50 bg-black/20 p-2 space-y-1">
+                    <p className="text-sky-200 font-mono break-all">{summary.file}</p>
+                    <p className="text-gray-300">
+                      Rows parsed: {summary.rowsParsed} | Delay rows (&gt; {summary.thresholdSeconds}s): {summary.delayedCount} | Error rows: {summary.errorRows}
+                    </p>
+                    {summary.topDelayed.length > 0 && (
+                      <div className="space-y-0.5 pt-1 border-t border-sky-900/50">
+                        {summary.topDelayed.slice(0, 4).map((row, idx) => (
+                          <p key={idx} className="text-gray-300">
+                            {row.operation} at line {row.line}: {row.durationSeconds.toFixed(3)}s ({row.logs} log lines)
+                          </p>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
