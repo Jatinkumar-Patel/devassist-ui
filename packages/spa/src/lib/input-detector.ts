@@ -3,6 +3,7 @@ import type { InputType } from '../types';
 // Pattern → type → numeric id extraction
 const PATTERNS: Array<{ re: RegExp; type: InputType; extractId: (m: RegExpMatchArray) => string }> = [
   { re: /\b(DA[-\s]?)(\d{6,})\b/i,       type: 'DA',   extractId: (m) => m[2] },
+  { re: /\b(TFS)\s*[:#-]?\s*(\d{6,})\b/i, type: 'TFS',  extractId: (m) => m[2] },
   { re: /\b(INC)(\d{7,})\b/i,             type: 'INC',  extractId: (m) => `${m[1]}${m[2]}` },
   { re: /\b(TASK)(\d{7,})\b/i,            type: 'TASK', extractId: (m) => `${m[1]}${m[2]}` },
   { re: /\b(CS)(\d{7,})\b/i,              type: 'CS',   extractId: (m) => `${m[1]}${m[2]}` },

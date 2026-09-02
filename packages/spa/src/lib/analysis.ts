@@ -345,8 +345,8 @@ export function buildAssessment(
     const jsonSummaries = summarizeSnowAuditJson(stripped);
     if (jsonSummaries.length) return jsonSummaries;
 
-    if (stripped.length > 260) {
-      return [`${stripped.slice(0, 260)}...`];
+    if (stripped.length > 1600) {
+      return [`${stripped.slice(0, 1600)}...`];
     }
 
     return [stripped];
@@ -363,7 +363,7 @@ export function buildAssessment(
       .filter(l => l.length > 15 && (
         /error|exception|fail|cannot|unable|version|repro|confirm|observed|occur|steps|workaround|found|checked|tested|changed|updated|priority|assigned|state/i.test(l)
       ))
-      .slice(0, 8);
+      .slice(0, 24);
     snowEvidence.push(...evidenceLines);
 
     // Also extract version numbers mentioned
@@ -764,6 +764,12 @@ function tryExtractAreaIdFromPath(value: string): string | null {
   return null;
 }
 
+function looksLikeLocalFilePath(value: string): boolean {
+  const text = String(value ?? '').trim().replace(/^['"]|['"]$/g, '');
+  if (!text) return false;
+  return /^[a-zA-Z]:\\[^\r\n]+\.(html?|txt|log|csv|tsv|json|xml|png|jpe?g|gif|xlsx?|zip)$/i.test(text);
+}
+
 function deriveSkillAreaCandidates(product: Product, areaPath: string): string[] {
   const candidates: string[] = [];
 
@@ -925,17 +931,18 @@ export async function buildSkillDrivenAssessment(
   // ── Step 3: client reported ───────────────────────────────────────────────
   const desc = String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '')
     .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const safeDesc = looksLikeLocalFilePath(desc) ? '' : desc;
   const clientReported = bulletize([
     `Customer: ${customer}`,
     `Version: ${version}`,
     `Issue: ${title}`,
-    desc ? `Context: ${desc.slice(0, 220)}` : '',
+    safeDesc ? `Context: ${safeDesc.slice(0, 220)}` : '',
   ]);
 
   // ── Step 4: SNOW evidence ─────────────────────────────────────────────────
   const snowEvidence: string[] = [];
   if (snowWorkNotes) {
-    const lines = summarizeSnowWorkNotes(snowWorkNotes);
+    const lines = summarizeSnowWorkNotes(snowWorkNotes).filter((line) => !looksLikeLocalFilePath(line));
     snowEvidence.push(...lines);
     const vers = snowWorkNotes.match(/\b\d+\.\d+(\.\d+)+\b/g)?.slice(0, 3) ?? [];
     if (vers.length) snowEvidence.push(`Versions in SNOW: ${vers.join(', ')}`);
