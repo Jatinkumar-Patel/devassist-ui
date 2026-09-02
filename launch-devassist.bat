@@ -75,29 +75,28 @@ if errorlevel 1 (
     exit /b 1
   )
 ) else (
+  set "SYNC_FAILED="
   git fetch origin main --prune
-  if errorlevel 1 goto :fallback_refresh
-  git checkout main
-  if errorlevel 1 goto :fallback_refresh
-  git reset --hard origin/main
-  if errorlevel 1 goto :fallback_refresh
-)
-goto :post_update
+  if errorlevel 1 set "SYNC_FAILED=1"
+  if not defined SYNC_FAILED git checkout main
+  if errorlevel 1 set "SYNC_FAILED=1"
+  if not defined SYNC_FAILED git reset --hard origin/main
+  if errorlevel 1 set "SYNC_FAILED=1"
 
-:fallback_refresh
-echo [INFO] Git sync failed. Trying fallback refresh without deleting local repo...
-call npx --yes degit Jatinkumar-Patel/devassist-ui "%REPO_DIR%" --force
-if errorlevel 1 (
-  echo.
-  echo [ERROR] Could not refresh DevAssist from origin/main.
-  echo Check VPN/network access and try again.
-  echo Optional: install Git for Windows for more reliable updates.
-  popd
-  pause
-  exit /b 1
+  if defined SYNC_FAILED (
+    echo [INFO] Git sync failed. Trying fallback refresh without deleting local repo...
+    call npx --yes degit Jatinkumar-Patel/devassist-ui "%REPO_DIR%" --force
+    if errorlevel 1 (
+      echo.
+      echo [ERROR] Could not refresh DevAssist from origin/main.
+      echo Check VPN/network access and try again.
+      echo Optional: install Git for Windows for more reliable updates.
+      popd
+      pause
+      exit /b 1
+    )
+  )
 )
-
-:post_update
 
 echo [4/7] Installing dependencies (if needed)...
 call npm install
