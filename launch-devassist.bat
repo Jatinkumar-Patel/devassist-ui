@@ -64,10 +64,33 @@ pushd "%REPO_DIR%"
 echo [3/7] Updating to latest version...
 where git >nul 2>&1
 if not errorlevel 1 (
-  git fetch origin >nul 2>&1
-  git checkout main >nul 2>&1
-  git pull origin main >nul 2>&1
+  git fetch origin main --prune
+  if errorlevel 1 goto :reclone
+  git checkout main
+  if errorlevel 1 goto :reclone
+  git reset --hard origin/main
+  if errorlevel 1 goto :reclone
 )
+goto :post_update
+
+:reclone
+echo [INFO] Local repo could not be updated cleanly. Re-downloading latest copy...
+popd
+rmdir /s /q "%REPO_DIR%" >nul 2>&1
+pushd "%BASE_DIR%"
+git clone "%REPO_URL%" devassist-ui
+if errorlevel 1 (
+  popd
+  echo.
+  echo [ERROR] Could not refresh DevAssist repo.
+  echo Check VPN/network access and try again.
+  pause
+  exit /b 1
+)
+popd
+pushd "%REPO_DIR%"
+
+:post_update
 
 echo [4/7] Installing dependencies (if needed)...
 call npm install
@@ -101,6 +124,7 @@ if errorlevel 1 (
 )
 
 echo [7/7] Starting DevAssist...
+powershell -NoProfile -Command "$c=Get-NetTCPConnection -LocalPort 7447 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if($c){ Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue; 'Stopped old bridge PID ' + $c.OwningProcess }"
 start "DevAssist Bridge" cmd /k "node packages/bridge/dist/index.js --no-open"
 
 echo Waiting for startup...
