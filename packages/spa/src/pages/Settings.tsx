@@ -20,6 +20,12 @@ function isLocalBridgeUrl(url: string): boolean {
   }
 }
 
+function isLocalHostPage(): boolean {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname;
+  return host === 'localhost' || host === '127.0.0.1';
+}
+
 export default function SettingsPage() {
   const {
     openaiKey,
@@ -38,6 +44,7 @@ export default function SettingsPage() {
   const [bridgeReachable, setBridgeReachable] = useState<boolean | null>(null);
   const [supportModeEnabled, setSupportModeEnabled] = useState<boolean>(() => localStorage.getItem('devassist-support-mode') === '1');
   const localBridgeMode = isLocalBridgeUrl(bridgeUrl);
+  const localHostPage = isLocalHostPage();
 
   useEffect(() => {
     let cancelled = false;
@@ -222,7 +229,7 @@ export default function SettingsPage() {
           </p>
         </div>
 
-        {localBridgeMode && (
+        {localBridgeMode && localHostPage && (
           <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-2">
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs font-medium text-gray-400 flex items-center gap-1.5">
@@ -266,6 +273,16 @@ export default function SettingsPage() {
                 )}
               </>
             )}
+          </div>
+        )}
+
+        {localBridgeMode && !localHostPage && (
+          <div className="rounded-lg border border-amber-800/60 bg-amber-950/20 p-3 space-y-1.5">
+            <p className="text-xs font-semibold text-amber-300">Support commands hidden on production website</p>
+            <p className="text-xs text-amber-100/90">
+              This page is in end-user mode. Local bridge commands are intentionally hidden here.
+              If bridge recovery is needed, contact support.
+            </p>
           </div>
         )}
       </section>
