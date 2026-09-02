@@ -4,6 +4,7 @@ $repoRoot = Join-Path $env:USERPROFILE 'source\repos\devassist-ui'
 $repoUrl = 'https://github.com/Jatinkumar-Patel/devassist-ui.git'
 $bridgeUrl = 'http://localhost:7447'
 $pagesUrl = 'https://jatinkumar-patel.github.io/devassist-ui/'
+$requiredBridgeVersion = '0.2.0'
 
 Write-Host '================================================'
 Write-Host '             DevAssist Starter'
@@ -38,6 +39,53 @@ function Invoke-GitSync {
   npx --yes degit Jatinkumar-Patel/devassist-ui $repoRoot --force
 }
 
+function Compare-SemVer([string]$a, [string]$b) {
+  $ap = ($a -split '[^0-9]+' | Where-Object { $_ -ne '' } | ForEach-Object { [int]$_ })
+  $bp = ($b -split '[^0-9]+' | Where-Object { $_ -ne '' } | ForEach-Object { [int]$_ })
+  $len = [Math]::Max($ap.Count, $bp.Count)
+  for ($i = 0; $i -lt $len; $i++) {
+    $av = if ($i -lt $ap.Count) { $ap[$i] } else { 0 }
+    $bv = if ($i -lt $bp.Count) { $bp[$i] } else { 0 }
+    if ($av -lt $bv) { return -1 }
+    if ($av -gt $bv) { return 1 }
+  }
+  return 0
+}
+
+function Get-BridgeListener {
+  return Get-NetTCPConnection -LocalPort 7447 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+}
+
+function Stop-BridgeListenerIfAny {
+  $listener = Get-BridgeListener
+  if (-not $listener) {
+    return
+  }
+
+  $pid = $listener.OwningProcess
+  Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Milliseconds 500
+  $still = Get-BridgeListener
+  if ($still -and $still.OwningProcess -eq $pid) {
+    throw "Unable to stop existing bridge process (PID $pid) on port 7447. Close older DevAssist windows and retry."
+  }
+  Write-Host "Stopped old bridge PID $pid"
+}
+
+function Wait-BridgeReady {
+  for ($i = 0; $i -lt 15; $i++) {
+    try {
+      $status = Invoke-RestMethod 'http://localhost:7447/api/status' -TimeoutSec 3
+      if ($status.bridge -eq 'ok') {
+        return $true
+      }
+    } catch {
+      Start-Sleep -Milliseconds 800
+    }
+  }
+  return $false
+}
+
 try {
   if (-not (Test-Path (Join-Path $repoRoot '.git'))) {
     Write-Host '[2/7] First-time setup: downloading DevAssist...'
@@ -68,32 +116,17 @@ try {
 
   Write-Host '[7/7] Starting DevAssist...'
 
-  $listener = Get-NetTCPConnection -LocalPort 7447 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-  if ($listener) {
-    Stop-Process -Id $listener.OwningProcess -Force -ErrorAction SilentlyContinue
-    Write-Host "Stopped old bridge PID $($listener.OwningProcess)"
-  }
+  Stop-BridgeListenerIfAny
 
   $bridgeProcess = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', 'node packages/bridge/dist/index.js --no-open' -WorkingDirectory $repoRoot -PassThru
 
   Write-Host 'Waiting for startup...'
-  $ready = $false
-  for ($i = 0; $i -lt 15; $i++) {
-    try {
-      $status = Invoke-RestMethod 'http://localhost:7447/api/status' -TimeoutSec 3
-      if ($status.bridge -eq 'ok') {
-        $ready = $true
-        break
-      }
-    } catch {
-      Start-Sleep -Milliseconds 800
-    }
-  }
+  $ready = Wait-BridgeReady
 
   if ($ready) {
     Write-Host 'READY'
   } else {
-    Write-Host 'NOT_READY'
+    throw 'Bridge did not become ready on port 7447. Start cancelled.'
   }
 
   $runningVersion = 'unknown'
@@ -103,7 +136,28 @@ try {
   }
 
   Write-Host "Running Bridge version: $runningVersion"
-  Write-Host 'Expected minimum version: 0.2.0'
+  Write-Host "Expected minimum version: $requiredBridgeVersion"
+
+  if ($runningVersion -eq 'unknown' -or (Compare-SemVer $runningVersion $requiredBridgeVersion) -lt 0) {
+    Write-Host '[WARN] Stale or unknown bridge version detected. Attempting one forced restart...'
+    Stop-BridgeListenerIfAny
+    $bridgeProcess = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', 'node packages/bridge/dist/index.js --no-open' -WorkingDirectory $repoRoot -PassThru
+    $ready = Wait-BridgeReady
+    if (-not $ready) {
+      throw 'Bridge restart failed. Start cancelled.'
+    }
+    try {
+      $runningVersion = (Invoke-RestMethod 'http://localhost:7447/api/status' -TimeoutSec 5).version
+    } catch {
+      $runningVersion = 'unknown'
+    }
+    Write-Host "Running Bridge version after restart: $runningVersion"
+  }
+
+  if ($runningVersion -eq 'unknown' -or (Compare-SemVer $runningVersion $requiredBridgeVersion) -lt 0) {
+    throw "Bridge version $runningVersion is below required $requiredBridgeVersion. Start cancelled to prevent stale UI."
+  }
+
   Write-Host ''
   Write-Host 'Opening DevAssist in browser...'
   $browserUrl = "$bridgeUrl/index.html?bridgeUrl=$([uri]::EscapeDataString($bridgeUrl))&v=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())#/triage"
