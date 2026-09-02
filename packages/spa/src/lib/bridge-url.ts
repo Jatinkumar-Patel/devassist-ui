@@ -47,8 +47,8 @@ export function getBridgeUrl(): string {
   return (
     fromWindowGlobal() ??
     fromQueryParam() ??
-    fromPersistedSettings() ??
     fromEnv() ??
+    fromPersistedSettings() ??
     sameOriginApiBase() ??
     DEFAULT_BRIDGE_URL
   );

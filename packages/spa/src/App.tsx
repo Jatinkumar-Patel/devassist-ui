@@ -8,17 +8,22 @@ import SettingsPage from './pages/Settings';
 import { useSettingsStore } from './store/settings';
 import { fetchSecretStatus } from './lib/secret-store';
 
-// On GitHub Pages (HTTPS), probe local bridge. If alive, redirect immediately so
-// the user never has to manually switch URLs again.
-async function redirectToBridgeIfRunning(): Promise<boolean> {
-  if (window.location.protocol !== 'https:') return false; // already on bridge or local
-  const bridgeBase = 'http://localhost:7447';
+const LOCAL_BRIDGE_URL = 'http://localhost:7447';
+const MANAGED_BRIDGE_URL = ((import.meta as any).env?.VITE_BRIDGE_URL as string | undefined)?.trim() || '';
+
+function isLocalBridgeUrl(url: string): boolean {
   try {
-    // Use no-cors: we only need to know the server is alive, not read the response
-    await fetch(`${bridgeBase}/api/status`, { mode: 'no-cors', signal: AbortSignal.timeout(1500) });
-    // If we get here the bridge responded — redirect preserving the hash route
-    window.location.replace(`${bridgeBase}/${window.location.hash}`);
-    return true;
+    const parsed = new URL(url);
+    return parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+  } catch {
+    return false;
+  }
+}
+
+async function isBridgeReachable(baseUrl: string, timeoutMs: number): Promise<boolean> {
+  try {
+    const res = await fetch(`${baseUrl}/api/status`, { signal: AbortSignal.timeout(timeoutMs) });
+    return res.ok;
   } catch {
     return false;
   }
@@ -26,17 +31,45 @@ async function redirectToBridgeIfRunning(): Promise<boolean> {
 
 export default function App() {
   const navigate = useNavigate();
-  const { bridgeUrl, setSecretStatus } = useSettingsStore();
+  const { bridgeUrl, setBridgeUrl, setSecretStatus } = useSettingsStore();
   const [wizardDone, setWizardDone] = useState(localStorage.getItem('devassist-setup-done') === '1');
   const [bridgeChecked, setBridgeChecked] = useState(false);
   const [setupChecked, setSetupChecked] = useState(false);
 
-  // Auto-redirect to localhost:7447 if bridge is running (only relevant from GitHub Pages)
+  const deploymentMode: 'Managed' | 'Local Fallback' | 'Local' =
+    MANAGED_BRIDGE_URL && !isLocalBridgeUrl(MANAGED_BRIDGE_URL)
+      ? (isLocalBridgeUrl(bridgeUrl) ? 'Local Fallback' : 'Managed')
+      : 'Local';
+
+  // Enterprise-first behavior:
+  // 1) Keep using configured bridge URL (typically managed service)
+  // 2) If it is unreachable, automatically fall back to localhost bridge when available
   useEffect(() => {
-    redirectToBridgeIfRunning().then((redirected) => {
-      if (!redirected) setBridgeChecked(true);
-    });
-  }, []);
+    let cancelled = false;
+
+    async function resolveBridge() {
+      const configuredReachable = await isBridgeReachable(bridgeUrl, 1800);
+      if (cancelled) return;
+
+      if (configuredReachable) {
+        setBridgeChecked(true);
+        return;
+      }
+
+      if (!isLocalBridgeUrl(bridgeUrl)) {
+        const localReachable = await isBridgeReachable(LOCAL_BRIDGE_URL, 1500);
+        if (cancelled) return;
+        if (localReachable) {
+          setBridgeUrl(LOCAL_BRIDGE_URL);
+        }
+      }
+
+      setBridgeChecked(true);
+    }
+
+    void resolveBridge();
+    return () => { cancelled = true; };
+  }, [bridgeUrl, setBridgeUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,14 +120,13 @@ export default function App() {
     return () => { cancelled = true; };
   }, [wizardDone, bridgeUrl]);
 
-  // On GitHub Pages, wait for the bridge probe before rendering anything
-  // so the user doesn't see a flash of the setup wizard before the redirect
-  if (window.location.protocol === 'https:' && !bridgeChecked) {
+  // Wait for bridge resolution so users don't see transient setup noise.
+  if (!bridgeChecked) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="flex items-center gap-2 text-sm text-gray-400">
           <div className="w-3 h-3 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
-          Connecting to local bridge…
+          Connecting to DevAssist services…
         </div>
       </div>
     );
@@ -117,7 +149,7 @@ export default function App() {
       {!wizardDone && (
         <SetupWizard onDone={() => { setWizardDone(true); navigate('/triage'); }} />
       )}
-      <NavBar showSettings={wizardDone} />
+      <NavBar showSettings={wizardDone} deploymentMode={deploymentMode} />
       <main className="flex-1 container mx-auto px-3 sm:px-5 py-4 sm:py-7 max-w-7xl">
         <Routes>
           <Route path="/" element={<Navigate to="/triage" replace />} />

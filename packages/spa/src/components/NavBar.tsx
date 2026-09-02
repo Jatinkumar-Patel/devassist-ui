@@ -8,7 +8,7 @@ const links = [
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
-export default function NavBar({ showSettings = true }: { showSettings?: boolean }) {
+export default function NavBar({ showSettings = true, deploymentMode = 'Local' }: { showSettings?: boolean; deploymentMode?: 'Managed' | 'Local Fallback' | 'Local' }) {
   const visibleLinks = showSettings ? links : links.filter((x) => x.to !== '/settings');
   const buildLabel = __APP_BUILD__;
 
@@ -54,6 +54,18 @@ export default function NavBar({ showSettings = true }: { showSettings?: boolean
           </nav>
         </div>
         <div className="self-start sm:self-auto flex items-center gap-2">
+          <span
+            className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+              deploymentMode === 'Managed'
+                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
+                : deploymentMode === 'Local Fallback'
+                  ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+                  : 'border-slate-400/35 bg-slate-500/10 text-slate-200'
+            }`}
+            title={deploymentMode === 'Managed' ? 'Using managed enterprise bridge' : deploymentMode === 'Local Fallback' ? 'Managed bridge unavailable, using local fallback bridge' : 'Using local bridge mode'}
+          >
+            Mode: {deploymentMode}
+          </span>
           <button
             type="button"
             onClick={refreshLatest}

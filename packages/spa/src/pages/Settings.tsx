@@ -11,6 +11,15 @@ interface DiagnosticResult {
   details: string;
 }
 
+function isLocalBridgeUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+  } catch {
+    return false;
+  }
+}
+
 export default function SettingsPage() {
   const {
     openaiKey,
@@ -26,6 +35,7 @@ export default function SettingsPage() {
   const [bridgeCardOpen, setBridgeCardOpen] = useState<boolean>(() => localStorage.getItem('devassist-settings-bridge-open') !== '0');
   const [adoDraft, setAdoDraft] = useState('');
   const [githubDraft, setGithubDraft] = useState('');
+  const localBridgeMode = isLocalBridgeUrl(bridgeUrl);
 
   useEffect(() => {
     let cancelled = false;
@@ -151,6 +161,14 @@ export default function SettingsPage() {
 
       <section className="space-y-4">
         <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Bridge</h2>
+        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3">
+          <p className="text-xs text-gray-300">
+            Mode: <strong className="text-gray-100">{localBridgeMode ? 'Local fallback' : 'Managed website (enterprise)'}</strong>
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            End users should only open the DevAssist URL. Manual bridge commands are for support users only.
+          </p>
+        </div>
         <div className="space-y-1.5">
           <label className="text-xs text-gray-400">Bridge URL</label>
           <input
@@ -158,39 +176,43 @@ export default function SettingsPage() {
             onChange={(e) => setBridgeUrl(e.target.value)}
             className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200
                        font-mono focus:outline-none focus:border-altera-teal"
+            readOnly={!localBridgeMode}
           />
-          <p className="text-xs text-gray-600">Default comes from VITE_BRIDGE_URL for enterprise deployments; localhost is used when not configured.</p>
+          <p className="text-xs text-gray-600">
+            Default comes from VITE_BRIDGE_URL for enterprise deployments. If managed bridge is unreachable, app can fall back to localhost when available.
+          </p>
         </div>
 
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-medium text-gray-400 flex items-center gap-1.5">
-              <Terminal size={12} /> Start the bridge on your machine
-            </p>
-            <button
-              type="button"
-              onClick={toggleBridgeCard}
-              className="text-xs px-2.5 py-1 rounded-md border border-cyan-500/70 bg-cyan-500/15 text-cyan-200 hover:bg-cyan-500/25 font-medium"
-              aria-label={bridgeCardOpen ? 'Collapse bridge setup card' : 'Expand bridge setup card'}
-            >
-              <ChevronDown size={14} className={`transition-transform ${bridgeCardOpen ? '' : '-rotate-90'}`} />
-            </button>
-          </div>
-          {bridgeCardOpen && (
-            <>
-              <div className="text-xs font-mono text-altera-teal bg-gray-950 rounded p-2 overflow-x-auto space-y-2">
-                <p className="text-[11px] text-gray-400 font-sans">Command Prompt (cmd)</p>
-                <p className="break-all">{installCmds.cmd}</p>
-                <p className="text-[11px] text-gray-400 font-sans">PowerShell</p>
-                <p className="break-all">{installCmds.powershell}</p>
-              </div>
-              <p className="text-xs text-gray-600">
-                Runs a local server that proxies SNOW (Windows NTLM) and ADO calls.
-                Must be running for SNOW data and ADO triage to work.
+        {localBridgeMode && (
+          <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-gray-400 flex items-center gap-1.5">
+                <Terminal size={12} /> Support mode: local bridge commands
               </p>
-            </>
-          )}
-        </div>
+              <button
+                type="button"
+                onClick={toggleBridgeCard}
+                className="text-xs px-2.5 py-1 rounded-md border border-cyan-500/70 bg-cyan-500/15 text-cyan-200 hover:bg-cyan-500/25 font-medium"
+                aria-label={bridgeCardOpen ? 'Collapse bridge setup card' : 'Expand bridge setup card'}
+              >
+                <ChevronDown size={14} className={`transition-transform ${bridgeCardOpen ? '' : '-rotate-90'}`} />
+              </button>
+            </div>
+            {bridgeCardOpen && (
+              <>
+                <div className="text-xs font-mono text-altera-teal bg-gray-950 rounded p-2 overflow-x-auto space-y-2">
+                  <p className="text-[11px] text-gray-400 font-sans">Command Prompt (cmd)</p>
+                  <p className="break-all">{installCmds.cmd}</p>
+                  <p className="text-[11px] text-gray-400 font-sans">PowerShell</p>
+                  <p className="break-all">{installCmds.powershell}</p>
+                </div>
+                <p className="text-xs text-gray-600">
+                  Local fallback only. Enterprise users should access DevAssist via managed website URL.
+                </p>
+              </>
+            )}
+          </div>
+        )}
       </section>
 
       <EnvironmentDiagnostics bridgeUrl={bridgeUrl} hasAdoPat={hasAdoPat} hasGithubPat={hasGithubPat} />

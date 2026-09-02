@@ -36,6 +36,9 @@ function isLocalBridgeUrl(url: string): boolean {
 
 function friendlyErrorMessage(error: string, bridgeUrl: string): string {
   if (/Failed to fetch|NetworkError|Load failed/i.test(error)) {
+    if (!isLocalBridgeUrl(bridgeUrl)) {
+      return 'Managed DevAssist bridge is currently unavailable. Please retry in a few minutes or contact support.';
+    }
     if (window.location.protocol === 'https:' && isLocalBridgeUrl(bridgeUrl)) {
       return 'Secure Connector is not available from this page. Open DevAssist from your desktop launch and retry.';
     }

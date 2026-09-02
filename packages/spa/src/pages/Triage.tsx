@@ -173,6 +173,9 @@ function isLocalBridgeUrl(url: string): boolean {
 }
 
 function bridgeHelpMessage(bridgeUrl: string): string {
+  if (!isLocalBridgeUrl(bridgeUrl)) {
+    return 'Managed DevAssist bridge is unreachable. Retry shortly or contact support.';
+  }
   if (window.location.protocol === 'https:' && isLocalBridgeUrl(bridgeUrl)) {
     return 'Secure Connector is not available from this page. Open DevAssist from your desktop/startup launch and retry.';
   }
@@ -408,7 +411,22 @@ function CopyableCommand({ label, value }: { label: string; value: string }) {
 
 function BridgeOfflineBanner({ installCmds, bridgeUrl }: { installCmds: ReturnType<typeof getBridgeInstallCommands>; bridgeUrl: string }) {
   const isHttps = window.location.protocol === 'https:';
+  const isLocal = isLocalBridgeUrl(bridgeUrl);
   const [showManual, setShowManual] = useState(false);
+
+  if (!isLocal) {
+    return (
+      <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-4 space-y-2">
+        <p className="text-sm text-amber-100 font-semibold">Bridge service unavailable</p>
+        <p className="text-xs text-amber-100/90">
+          DevAssist website is configured for managed enterprise bridge access. If this persists, contact support.
+        </p>
+        <p className="text-xs text-amber-200/70">
+          Local fallback activates automatically when localhost bridge is available.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-4 space-y-3">
