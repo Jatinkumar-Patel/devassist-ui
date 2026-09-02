@@ -53,6 +53,12 @@ Behavior:
 
 For local-bridge environments, use a one-time setup and avoid sharing terminal commands with users every day.
 
+Step 1 (PowerShell, safe from any folder including System32):
+
+```powershell
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\source" | Out-Null; $existing = Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 7447 -State Listen -ErrorAction SilentlyContinue; if ($existing) { $procId = $existing.OwningProcess; if ($procId) { Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue } }; Set-Location "$env:USERPROFILE\source"; if (Test-Path "devassist-ui") { npx --yes degit jatinkumar-patel/devassist-ui "devassist-ui" --force; Set-Location "devassist-ui"; npm install; npm run bridge } else { npx --yes degit jatinkumar-patel/devassist-ui "devassist-ui"; Set-Location "devassist-ui"; npm install; npm run bridge }
+```
+
 Run once:
 
 ```text

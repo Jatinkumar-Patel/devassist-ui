@@ -35,6 +35,7 @@ export function getBridgeInstallCommands(): {
   localFolder: string;
 } {
   const repoSlug = getRepoSlug();
+  const repoSlugLower = repoSlug.toLowerCase();
   const localFolder = getLocalFolder(repoSlug);
 
   const baseDirCmd = '%USERPROFILE%\\source';
@@ -51,11 +52,11 @@ export function getBridgeInstallCommands(): {
     `(npx --yes degit ${repoSlug} "${localFolder}" && cd "${localFolder}" && npm install && npm run bridge))`;
 
   const powershell =
-    `New-Item -ItemType Directory -Force -Path "${baseDirPs}" | Out-Null; ` +
-    `${stopExistingBridgePs}; ` +
-    `Set-Location "${baseDirPs}"; ` +
-    `if (Test-Path "${localFolder}") { npx --yes degit ${repoSlug} "${localFolder}" --force; Set-Location "${localFolder}"; npm install; npm run bridge } ` +
-    `else { npx --yes degit ${repoSlug} "${localFolder}"; Set-Location "${localFolder}"; npm install; npm run bridge }`;
+    `New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\\source" | Out-Null; ` +
+    `$existing = Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 7447 -State Listen -ErrorAction SilentlyContinue; ` +
+    `if ($existing) { $procId = $existing.OwningProcess; if ($procId) { Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue } }; ` +
+    `Set-Location "$env:USERPROFILE\\source"; ` +
+    `if (Test-Path "${localFolder}") { npx --yes degit ${repoSlugLower} "${localFolder}" --force; Set-Location "${localFolder}"; npm install; npm run bridge } else { npx --yes degit ${repoSlugLower} "${localFolder}"; Set-Location "${localFolder}"; npm install; npm run bridge }`;
 
   // ── Auto-start via current-user Startup folder ────────────────────────────
   // Run once after first-time install. Bridge will start automatically at every Windows login.
