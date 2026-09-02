@@ -15,12 +15,14 @@ import { secretsRouter } from './routes/secrets';
 interface ServerOptions {
   spaOrigin: string;
   pagesUrl: string;
+  allowedOrigins: string[];
 }
 
-export function createServer({ spaOrigin, pagesUrl }: ServerOptions) {
+export function createServer({ spaOrigin, pagesUrl, allowedOrigins }: ServerOptions) {
   const app = express();
 
   const allowedExactOrigins = new Set([
+    ...allowedOrigins.map((origin) => origin.trim()).filter(Boolean),
     spaOrigin,
     'https://jatinkumar-patel.github.io',
   ]);

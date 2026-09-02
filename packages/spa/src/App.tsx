@@ -10,6 +10,7 @@ import { fetchSecretStatus } from './lib/secret-store';
 
 const LOCAL_BRIDGE_URL = 'http://localhost:7447';
 const MANAGED_BRIDGE_URL = ((import.meta as any).env?.VITE_BRIDGE_URL as string | undefined)?.trim() || '';
+const STRICT_MANAGED = (((import.meta as any).env?.VITE_STRICT_MANAGED as string | undefined)?.trim() || '0') === '1';
 const REQUIRED_LOCAL_BRIDGE_VERSION = '0.2.0';
 
 type LocalBridgeNotice =
@@ -63,7 +64,8 @@ export default function App() {
 
   // Enterprise-first behavior:
   // 1) Keep using configured bridge URL (typically managed service)
-  // 2) If it is unreachable, automatically fall back to localhost bridge when available
+  // 2) In strict managed mode, never fall back to localhost
+  // 3) Otherwise, use localhost fallback when managed bridge is unreachable
   useEffect(() => {
     let cancelled = false;
 
@@ -72,6 +74,11 @@ export default function App() {
       if (cancelled) return;
 
       if (configuredReachable) {
+        setBridgeChecked(true);
+        return;
+      }
+
+      if (STRICT_MANAGED && MANAGED_BRIDGE_URL && !isLocalBridgeUrl(MANAGED_BRIDGE_URL)) {
         setBridgeChecked(true);
         return;
       }
