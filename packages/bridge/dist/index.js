@@ -11,7 +11,7 @@ const SPA_ORIGIN = process.env.SPA_ORIGIN ?? 'https://jatinkumar-patel.github.io
 // The GitHub Pages URL where the SPA is deployed
 const PAGES_URL = process.env.PAGES_URL ?? 'https://jatinkumar-patel.github.io/devassist-ui/';
 const app = (0, server_1.createServer)({ spaOrigin: SPA_ORIGIN });
-app.listen(PORT, '127.0.0.1', () => {
+const server = app.listen(PORT, '127.0.0.1', () => {
     const localUrl = `http://localhost:${PORT}`;
     console.log('\n╔══════════════════════════════════════════════════════╗');
     console.log('║             DevAssist  v0.1.0                      ║');
@@ -25,4 +25,13 @@ app.listen(PORT, '127.0.0.1', () => {
         // Prefer local bridge-served SPA to avoid stale GitHub Pages cache.
         (0, open_1.default)(localUrl).catch(() => (0, open_1.default)(PAGES_URL).catch(() => { }));
     }
+});
+server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.log(`\nDevAssist Bridge is already running on http://localhost:${PORT}`);
+        console.log('Use the existing window/browser tab. Do not start a second bridge instance.\n');
+        process.exit(0);
+    }
+    console.error('Bridge failed to start:', err.message);
+    process.exit(1);
 });

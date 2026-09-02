@@ -47,6 +47,13 @@ function createServer({ spaOrigin }) {
     app.use('/api/skills', skills_1.skillsRouter);
     app.use('/api/registry', registry_1.registryRouter);
     app.use('/api/secrets', secrets_1.secretsRouter);
+    // Prevent unknown API routes from falling through to SPA HTML.
+    app.use('/api', (req, res) => {
+        res.status(404).json({
+            error: `Unknown API route: ${req.method} ${req.path}`,
+            hint: 'Bridge may be outdated. Update and restart bridge to use newly added endpoints.',
+        });
+    });
     // Serve the built SPA if it exists alongside the bridge dist
     const spaPath = path_1.default.resolve(__dirname, '../../spa/dist');
     app.use((req, res, next) => {

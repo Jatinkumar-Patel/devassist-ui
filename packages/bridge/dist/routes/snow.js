@@ -82,6 +82,16 @@ function snowFieldValue(field) {
     }
     return String(field);
 }
+function pickSnowProductField(row) {
+    const candidates = [
+        snowFieldValue(row['u_product']),
+        snowFieldValue(row['product']),
+        snowFieldValue(row['cmdb_ci']),
+        snowFieldValue(row['service_offering']),
+        snowFieldValue(row['business_service']),
+    ].filter(Boolean);
+    return candidates[0] ?? '';
+}
 function getIncidentCaseNumber(incident) {
     if (!incident)
         return null;
@@ -336,6 +346,52 @@ exports.snowRouter.get('/escalate/:taskSysId', async (req, res) => {
             clientCase = caseData?.result?.[0] ?? null;
         }
         return res.json({ incident, case: clientCase });
+    }
+    catch (err) {
+        return res.status(502).json({ error: err.message });
+    }
+});
+// GET /api/snow/lookups — distinct Product + Assignment Group options from recent SNOW records
+exports.snowRouter.get('/lookups', async (_req, res) => {
+    const tables = ['incident_task', 'sc_task', 'sn_customerservice_task', 'sn_customerservice_case'];
+    const assignmentGroups = new Set();
+    const products = new Set();
+    const fields = [
+        'assignment_group',
+        'u_product',
+        'product',
+        'cmdb_ci',
+        'service_offering',
+        'business_service',
+        'sys_updated_on',
+    ].join(',');
+    try {
+        for (const table of tables) {
+            try {
+                const query = encodeURIComponent('active=true^ORDERBYDESCsys_updated_on');
+                const url = `${SNOW_BASE}/GetTableJSON/?tablename=${table}&sysparm_query=${query}&sysparm_fields=${fields}&sysparm_limit=300`;
+                const decoded = await snowFetchDecoded(url);
+                const rows = Array.isArray(decoded?.result) ? decoded.result : [];
+                for (const row of rows) {
+                    const group = snowFieldValue(row.assignment_group);
+                    if (group)
+                        assignmentGroups.add(group);
+                    const product = pickSnowProductField(row);
+                    if (product)
+                        products.add(product);
+                }
+            }
+            catch {
+                // Skip individual table failures; return best-effort merged list.
+            }
+        }
+        const sortAlpha = (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' });
+        return res.json({
+            assignmentGroups: Array.from(assignmentGroups).sort(sortAlpha),
+            products: Array.from(products).sort(sortAlpha),
+            sampledAt: new Date().toISOString(),
+            sourceTables: tables,
+        });
     }
     catch (err) {
         return res.status(502).json({ error: err.message });
