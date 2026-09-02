@@ -72,14 +72,9 @@ export default function TriageInput({ onSubmit, onStop, loading }: Props) {
       setRegistryError(null);
       const r = await loadRegistry();
       setRegistry(r);
-      if (r.groups?.length) {
-        const firstGroup = r.groups[0];
-        setSelectedGroupId(firstGroup.id);
-        setSelectedProductIds(firstGroup.productIds ?? []);
-      } else {
-        // If no groups are configured, default to all products.
-        setSelectedProductIds((r.products ?? []).map((p) => p.id));
-      }
+      // Default scope is intentionally empty: users opt in to product(s) explicitly.
+      setSelectedGroupId('');
+      setSelectedProductIds([]);
     } catch (e: any) {
       setRegistry(null);
       setRegistryError(e?.message ?? 'Unable to load product registry.');
