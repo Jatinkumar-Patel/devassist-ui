@@ -14,9 +14,10 @@ import { secretsRouter } from './routes/secrets';
 
 interface ServerOptions {
   spaOrigin: string;
+  pagesUrl: string;
 }
 
-export function createServer({ spaOrigin }: ServerOptions) {
+export function createServer({ spaOrigin, pagesUrl }: ServerOptions) {
   const app = express();
 
   const allowedExactOrigins = new Set([
@@ -67,6 +68,12 @@ export function createServer({ spaOrigin }: ServerOptions) {
       res.setHeader('Surrogate-Control', 'no-store');
     }
     next();
+  });
+
+  app.get('/', (_req: Request, res: Response) => {
+    const localBridgeUrl = 'http://localhost:7447';
+    const redirectUrl = `${pagesUrl}?bridgeUrl=${encodeURIComponent(localBridgeUrl)}&v=${Date.now()}#/triage`;
+    res.redirect(302, redirectUrl);
   });
 
   app.use(express.static(spaPath));

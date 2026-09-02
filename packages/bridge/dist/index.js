@@ -11,7 +11,8 @@ const SPA_ORIGIN = process.env.SPA_ORIGIN ?? 'https://jatinkumar-patel.github.io
 // The GitHub Pages URL where the SPA is deployed
 const PAGES_URL = process.env.PAGES_URL ?? 'https://jatinkumar-patel.github.io/devassist-ui/';
 const BRIDGE_BANNER_VERSION = '0.2.0';
-const app = (0, server_1.createServer)({ spaOrigin: SPA_ORIGIN });
+const OPEN_LOCAL_UI_ONLY = process.env.DEVASSIST_OPEN_LOCAL_UI === '1';
+const app = (0, server_1.createServer)({ spaOrigin: SPA_ORIGIN, pagesUrl: PAGES_URL });
 const server = app.listen(PORT, '127.0.0.1', () => {
     const localUrl = `http://localhost:${PORT}`;
     console.log('\n╔══════════════════════════════════════════════════════╗');
@@ -19,12 +20,16 @@ const server = app.listen(PORT, '127.0.0.1', () => {
     console.log('╚══════════════════════════════════════════════════════╝\n');
     console.log(`  Bridge:     ${localUrl}`);
     console.log(`  SNOW auth:  ${process.platform === 'win32' ? '✓ Windows session (no password needed)' : '✗ Windows only'}`);
-    console.log(`\n  Open the app (latest local build):\n  → ${localUrl}\n`);
+    const webUrl = `${PAGES_URL}?bridgeUrl=${encodeURIComponent(localUrl)}&v=${Date.now()}#/triage`;
+    console.log(`\n  Open the app (latest web build, local bridge APIs):\n  → ${webUrl}\n`);
+    console.log(`  Local fallback UI:\n  → ${localUrl}\n`);
     console.log(`  GitHub Pages (may be stale/cached):\n  → ${PAGES_URL}\n`);
     console.log('  Press Ctrl+C to stop.\n');
     if (!process.argv.includes('--no-open')) {
-        // Prefer local bridge-served SPA to avoid stale GitHub Pages cache.
-        (0, open_1.default)(localUrl).catch(() => (0, open_1.default)(PAGES_URL).catch(() => { }));
+        // Enterprise default: prefer latest web build while continuing to use local bridge APIs.
+        const preferredUrl = OPEN_LOCAL_UI_ONLY ? localUrl : webUrl;
+        const fallbackUrl = OPEN_LOCAL_UI_ONLY ? webUrl : localUrl;
+        (0, open_1.default)(preferredUrl).catch(() => (0, open_1.default)(fallbackUrl).catch(() => (0, open_1.default)(PAGES_URL).catch(() => { })));
     }
 });
 server.on('error', (err) => {

@@ -17,7 +17,7 @@ const ai_analysis_1 = require("./routes/ai-analysis");
 const registry_1 = require("./routes/registry");
 const skills_1 = require("./routes/skills");
 const secrets_1 = require("./routes/secrets");
-function createServer({ spaOrigin }) {
+function createServer({ spaOrigin, pagesUrl }) {
     const app = (0, express_1.default)();
     const allowedExactOrigins = new Set([
         spaOrigin,
@@ -64,6 +64,11 @@ function createServer({ spaOrigin }) {
             res.setHeader('Surrogate-Control', 'no-store');
         }
         next();
+    });
+    app.get('/', (_req, res) => {
+        const localBridgeUrl = 'http://localhost:7447';
+        const redirectUrl = `${pagesUrl}?bridgeUrl=${encodeURIComponent(localBridgeUrl)}&v=${Date.now()}#/triage`;
+        res.redirect(302, redirectUrl);
     });
     app.use(express_1.default.static(spaPath));
     app.get('*', (_req, res) => {
