@@ -1,3 +1,10 @@
+$NoBrowser = $false
+foreach ($arg in $args) {
+  if ($arg -eq '-NoBrowser') {
+    $NoBrowser = $true
+  }
+}
+
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Join-Path $env:USERPROFILE 'source\repos\devassist-ui'
@@ -158,10 +165,15 @@ try {
     throw "Bridge version $runningVersion is below required $requiredBridgeVersion. Start cancelled to prevent stale UI."
   }
 
-  Write-Host ''
-  Write-Host 'Opening DevAssist in browser...'
-  $browserUrl = "$bridgeUrl/index.html?bridgeUrl=$([uri]::EscapeDataString($bridgeUrl))&v=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())#/triage"
-  Start-Process -FilePath 'explorer.exe' -ArgumentList $browserUrl
+  if (-not $NoBrowser) {
+    Write-Host ''
+    Write-Host 'Opening DevAssist in browser...'
+    $browserUrl = "$bridgeUrl/index.html?bridgeUrl=$([uri]::EscapeDataString($bridgeUrl))&v=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())#/triage"
+    Start-Process -FilePath 'explorer.exe' -ArgumentList $browserUrl
+  } else {
+    Write-Host ''
+    Write-Host 'NoBrowser mode enabled: bridge started without opening browser.'
+  }
   Write-Host ''
   Write-Host 'Tip: Connect VPN before running this launcher.'
   Write-Host 'If you see SNOW: FAIL in Settings, close bridge window and run this file again.'

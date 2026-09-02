@@ -25,6 +25,26 @@ Behavior:
 2. If missing, SPA falls back to `http://localhost:7447`
 3. Triage page shows a clear bridge-unreachable banner when the bridge cannot be reached
 
+## End-User One-Time Setup (No Daily Commands)
+
+For local-bridge environments, use a one-time setup and avoid sharing terminal commands with users every day.
+
+Run once:
+
+```text
+setup-end-user.bat
+```
+
+This one-time setup does three things:
+1. Creates a Startup entry that launches the local bridge at Windows login
+2. Creates a desktop shortcut named `DevAssist`
+3. Starts DevAssist immediately
+
+Daily use for end users:
+1. Click the `DevAssist` desktop shortcut
+
+No daily terminal commands are required after setup.
+
 ## Local Developer Mode
 
 From repo root:
