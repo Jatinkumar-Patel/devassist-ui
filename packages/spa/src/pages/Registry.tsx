@@ -5,9 +5,21 @@ import type { ProductRegistry, Product, RepoRef, MtmPlan, ProductGroup, ProductS
 import { bridgeApi } from "../lib/bridge-url";
 import { fetchSnowLookups } from "../lib/snow-client";
 
+const SNOW_TASK_TABLE_OPTIONS = [
+  'incident_task',
+  'sc_task',
+  'u_pltf_task',
+  'change_task',
+  'sc_req_item',
+  'sn_customerservice_task',
+] as const;
+
+const SNOW_TASK_TABLE_RECOMMENDED = ['incident_task', 'sc_task'] as const;
+
 const EMPTY_PRODUCT: Product = {
   id: "", displayName: "", areaPathPrefix: "", snowProduct: "",
   snowProducts: [], snowAssignmentGroups: [],
+  snowTaskTables: [...SNOW_TASK_TABLE_RECOMMENDED],
   snowTaskTable: "incident_task", repos: [], mtmPlans: [], databaseRepoPaths: [],
   skillPaths: [], localSkills: [], githubSkillPaths: [], githubSkills: [], pastedSkillMd: [], docUrl: "", localFolder: "", notes: "",
 };
@@ -136,6 +148,7 @@ function ProductEditor({ product, onSave, saving }: { product: Product; onSave: 
     databaseRepoPaths: product.databaseRepoPaths ?? [],
     snowProducts: Array.from(new Set((product.snowProducts ?? [product.snowProduct]).map((x) => String(x ?? '').trim()).filter(Boolean))),
     snowAssignmentGroups: Array.from(new Set((product.snowAssignmentGroups ?? []).map((x) => String(x ?? '').trim()).filter(Boolean))),
+    snowTaskTables: Array.from(new Set((product.snowTaskTables ?? [product.snowTaskTable]).map((x) => String(x ?? '').trim()).filter(Boolean))),
     skillPaths: product.skillPaths ?? (product.skillPath ? [product.skillPath] : []),
     localSkills: initialLocalSkills,
     githubSkillPaths: product.githubSkillPaths ?? [],
@@ -175,16 +188,23 @@ function ProductEditor({ product, onSave, saving }: { product: Product; onSave: 
     const databaseRepoPaths = Array.from(new Set((p.databaseRepoPaths ?? []).map((x) => x.trim()).filter(Boolean)));
     const snowProducts = Array.from(new Set((p.snowProducts ?? []).map((x) => x.trim()).filter(Boolean)));
     const snowAssignmentGroups = Array.from(new Set((p.snowAssignmentGroups ?? []).map((x) => x.trim()).filter(Boolean)));
+    const snowTaskTables = Array.from(new Set((p.snowTaskTables ?? [p.snowTaskTable]).map((x) => x.trim()).filter(Boolean)));
     const primarySnowProduct = p.snowProduct?.trim() || snowProducts[0] || '';
+    const primarySnowTaskTable = p.snowTaskTable?.trim() || snowTaskTables[0] || 'incident_task';
     const normalizedSnowProducts = primarySnowProduct
       ? Array.from(new Set([primarySnowProduct, ...snowProducts]))
       : snowProducts;
+    const normalizedSnowTaskTables = primarySnowTaskTable
+      ? Array.from(new Set([primarySnowTaskTable, ...snowTaskTables]))
+      : snowTaskTables;
 
     onSave({
       ...p,
       snowProduct: primarySnowProduct,
       snowProducts: normalizedSnowProducts,
       snowAssignmentGroups,
+      snowTaskTable: primarySnowTaskTable,
+      snowTaskTables: normalizedSnowTaskTables,
       databaseRepoPaths,
       skillPaths: enabledLocalSkills.map((x) => x.path),
       skillPath: enabledLocalSkills[0]?.path ?? p.skillPath ?? '',
@@ -213,10 +233,21 @@ function ProductEditor({ product, onSave, saving }: { product: Product; onSave: 
             }}
             placeholder="Sunrise Ambulatory Care"
           />
-          <div><label className="block text-xs text-gray-500 mb-1">SNOW task table</label>
-            <select value={p.snowTaskTable} onChange={e => set("snowTaskTable", e.target.value as Product["snowTaskTable"])} className={inp + " cursor-pointer"}>
-              <option value="incident_task">incident_task</option><option value="sc_task">sc_task</option>
-            </select>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">SNOW task table options (multi-select)</label>
+            <SnowTaskTableSelector
+              selected={p.snowTaskTables ?? []}
+              onChange={(values) => {
+                set("snowTaskTables", values);
+                if (!values.length) return;
+                if (!values.includes(p.snowTaskTable)) {
+                  set("snowTaskTable", values[0] as Product["snowTaskTable"]);
+                }
+              }}
+            />
+            <p className="text-[11px] text-gray-500 mt-1">
+              If unsure, keep recommended tables selected. Primary fallback: <span className="font-mono text-gray-300">{p.snowTaskTables?.[0] ?? p.snowTaskTable}</span>
+            </p>
           </div>
         </div>
       </Section>
@@ -647,6 +678,70 @@ function SnowLookupMultiSelect({
             );
           })
         )}
+      </div>
+    </div>
+  );
+}
+
+function SnowTaskTableSelector({
+  selected,
+  onChange,
+}: {
+  selected: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const normalizedSelected = Array.from(new Set(selected.map((x) => String(x ?? '').trim()).filter(Boolean)));
+
+  const toggle = (table: string) => {
+    if (normalizedSelected.includes(table)) {
+      onChange(normalizedSelected.filter((x) => x !== table));
+      return;
+    }
+    onChange([...normalizedSelected, table]);
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => onChange(Array.from(SNOW_TASK_TABLE_RECOMMENDED))}
+          className="text-[11px] px-2 py-1 rounded border border-cyan-700 text-cyan-200 hover:bg-cyan-950/30"
+        >
+          Use recommended
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange(Array.from(SNOW_TASK_TABLE_OPTIONS))}
+          className="text-[11px] px-2 py-1 rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
+        >
+          Select all
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange([])}
+          className="text-[11px] px-2 py-1 rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
+        >
+          Clear
+        </button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 rounded border border-gray-800 bg-gray-950/40 p-2">
+        {SNOW_TASK_TABLE_OPTIONS.map((table) => {
+          const checked = normalizedSelected.includes(table);
+          const recommended = SNOW_TASK_TABLE_RECOMMENDED.includes(table as typeof SNOW_TASK_TABLE_RECOMMENDED[number]);
+          return (
+            <label key={table} className="flex items-center gap-2 text-xs text-gray-200 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => toggle(table)}
+                className="accent-altera-teal"
+              />
+              <span className="font-mono">{table}</span>
+              {recommended && <span className="text-[10px] text-cyan-300 border border-cyan-800/70 rounded px-1">recommended</span>}
+            </label>
+          );
+        })}
       </div>
     </div>
   );

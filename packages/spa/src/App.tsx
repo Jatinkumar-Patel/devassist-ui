@@ -10,6 +10,25 @@ import { fetchSecretStatus } from './lib/secret-store';
 
 const LOCAL_BRIDGE_URL = 'http://localhost:7447';
 const MANAGED_BRIDGE_URL = ((import.meta as any).env?.VITE_BRIDGE_URL as string | undefined)?.trim() || '';
+const REQUIRED_LOCAL_BRIDGE_VERSION = '0.2.0';
+
+type LocalBridgeNotice =
+  | { type: 'offline' }
+  | { type: 'outdated'; runningVersion: string };
+
+function compareSemVer(a: string, b: string): number {
+  const parse = (v: string) => v.split('.').map((n) => Number.parseInt(n, 10) || 0);
+  const av = parse(a);
+  const bv = parse(b);
+  const len = Math.max(av.length, bv.length);
+  for (let i = 0; i < len; i += 1) {
+    const ai = av[i] ?? 0;
+    const bi = bv[i] ?? 0;
+    if (ai > bi) return 1;
+    if (ai < bi) return -1;
+  }
+  return 0;
+}
 
 function isLocalBridgeUrl(url: string): boolean {
   try {
@@ -35,6 +54,7 @@ export default function App() {
   const [wizardDone, setWizardDone] = useState(localStorage.getItem('devassist-setup-done') === '1');
   const [bridgeChecked, setBridgeChecked] = useState(false);
   const [setupChecked, setSetupChecked] = useState(false);
+  const [localBridgeNotice, setLocalBridgeNotice] = useState<LocalBridgeNotice | null>(null);
 
   const deploymentMode: 'Managed' | 'Local Fallback' | 'Local' =
     MANAGED_BRIDGE_URL && !isLocalBridgeUrl(MANAGED_BRIDGE_URL)
@@ -120,6 +140,43 @@ export default function App() {
     return () => { cancelled = true; };
   }, [wizardDone, bridgeUrl]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkBridgeCompatibility = async () => {
+      if (!isLocalBridgeUrl(bridgeUrl)) {
+        if (!cancelled) setLocalBridgeNotice(null);
+        return;
+      }
+
+      try {
+        const res = await fetch(`${bridgeUrl}/api/status`, { signal: AbortSignal.timeout(2500) });
+        if (!res.ok) {
+          if (!cancelled) setLocalBridgeNotice({ type: 'offline' });
+          return;
+        }
+
+        const status = await res.json() as { version?: string };
+        const runningVersion = String(status.version ?? '').trim() || 'unknown';
+        if (runningVersion === 'unknown' || compareSemVer(runningVersion, REQUIRED_LOCAL_BRIDGE_VERSION) < 0) {
+          if (!cancelled) setLocalBridgeNotice({ type: 'outdated', runningVersion });
+          return;
+        }
+
+        if (!cancelled) setLocalBridgeNotice(null);
+      } catch {
+        if (!cancelled) setLocalBridgeNotice({ type: 'offline' });
+      }
+    };
+
+    void checkBridgeCompatibility();
+    const timer = window.setInterval(() => { void checkBridgeCompatibility(); }, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [bridgeUrl]);
+
   // Wait for bridge resolution so users don't see transient setup noise.
   if (!bridgeChecked) {
     return (
@@ -150,6 +207,23 @@ export default function App() {
         <SetupWizard onDone={() => { setWizardDone(true); navigate('/triage'); }} />
       )}
       <NavBar showSettings={wizardDone} deploymentMode={deploymentMode} />
+      {wizardDone && localBridgeNotice && (
+        <div className="border-b border-amber-700/50 bg-amber-950/55">
+          <div className="container mx-auto max-w-7xl px-3 sm:px-5 py-2.5 text-xs sm:text-sm text-amber-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <p>
+              {localBridgeNotice.type === 'offline'
+                ? 'Bridge is not running. Admin updates may not be available yet.'
+                : `Bridge update required. Running v${localBridgeNotice.runningVersion}; required v${REQUIRED_LOCAL_BRIDGE_VERSION}+.`}
+            </p>
+            <a
+              href="#/settings"
+              className="inline-flex items-center justify-center rounded-md border border-amber-400/60 bg-amber-500/15 px-2.5 py-1 text-amber-100 hover:bg-amber-500/25"
+            >
+              Open Settings and start Bridge
+            </a>
+          </div>
+        </div>
+      )}
       <main className="flex-1 container mx-auto px-3 sm:px-5 py-4 sm:py-7 max-w-7xl">
         <Routes>
           <Route path="/" element={<Navigate to="/triage" replace />} />

@@ -4,6 +4,7 @@ exports.snowRouter = void 0;
 const express_1 = require("express");
 const powershell_1 = require("../utils/powershell");
 exports.snowRouter = (0, express_1.Router)();
+const KNOWN_TASK_TABLES = ['incident_task', 'sc_task', 'u_pltf_task', 'change_task', 'sc_req_item', 'sn_customerservice_task'];
 // Correct path: /api/SNData/ prefix is required per snow-viewer-api.md
 const SNOW_BASE = 'https://servicenowviewer.allscripts.com/api/SNData';
 /** Double-decode: SNOW viewer returns a JSON-stringified JSON string */
@@ -71,6 +72,8 @@ function snowFieldValue(field) {
         return '';
     if (typeof field === 'string')
         return field;
+    if (typeof field === 'number' || typeof field === 'boolean')
+        return String(field);
     if (typeof field === 'object') {
         const rec = field;
         const displayValue = rec['display_value'];
@@ -79,8 +82,13 @@ function snowFieldValue(field) {
             return displayValue.trim();
         if (typeof value === 'string' && value.trim())
             return value.trim();
+        if (typeof displayValue === 'number' || typeof displayValue === 'boolean')
+            return String(displayValue);
+        if (typeof value === 'number' || typeof value === 'boolean')
+            return String(value);
+        return '';
     }
-    return String(field);
+    return '';
 }
 function pickSnowProductField(row) {
     const candidates = [
@@ -132,8 +140,18 @@ exports.snowRouter.get('/task/:number', async (req, res) => {
         return res.status(400).json({ error: 'Expected TASK… number' });
     }
     const num = number.toUpperCase();
-    // Try all known Allscripts SNOW task tables in priority order
-    const tables = ['incident_task', 'sc_task', 'u_pltf_task', 'change_task', 'sc_req_item', 'sn_customerservice_task'];
+    const requestedTablesRaw = req.query.tables;
+    const requestedTables = (Array.isArray(requestedTablesRaw) ? requestedTablesRaw : [requestedTablesRaw])
+        .flatMap((value) => String(value ?? '').split(','))
+        .map((value) => value.trim().toLowerCase())
+        .filter(Boolean);
+    const allowedTableSet = new Set(KNOWN_TASK_TABLES);
+    const preferredTables = Array.from(new Set(requestedTables.filter((table) => allowedTableSet.has(table))));
+    // Try caller-preferred tables first, then remaining known tables.
+    const tables = [
+        ...preferredTables,
+        ...KNOWN_TASK_TABLES.filter((table) => !preferredTables.includes(table)),
+    ];
     for (const table of tables) {
         try {
             const url = `${SNOW_BASE}/GetTableJSON/?tablename=${table}&sysparm_query=number=${num}`;

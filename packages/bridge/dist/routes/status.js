@@ -5,6 +5,7 @@ const express_1 = require("express");
 const powershell_1 = require("../utils/powershell");
 const mcp_secrets_1 = require("../utils/mcp-secrets");
 exports.statusRouter = (0, express_1.Router)();
+const BRIDGE_VERSION = '0.2.0';
 // Cache last SNOW check so /api/status responds instantly
 let snowStatus = process.platform === 'win32' ? 'checking…' : 'unavailable (Windows only)';
 let snowChecked = false;
@@ -28,7 +29,7 @@ exports.statusRouter.get('/', (_req, res) => {
     const githubReady = Boolean(process.env.GITHUB_PERSONAL_ACCESS_TOKEN?.trim() || secrets.githubPat);
     res.json({
         bridge: 'ok',
-        version: '0.1.0',
+        version: BRIDGE_VERSION,
         platform: process.platform,
         snowAuth: snowStatus,
         adoAuth: adoReady ? 'ok' : 'missing',

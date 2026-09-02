@@ -45,7 +45,8 @@ export interface Product {
   snowProduct: string;
   snowProducts?: string[];
   snowAssignmentGroups?: string[];
-  snowTaskTable: 'incident_task' | 'sc_task';
+  snowTaskTables?: string[];
+  snowTaskTable: 'incident_task' | 'sc_task' | 'u_pltf_task' | 'change_task' | 'sc_req_item' | 'sn_customerservice_task' | string;
   repos: RepoRef[];
   mtmPlans: MtmPlan[];
   skillPath?: string;           // legacy

@@ -3,6 +3,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Bug, Database, Settings, RefreshCw } from 'lucide-react';
 import BridgeStatus from './BridgeStatus';
 
+const AUTO_UPDATE_KEY = 'devassist-auto-update-state';
+const AUTO_UPDATE_MAX_ATTEMPTS = 3;
+const AUTO_UPDATE_COOLDOWN_MS = 2 * 60 * 1000;
+
 const links = [
   { to: '/triage',   label: 'Analysis', icon: Bug },
   { to: '/registry', label: 'Products', icon: Database },
@@ -13,6 +17,7 @@ export default function NavBar({ showSettings = true, deploymentMode = 'Local' }
   const visibleLinks = showSettings ? links : links.filter((x) => x.to !== '/settings');
   const buildLabel = __APP_BUILD__;
   const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [autoRefreshing, setAutoRefreshing] = useState(false);
 
   const currentAssetName = useMemo(() => {
     const script = document.querySelector('script[type="module"][src*="/assets/index-"]') as HTMLScriptElement | null;
@@ -26,6 +31,37 @@ export default function NavBar({ showSettings = true, deploymentMode = 'Local' }
 
     let cancelled = false;
 
+    const triggerAutoRefresh = (latestAsset: string) => {
+      try {
+        const now = Date.now();
+        const raw = sessionStorage.getItem(AUTO_UPDATE_KEY);
+        const parsed = raw ? JSON.parse(raw) as { asset?: string; attempts?: number; lastAt?: number } : {};
+
+        const sameAsset = parsed.asset === latestAsset;
+        const attempts = sameAsset ? Number(parsed.attempts ?? 0) : 0;
+        const lastAt = Number(parsed.lastAt ?? 0);
+        const coolingDown = sameAsset && attempts >= AUTO_UPDATE_MAX_ATTEMPTS && (now - lastAt) < AUTO_UPDATE_COOLDOWN_MS;
+        if (coolingDown) return;
+
+        const nextAttempts = sameAsset ? attempts + 1 : 1;
+        sessionStorage.setItem(AUTO_UPDATE_KEY, JSON.stringify({
+          asset: latestAsset,
+          attempts: nextAttempts,
+          lastAt: now,
+        }));
+
+        setAutoRefreshing(true);
+        const base = `${window.location.origin}${window.location.pathname}`;
+        const hash = window.location.hash || '#/triage';
+        const params = new URLSearchParams(window.location.search);
+        params.set('v', String(now));
+        params.set('asset', latestAsset);
+        window.location.replace(`${base}?${params.toString()}${hash}`);
+      } catch {
+        // Ignore sessionStorage/JSON issues and keep manual refresh available.
+      }
+    };
+
     const checkForUpdate = async () => {
       try {
         const indexUrl = `${window.location.origin}${window.location.pathname}?check=${Date.now()}`;
@@ -36,6 +72,9 @@ export default function NavBar({ showSettings = true, deploymentMode = 'Local' }
         const latest = match?.[0] ?? '';
         if (!cancelled && latest && latest !== currentAssetName) {
           setUpdateAvailable(true);
+          if (document.visibilityState === 'visible') {
+            triggerAutoRefresh(latest);
+          }
         }
       } catch {
         // Silent: connectivity issues should not interrupt normal use.
@@ -44,7 +83,7 @@ export default function NavBar({ showSettings = true, deploymentMode = 'Local' }
 
     // Initial check + periodic checks so users get a clear prompt when deployment finishes.
     void checkForUpdate();
-    const timer = window.setInterval(() => { void checkForUpdate(); }, 60_000);
+    const timer = window.setInterval(() => { void checkForUpdate(); }, 30_000);
 
     return () => {
       cancelled = true;
@@ -94,6 +133,11 @@ export default function NavBar({ showSettings = true, deploymentMode = 'Local' }
           </nav>
         </div>
         <div className="self-start sm:self-auto flex items-center gap-2">
+          {autoRefreshing && (
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/45 bg-cyan-500/15 px-2.5 py-1.5 text-xs text-cyan-100">
+              Applying latest update...
+            </span>
+          )}
           {updateAvailable && (
             <button
               type="button"

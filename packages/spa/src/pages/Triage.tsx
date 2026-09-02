@@ -274,12 +274,15 @@ function buildSelectedScope(selectedProducts: Product[]): Product | undefined {
     const pastedSkillMd = normalizeSkillEntries(product.pastedSkillMd ?? [], (x) => `${x.title}\n${x.content}`);
     const snowProducts = normalizeStringList(product.snowProducts ?? [product.snowProduct]);
     const snowAssignmentGroups = normalizeStringList(product.snowAssignmentGroups ?? []);
+    const snowTaskTables = normalizeStringList(product.snowTaskTables ?? [product.snowTaskTable]);
 
     return {
       ...product,
       snowProduct: product.snowProduct?.trim() || snowProducts[0] || '',
       snowProducts,
       snowAssignmentGroups,
+      snowTaskTable: product.snowTaskTable?.trim() || snowTaskTables[0] || 'incident_task',
+      snowTaskTables,
       databaseRepoPaths: normalizeStringList(product.databaseRepoPaths),
       githubSkills,
       githubSkillPaths: githubSkills.map((x) => x.path),
@@ -309,6 +312,7 @@ function buildSelectedScope(selectedProducts: Product[]): Product | undefined {
   const pastedSkillMdOrdered = selectedProducts.flatMap((p) => normalizeProduct(p).pastedSkillMd ?? []);
   const snowProducts = Array.from(new Set(selectedProducts.flatMap((p) => normalizeProduct(p).snowProducts ?? [])));
   const snowAssignmentGroups = Array.from(new Set(selectedProducts.flatMap((p) => normalizeProduct(p).snowAssignmentGroups ?? [])));
+  const snowTaskTables = Array.from(new Set(selectedProducts.flatMap((p) => normalizeProduct(p).snowTaskTables ?? [normalizeProduct(p).snowTaskTable])));
 
   return {
     id: `selected-${selectedProducts.map((p) => p.id).join('-')}`,
@@ -318,7 +322,8 @@ function buildSelectedScope(selectedProducts: Product[]): Product | undefined {
     snowProduct: snowProducts[0] ?? selectedProducts.map((p) => p.snowProduct).filter(Boolean).join(' / '),
     snowProducts,
     snowAssignmentGroups,
-    snowTaskTable: primary.snowTaskTable,
+    snowTaskTable: snowTaskTables[0] ?? primary.snowTaskTable,
+    snowTaskTables,
     repos: Array.from(repoMap.values()),
     mtmPlans: selectedProducts.flatMap((p) => p.mtmPlans),
     databaseRepoPaths: Array.from(new Set(selectedProducts.flatMap((p) => normalizeProduct(p).databaseRepoPaths ?? []))),
@@ -686,7 +691,11 @@ export default function TriagePage() {
         s = phase(s, 'snow');
         upsert(s);
         try {
-          const taskResp = await fetchSnowTask(s.snowTaskNumber!);
+          const preferredTaskTables = Array.from(new Set([
+            ...((s.product?.snowTaskTables ?? []).map((x) => String(x ?? '').trim()).filter(Boolean)),
+            String(s.product?.snowTaskTable ?? '').trim(),
+          ].filter(Boolean)));
+          const taskResp = await fetchSnowTask(s.snowTaskNumber!, preferredTaskTables);
           if (cancelledRef.current) return;
           const taskRecord = Array.isArray(taskResp?.result) ? taskResp.result[0] : taskResp?.result;
           s = { ...s, snowTask: taskRecord, snowTaskTable: taskResp?.table };

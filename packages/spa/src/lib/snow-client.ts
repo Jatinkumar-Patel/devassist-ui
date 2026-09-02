@@ -1,7 +1,13 @@
 import { bridgeApi } from './bridge-url';
 
-export async function fetchSnowTask(number: string) {
-  const res = await fetch(bridgeApi(`/api/snow/task/${encodeURIComponent(number)}`));
+export async function fetchSnowTask(number: string, preferredTables: string[] = []) {
+  const normalizedTables = Array.from(
+    new Set(preferredTables.map((x) => String(x ?? '').trim()).filter(Boolean))
+  );
+  const query = normalizedTables.length
+    ? `?tables=${encodeURIComponent(normalizedTables.join(','))}`
+    : '';
+  const res = await fetch(bridgeApi(`/api/snow/task/${encodeURIComponent(number)}${query}`));
   if (!res.ok) throw new Error(`SNOW task ${res.status}: ${await res.text()}`);
   return res.json();
 }

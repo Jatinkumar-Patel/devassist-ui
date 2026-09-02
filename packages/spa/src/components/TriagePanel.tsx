@@ -84,6 +84,7 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
 
   const mappedSnowProducts = normalizedMappedValues(product?.snowProducts, product?.snowProduct);
   const mappedAssignmentGroups = normalizedMappedValues(product?.snowAssignmentGroups);
+  const mappedTaskTables = normalizedMappedValues(product?.snowTaskTables, product?.snowTaskTable);
 
   if (error) {
     const message = friendlyErrorMessage(error, bridgeUrl);
@@ -356,7 +357,7 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
               <div className="flex items-center gap-2 text-altera-teal text-xs font-medium">
                 <Package size={12} /> {product.displayName} — {product.snowProduct}
               </div>
-              <InfoRow label="Task table" value={product.snowTaskTable} />
+              <InfoRow label="Task table options" value={mappedTaskTables.join(', ')} />
               {mappedSnowProducts.length > 0 && <InfoRow label="Mapped SNOW products" value={mappedSnowProducts.join(', ')} />}
               {mappedAssignmentGroups.length > 0 && <InfoRow label="Mapped assignment groups" value={mappedAssignmentGroups.join(', ')} />}
               <div className="flex flex-wrap gap-x-3">

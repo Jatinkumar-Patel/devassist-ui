@@ -10,11 +10,12 @@ const PORT = parseInt(process.env.BRIDGE_PORT ?? '7447', 10);
 const SPA_ORIGIN = process.env.SPA_ORIGIN ?? 'https://jatinkumar-patel.github.io';
 // The GitHub Pages URL where the SPA is deployed
 const PAGES_URL = process.env.PAGES_URL ?? 'https://jatinkumar-patel.github.io/devassist-ui/';
+const BRIDGE_BANNER_VERSION = '0.2.0';
 const app = (0, server_1.createServer)({ spaOrigin: SPA_ORIGIN });
 const server = app.listen(PORT, '127.0.0.1', () => {
     const localUrl = `http://localhost:${PORT}`;
     console.log('\n╔══════════════════════════════════════════════════════╗');
-    console.log('║             DevAssist  v0.1.0                      ║');
+    console.log(`║             DevAssist  v${BRIDGE_BANNER_VERSION}                      ║`);
     console.log('╚══════════════════════════════════════════════════════╝\n');
     console.log(`  Bridge:     ${localUrl}`);
     console.log(`  SNOW auth:  ${process.platform === 'win32' ? '✓ Windows session (no password needed)' : '✗ Windows only'}`);
