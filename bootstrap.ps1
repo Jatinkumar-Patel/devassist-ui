@@ -50,12 +50,21 @@ try {
 
   Write-Host '[4/7] Installing dependencies (if needed)...'
   npm install
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Dependency install failed. Start cancelled.'
+  }
 
   Write-Host '[5/7] Building app...'
   npm run build --workspace=packages/spa
+  if ($LASTEXITCODE -ne 0) {
+    throw 'SPA build failed. Start cancelled to avoid opening stale UI.'
+  }
 
   Write-Host '[6/7] Building bridge...'
   npm run build --workspace=packages/bridge
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Bridge build failed. Start cancelled.'
+  }
 
   Write-Host '[7/7] Starting DevAssist...'
 

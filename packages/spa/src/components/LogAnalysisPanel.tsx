@@ -372,6 +372,29 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
               {!result.analyzed.length && (
                 <p className="text-xs text-gray-600">No applicable files were analyzed.</p>
               )}
+              {result.skipped.map((entry, i) => {
+                const card = parseSkippedCard(entry);
+                return (
+                  <div key={`skipped-${i}`} className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-3 space-y-1.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-amber-100 break-all">{card.file}</p>
+                        <p className="text-[11px] text-amber-300 uppercase tracking-wide">{card.summary}</p>
+                      </div>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded border border-amber-700/70 text-amber-300 uppercase">
+                        {card.kind}
+                      </span>
+                    </div>
+                    {card.details.length > 0 && (
+                      <div className="space-y-0.5">
+                        {card.details.map((detail, idx) => (
+                          <p key={idx} className="text-xs text-amber-200/80">{detail}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
