@@ -39,9 +39,10 @@ export function getBridgeInstallCommands(): {
 
   const baseDirCmd = '%USERPROFILE%\\source';
   const baseDirPs = '$env:USERPROFILE\\source';
+  const stopExistingBridgePs = `$existing = Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 7447 -State Listen -ErrorAction SilentlyContinue; if ($existing) { $procId = $existing.OwningProcess; if ($procId) { Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue } }`;
 
   const cmdDaily = `cd /d "${baseDirCmd}\\${localFolder}" && npm run bridge`;
-  const powershellDaily = `Set-Location "${baseDirPs}\\${localFolder}"; npm run bridge`;
+  const powershellDaily = `${stopExistingBridgePs}; Set-Location "${baseDirPs}\\${localFolder}"; npm run bridge`;
 
   // --force so re-running when the folder already exists (e.g. ran from System32 before) just works
   const cmd =
@@ -51,6 +52,7 @@ export function getBridgeInstallCommands(): {
 
   const powershell =
     `New-Item -ItemType Directory -Force -Path "${baseDirPs}" | Out-Null; ` +
+    `${stopExistingBridgePs}; ` +
     `Set-Location "${baseDirPs}"; ` +
     `if (Test-Path "${localFolder}") { npx --yes degit ${repoSlug} "${localFolder}" --force; Set-Location "${localFolder}"; npm install; npm run bridge } ` +
     `else { npx --yes degit ${repoSlug} "${localFolder}"; Set-Location "${localFolder}"; npm install; npm run bridge }`;
