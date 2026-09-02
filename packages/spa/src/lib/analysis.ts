@@ -753,6 +753,53 @@ function summarizeSpreadsheetFindings(spreadsheetSummaries: SpreadsheetSummaryIn
   return Array.from(new Set(out)).slice(0, 8);
 }
 
+type OperationalSignals = {
+  tokenExpired: boolean;
+  encryptionPath: boolean;
+  sendNotificationPath: boolean;
+  ldapBindFailure: boolean;
+  directoryConfigFailure: boolean;
+  smtpReachable: boolean;
+  providerNotificationEnabled: boolean;
+  fmhWorkflow: boolean;
+  patientToProviderScope: boolean;
+};
+
+function deriveOperationalSignals(inputs: {
+  title: string;
+  description: string;
+  snowWorkNotes: string;
+  logHits: Array<{ seed: string; text: string; file: string }>;
+  spreadsheetSummaries: SpreadsheetSummaryInput[];
+  imageSummaries: ImageSummaryInput[];
+}): OperationalSignals {
+  const joined = [
+    inputs.title,
+    inputs.description,
+    inputs.snowWorkNotes,
+    ...inputs.logHits.map((h) => `${h.seed} ${h.text}`),
+    ...inputs.spreadsheetSummaries.flatMap((s) => [
+      s.file,
+      ...(s.findings ?? []),
+      ...(s.sampleRows ?? []),
+      ...(s.headers ?? []),
+    ]),
+    ...inputs.imageSummaries.flatMap((s) => [s.file, s.textPreview, ...(s.findings ?? [])]),
+  ].join(' \n ').toLowerCase();
+
+  return {
+    tokenExpired: /securitytokenexpired|expired token|unable to validate expired token/.test(joined),
+    encryptionPath: /encryptdata|encryptaes|cryptographyhelper|cryptowebapi/.test(joined),
+    sendNotificationPath: /sendnotification/.test(joined),
+    ldapBindFailure: /ldap bind result\s*:?\s*87|bind result\s*:?\s*87/.test(joined),
+    directoryConfigFailure: /enterprise directory is not configured properly|directory.*not configured|foundationsecurityexception/.test(joined),
+    smtpReachable: /smtp.*port\s*25|port\s*25.*reach|tcp\s*port\s*25/.test(joined),
+    providerNotificationEnabled: /disablesendemailnotificationtoprovider\s*=\s*false|provider notifications? (are )?enabled/.test(joined),
+    fmhWorkflow: /\bfmh\b/.test(joined),
+    patientToProviderScope: /patient[-\s]?to[-\s]?provider|pharmacy refill/.test(joined),
+  };
+}
+
 function tryExtractAreaIdFromPath(value: string): string | null {
   const text = String(value ?? '').trim();
   if (!text) return null;
@@ -774,10 +821,16 @@ function deriveSkillAreaCandidates(product: Product, areaPath: string): string[]
   const candidates: string[] = [];
 
   const fromAreaPath = areaPath.includes('mobilex') ? 'sunrise-mobile'
+    : areaPath.includes('\\shm') || areaPath.includes('/shm') ? 'shm'
     : areaPath.includes('compass') ? 'compass-scm'
     : areaPath.includes('clindoc') ? 'clindoc-scm'
     : '';
   if (fromAreaPath) candidates.push(fromAreaPath);
+
+  // SHM commonly uses sunrise-mobile skill pack structure for playbook/log routing.
+  if (product.id.toLowerCase() === 'shm' || areaPath.includes('\\shm') || areaPath.includes('/shm')) {
+    candidates.push('sunrise-mobile');
+  }
 
   for (const ref of product.localSkills ?? []) {
     const areaId = tryExtractAreaIdFromPath(ref.path);
@@ -911,6 +964,17 @@ export async function buildSkillDrivenAssessment(
   const title = f['System.Title'] ?? '';
   const customer = String(f['Allscripts.Field.CustomerName'] ?? 'the client');
   const version = String(f['Allscripts.Field.SupportVersion'] ?? 'unknown');
+  const descriptionText = String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '')
+    .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const operationalSignals = deriveOperationalSignals({
+    title,
+    description: descriptionText,
+    snowWorkNotes: snowWorkNotes ?? '',
+    logHits: logHits ?? [],
+    spreadsheetSummaries,
+    imageSummaries,
+  });
 
   // ── Step 1: fetch skill files ─────────────────────────────────────────────
   let playbook: PlaybookPattern[] = [];
@@ -954,6 +1018,11 @@ export async function buildSkillDrivenAssessment(
     }
 
     if (files && Object.keys(files).length) {
+      const hasCoreAreaFiles = Boolean(files['analysis-playbook.md'] || files['repositories.md'] || files['profile.md']);
+      if (!hasCoreAreaFiles) {
+        // Keep looking; reference-only packs are useful but not enough for full triage reasoning.
+        continue;
+      }
       if (files['analysis-playbook.md']) playbook = parsePlaybook(files['analysis-playbook.md']);
       reposMd = files['repositories.md'] ?? '';
       profileMd = files['profile.md'] ?? '';
@@ -976,13 +1045,14 @@ export async function buildSkillDrivenAssessment(
   const matchedPlaybookPattern = bestScore >= 3 ? best : null;
 
   // ── Step 3: client reported ───────────────────────────────────────────────
-  const desc = String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '')
-    .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const desc = descriptionText;
   const safeDesc = looksLikeLocalFilePath(desc) ? '' : desc;
   const clientReported = bulletize([
     `Customer: ${customer}`,
     `Version: ${version}`,
     `Issue: ${title}`,
+    operationalSignals.fmhWorkflow ? 'Workflow: FMH notification path' : '',
+    operationalSignals.patientToProviderScope ? 'Scope: patient-to-provider / refill scenario appears reproducible' : '',
     safeDesc ? `Context: ${safeDesc.slice(0, 220)}` : '',
   ]);
 
@@ -1037,6 +1107,19 @@ export async function buildSkillDrivenAssessment(
     logEvidence.push(`Image OCR highlights: ${imageEvidenceLines.slice(0, 3).join(' || ')}`);
   }
 
+  if (operationalSignals.tokenExpired && operationalSignals.encryptionPath) {
+    logEvidence.push('Diagnostic signal: token validation fails during encryption path before mail submission.');
+  }
+  if (operationalSignals.sendNotificationPath && operationalSignals.tokenExpired) {
+    logEvidence.push('Call-path signal: token-expiry appears in notification call chain (SendNotification).');
+  }
+  if (operationalSignals.ldapBindFailure || operationalSignals.directoryConfigFailure) {
+    logEvidence.push('Directory signal: enterprise directory/LDAP authentication failure observed in same reproduction window.');
+  }
+  if (operationalSignals.smtpReachable && operationalSignals.providerNotificationEnabled) {
+    logEvidence.push('Configuration counter-signal: SMTP reachability and provider-notification flags do not disprove upstream encryption/authentication failures.');
+  }
+
   // ── Step 5: code analysis ─────────────────────────────────────────────────
   const snowTechTerms = extractTechTerms(snowWorkNotes ?? '');
   let codeAnalysis: string;
@@ -1088,11 +1171,25 @@ export async function buildSkillDrivenAssessment(
     ]);
   } else if (snowEvidence.length >= 2) {
     // Synthesise a gap statement from what SNOW support actually found
-    gap = bulletize([
-      `SNOW diagnosis: ${snowEvidence.slice(0, 3).map(e => truncateEvidence(e, 120)).join(' | ')}`,
-      snowTechTerms.length ? `Impacted components: ${snowTechTerms.slice(0, 4).join(', ')}` : '',
-      keywordPattern ? `Related fix direction: ${keywordPattern.fixDirection}` : 'No matching code pattern; inspect components above.',
-    ]);
+    if (operationalSignals.fmhWorkflow && operationalSignals.tokenExpired && operationalSignals.encryptionPath) {
+      gap = bulletize([
+        'SNOW diagnosis: FMH notification processing fails during token-based encryption before downstream mail relay evidence is reached.',
+        operationalSignals.sendNotificationPath ? 'Runtime evidence: SecurityTokenExpired appears in notification call chain (EncryptData/EncryptAES/SendNotification).' : '',
+        (operationalSignals.ldapBindFailure || operationalSignals.directoryConfigFailure)
+          ? 'Supporting evidence: enterprise-directory/LDAP bind errors are present in a related reproduction window.'
+          : '',
+        (operationalSignals.smtpReachable || operationalSignals.providerNotificationEnabled)
+          ? 'Configuration evidence: SMTP connectivity and provider-notification flags are present, but they do not override upstream security token/auth failures.'
+          : '',
+        'Related fix direction: validate FMH runtime identity, token lifetime configuration, and enterprise-directory connectivity before escalating as product code defect.',
+      ]);
+    } else {
+      gap = bulletize([
+        `SNOW diagnosis: ${snowEvidence.slice(0, 3).map(e => truncateEvidence(e, 120)).join(' | ')}`,
+        snowTechTerms.length ? `Impacted components: ${snowTechTerms.slice(0, 4).join(', ')}` : '',
+        keywordPattern ? `Related fix direction: ${keywordPattern.fixDirection}` : 'No matching code pattern; inspect components above.',
+      ]);
+    }
   } else if (keywordPattern) {
     gap = bulletize([
       `Observed gap: keyword pattern match (${keywordPattern.name})`,
@@ -1120,6 +1217,7 @@ export async function buildSkillDrivenAssessment(
 
   // Raise/lower based on evidence quality
   if (logEvidence.some(l => l.includes('CLIENT timeout confirmed')) && confidence === 'Medium') confidence = 'High';
+  if (operationalSignals.fmhWorkflow && operationalSignals.tokenExpired && confidence !== 'High') confidence = 'Medium';
   if (!snowWorkNotes && !logHits?.length) confidence = confidence === 'High' ? 'Medium' : 'Low';
 
   // ── Step 8: blind spots (from profile.md clarity checklist) ──────────────
@@ -1130,6 +1228,9 @@ export async function buildSkillDrivenAssessment(
   if (!databaseEvidence.length) blindSpots.push('No direct DB repo hit found — broaden DB search terms (SP/view/table names) for deeper database verification');
   if (!spreadsheetSummaries.length) blindSpots.push('No spreadsheet evidence extracted from attachments — include PSS workbook exports when available');
   if (!imageSummaries.length) blindSpots.push('No image OCR evidence extracted from attachments — screenshots may still need manual review if OCR is poor');
+  if (operationalSignals.fmhWorkflow && !operationalSignals.smtpReachable) {
+    blindSpots.push('SMTP relay transaction proof missing for the same reproduction window — cannot confirm if submission was attempted after encryption.');
+  }
   if (!matchedPlaybookPattern && playbook.length > 0) {
     blindSpots.push(`None of the ${playbook.length} playbook patterns matched with high confidence — this may be a new/unknown pattern`);
   }
@@ -1152,11 +1253,15 @@ export async function buildSkillDrivenAssessment(
   } else if (rawVerdict === 'ENHANCEMENT') {
     l2Draft = `Thank you for contacting Altera support.\n\nWe have reviewed DA ${adoItem.id} — ${title}\n\nThis functionality is not currently supported. ${gap.slice(0, 400)}\n\nThis has been noted as a potential enhancement request for future consideration.`;
   } else if (rawVerdict === 'NEED MORE INFO' || confidence === 'Low') {
-    l2Draft = `Thank you for contacting Altera support.\n\nWe have reviewed the information provided for DA ${adoItem.id}.\n\nTo proceed with root cause analysis, please provide:\n${
-      clarityItems.length
-        ? clarityItems.slice(0, 5).map((c, i) => `${i+1}. ${c}`).join('\n')
-        : `1. Log files covering the exact incident window\n2. Exact version (SCM / HWS / app build)\n3. Steps to reproduce on test/dev\n4. Whether this affects all users or specific users`
-    }`;
+    if (operationalSignals.fmhWorkflow && operationalSignals.tokenExpired && operationalSignals.encryptionPath) {
+      l2Draft = `Thank you for contacting Altera support.\n\nWe reviewed DA ${adoItem.id} and the provided evidence for the FMH notification workflow.\n\nCurrent findings indicate notification processing is failing in the security/encryption path before downstream mail-delivery confirmation. We also see related enterprise-directory/LDAP authentication concerns in the same support timeline.\n\nPlease validate the FMH interface/service identity mapping and rights, confirm enterprise-directory + LDAP connectivity, then reproduce once and share the FMH/CryptoWebAPI logs and SMTP relay transaction evidence for the same window.`;
+    } else {
+      l2Draft = `Thank you for contacting Altera support.\n\nWe have reviewed the information provided for DA ${adoItem.id}.\n\nTo proceed with root cause analysis, please provide:\n${
+        clarityItems.length
+          ? clarityItems.slice(0, 5).map((c, i) => `${i+1}. ${c}`).join('\n')
+          : `1. Log files covering the exact incident window\n2. Exact version (SCM / HWS / app build)\n3. Steps to reproduce on test/dev\n4. Whether this affects all users or specific users`
+      }`;
+    }
   } else if (rawVerdict === 'CODE BUG') {
     const confText = confidence === 'High' ? 'High confidence' : `${confidence} confidence${blindSpots.length ? ` — ${blindSpots[0]}` : ''}`;
     l2Draft = `Thank you for contacting Altera support.\n\nWe have completed initial root cause analysis for DA ${adoItem.id}.\n\nFindings:\n${
