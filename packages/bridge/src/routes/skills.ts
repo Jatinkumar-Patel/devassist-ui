@@ -143,6 +143,7 @@ async function loadGithubSkillFiles(areaId: string, githubSkillPaths: string[]):
 
 function buildSkillSearchRoots(): string[] {
   const userProfile = process.env.USERPROFILE ?? '';
+  const systemDrive = process.env.SystemDrive ?? 'C:';
   const configured = process.env.DEVASSIST_SKILL_ROOT ?? '';
   const configuredList = (process.env.DEVASSIST_SKILL_ROOTS ?? '')
     .split(path.delimiter)
@@ -154,6 +155,8 @@ function buildSkillSearchRoots(): string[] {
     ...configuredList,
     path.join(userProfile, 'devassist-triage'),
     path.join(userProfile, 'source', 'devassist-triage'),
+    path.join(systemDrive, 'devassist-triage'),
+    path.join(systemDrive, 'source', 'devassist-triage'),
     path.join(process.cwd(), 'skills', 'devassist-triage'),
     path.join(process.cwd(), '..', 'skills', 'devassist-triage'),
     path.join(process.cwd(), 'devassist-triage'),
