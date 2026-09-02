@@ -108,7 +108,7 @@ powershell -NoProfile -Command "$ok=$false; for($i=0;$i -lt 15;$i++){ try { $r=I
 
 echo.
 echo Opening DevAssist in browser...
-start "" "https://jatinkumar-patel.github.io/devassist-ui/?bridgeUrl=http://localhost:7447^&v=%RANDOM%%RANDOM%#/triage"
+start "" "https://jatinkumar-patel.github.io/devassist-ui/?bridgeUrl=http://localhost:7447#/triage"
 
 echo.
 echo Tip: Connect VPN before running this launcher.
