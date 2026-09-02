@@ -62,14 +62,6 @@ function humanizeTimelineDetail(label: string, detail: string): string {
   return detail;
 }
 
-function evidenceDetailMax(label: string, category: SnowEvidenceUiEntry['category']): number {
-  if (/^work\s*notes?$/i.test(label) || /^comments?$/i.test(label)) return 1600;
-  if (category === 'timeline') return 280;
-  if (category === 'record') return 180;
-  if (category === 'summary') return 260;
-  return 240;
-}
-
 type SnowEvidenceUiEntry = {
   category: 'record' | 'summary' | 'timeline' | 'generic';
   label: string;
@@ -138,7 +130,7 @@ function parseSnowEvidenceForUi(rows: string[]): SnowEvidenceUiEntry[] {
       const idx = row.indexOf(':');
       const label = idx >= 0 ? row.slice(0, idx).trim() : 'SNOW Record';
       const detail = idx >= 0 ? row.slice(idx + 1).trim() : row;
-      parsed.push({ category: 'record', label, detail: compactText(detail, evidenceDetailMax(label, 'record')) });
+      parsed.push({ category: 'record', label, detail });
       continue;
     }
 
@@ -146,7 +138,7 @@ function parseSnowEvidenceForUi(rows: string[]): SnowEvidenceUiEntry[] {
       const idx = row.indexOf(':');
       const label = idx >= 0 ? row.slice(0, idx).trim() : 'SNOW Summary';
       const detail = idx >= 0 ? row.slice(idx + 1).trim() : row;
-      parsed.push({ category: 'summary', label, detail: compactText(detail, evidenceDetailMax(label, 'summary')) });
+      parsed.push({ category: 'summary', label, detail });
       continue;
     }
 
@@ -159,9 +151,9 @@ function parseSnowEvidenceForUi(rows: string[]): SnowEvidenceUiEntry[] {
       parsed.push({
         category: 'timeline',
         label,
-        detail: compactText(detail, evidenceDetailMax(label, 'timeline')),
-        actor: compactText(parts[1], 64),
-        time: compactText(parts[2], 48),
+        detail,
+        actor: parts[1],
+        time: parts[2],
       });
       continue;
     }
@@ -170,11 +162,11 @@ function parseSnowEvidenceForUi(rows: string[]): SnowEvidenceUiEntry[] {
       const idx = row.indexOf(':');
       const label = idx >= 0 ? row.slice(0, idx).trim() : 'Evidence';
       const detail = idx >= 0 ? row.slice(idx + 1).trim() : row;
-      parsed.push({ category: 'generic', label, detail: compactText(detail, evidenceDetailMax(label, 'generic')) });
+      parsed.push({ category: 'generic', label, detail });
       continue;
     }
 
-    parsed.push({ category: 'generic', label: 'Evidence', detail: compactText(row, 220) });
+    parsed.push({ category: 'generic', label: 'Evidence', detail: row });
   }
 
   return parsed;
@@ -204,14 +196,14 @@ function formatSnowEvidence(evidence: string[]): string[] {
   const joined = evidence.join('\n');
   const looksLikeAuditBlob = joined.includes('"fieldname"') && joined.includes('"newvalue"');
   if (!looksLikeAuditBlob) {
-    return evidence.map((line) => line.trim()).filter(Boolean).slice(0, 12);
+    return evidence.map((line) => line.trim()).filter(Boolean).slice(0, 60);
   }
 
   const pattern = /"fieldname"\s*:\s*\{[^}]*?"display_value"\s*:\s*"([^"]*)"[\s\S]*?"oldvalue"\s*:\s*\{[^}]*?"display_value"\s*:\s*"([^"]*)"[\s\S]*?"newvalue"\s*:\s*\{[^}]*?"display_value"\s*:\s*"([^"]*)"[\s\S]*?"sys_created_on"\s*:\s*\{[^}]*?"display_value"\s*:\s*"([^"]*)"[\s\S]*?"user"\s*:\s*\{[^}]*?"display_value"\s*:\s*"([^"]*)"/g;
   const rows: string[] = [];
   let match: RegExpExecArray | null;
 
-  while ((match = pattern.exec(joined)) !== null && rows.length < 10) {
+  while ((match = pattern.exec(joined)) !== null && rows.length < 60) {
     const [, field, oldValue, newValue, when, user] = match;
     rows.push(
       `${normalizeEvidenceValue(field)}: ${normalizeEvidenceValue(oldValue)} -> ${normalizeEvidenceValue(newValue)} | ${normalizeEvidenceValue(user)} | ${normalizeEvidenceValue(when)}`
@@ -225,7 +217,7 @@ function formatSnowEvidence(evidence: string[]): string[] {
     .split('\n')
     .map((line) => line.replace(/[{}\[\]"]+/g, ' ').replace(/\s+/g, ' ').trim())
     .filter((line) => /fieldname|newvalue|oldvalue|priority|updated_by|updated_on/i.test(line))
-    .slice(0, 10);
+    .slice(0, 60);
 }
 
 function buildAnalysisEmail(session: TriageSession, analysis: TriageAnalysis, snowEvidenceRows: string[]): string {
