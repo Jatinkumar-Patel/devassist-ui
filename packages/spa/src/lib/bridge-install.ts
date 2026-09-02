@@ -46,15 +46,13 @@ export function getBridgeInstallCommands(): {
   // --force so re-running when the folder already exists (e.g. ran from System32 before) just works
   const cmd =
     `mkdir "${baseDirCmd}" 2>nul && cd /d "${baseDirCmd}" && ` +
-    `(if exist "${localFolder}\\node_modules" (cd "${localFolder}" && npm run bridge) else ` +
     `(if exist "${localFolder}" (npx --yes degit ${repoSlug} "${localFolder}" --force && cd "${localFolder}" && npm install && npm run bridge) else ` +
-    `(npx --yes degit ${repoSlug} "${localFolder}" && cd "${localFolder}" && npm install && npm run bridge)))`;
+    `(npx --yes degit ${repoSlug} "${localFolder}" && cd "${localFolder}" && npm install && npm run bridge))`;
 
   const powershell =
     `New-Item -ItemType Directory -Force -Path "${baseDirPs}" | Out-Null; ` +
     `Set-Location "${baseDirPs}"; ` +
-    `if (Test-Path "${localFolder}\\node_modules") { Set-Location "${localFolder}"; npm run bridge } ` +
-    `elseif (Test-Path "${localFolder}") { npx --yes degit ${repoSlug} "${localFolder}" --force; Set-Location "${localFolder}"; npm install; npm run bridge } ` +
+    `if (Test-Path "${localFolder}") { npx --yes degit ${repoSlug} "${localFolder}" --force; Set-Location "${localFolder}"; npm install; npm run bridge } ` +
     `else { npx --yes degit ${repoSlug} "${localFolder}"; Set-Location "${localFolder}"; npm install; npm run bridge }`;
 
   // ── Auto-start via current-user Startup folder ────────────────────────────
