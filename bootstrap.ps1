@@ -97,7 +97,7 @@ try {
   Write-Host 'Expected minimum version: 0.2.0'
   Write-Host ''
   Write-Host 'Opening DevAssist in browser...'
-  $browserUrl = "$pagesUrl?bridgeUrl=$([uri]::EscapeDataString($bridgeUrl))&v=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())#/triage"
+  $browserUrl = "$bridgeUrl/index.html?bridgeUrl=$([uri]::EscapeDataString($bridgeUrl))&v=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())#/triage"
   Start-Process -FilePath 'explorer.exe' -ArgumentList $browserUrl
   Write-Host ''
   Write-Host 'Tip: Connect VPN before running this launcher.'

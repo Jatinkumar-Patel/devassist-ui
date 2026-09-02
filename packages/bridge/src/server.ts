@@ -71,9 +71,13 @@ export function createServer({ spaOrigin, pagesUrl }: ServerOptions) {
   });
 
   app.get('/', (_req: Request, res: Response) => {
-    const localBridgeUrl = 'http://localhost:7447';
-    const redirectUrl = `${pagesUrl}?bridgeUrl=${encodeURIComponent(localBridgeUrl)}&v=${Date.now()}#/triage`;
-    res.redirect(302, redirectUrl);
+    res.sendFile(path.join(spaPath, 'index.html'), (err) => {
+      if (err) {
+        res.status(404).json({
+          error: 'SPA not found. From repo root run: npm run build (or npm run bridge, which now builds automatically).',
+        });
+      }
+    });
   });
 
   app.use(express.static(spaPath));

@@ -112,6 +112,7 @@ interface LogAnalysisResult {
   spreadsheetSummaries: SpreadsheetSummary[];
   imageSummaries: ImageSummary[];
   suggestions: CodeSuggestion[];
+  explanation: string[];
   cached?: boolean;
 }
 
@@ -564,6 +565,100 @@ function analyzeConversionRows(
   return out;
 }
 
+function formatTopSeeds(topSeeds: Record<string, number>): string[] {
+  return Object.entries(topSeeds)
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([seed, count]) => `${seed} (${count})`);
+}
+
+function buildExplanation(result: {
+  totalAttachments: number;
+  scannableAttachments: number;
+  analyzed: string[];
+  skipped: string[];
+  totalHits: number;
+  byCategory: Record<string, LogHit[]>;
+  topSeeds: Record<string, number>;
+  spreadsheetSummaries: SpreadsheetSummary[];
+  imageSummaries: ImageSummary[];
+  lockPairs: LogHit[];
+}): string[] {
+  const explanation: string[] = [];
+
+  if (result.totalAttachments === 0) {
+    explanation.push('No attachments were found for this record chain, so there is no log evidence to explain yet.');
+    return explanation;
+  }
+
+  if (result.scannableAttachments === 0) {
+    explanation.push('Attachments exist, but none are in a scan-friendly format such as log, text, spreadsheet, image, or zip.');
+    explanation.push('Use the attachment names and skipped list to review the evidence manually.');
+    return explanation;
+  }
+
+  if (result.totalHits === 0) {
+    explanation.push('The attachments were scanned successfully, but no known error, warning, lock, or operation patterns were found.');
+    explanation.push('This usually means the logs are clean, the issue happened outside the scanned window, or the problem is in a non-log attachment.');
+  } else {
+    const errorCount = result.byCategory.error?.length ?? 0;
+    const warningCount = result.byCategory.warning?.length ?? 0;
+    const lockCount = result.byCategory.lock?.length ?? 0;
+    const opsCount = result.byCategory.ops?.length ?? 0;
+
+    if (errorCount > 0) {
+      explanation.push(`Primary signal is errors/fatals: ${errorCount} hit(s). Start with the first red entries because they usually point to the failing component or exception type.`);
+    }
+    if (warningCount > 0) {
+      explanation.push(`Warnings/timeouts were also found: ${warningCount} hit(s). These often indicate slow processing, retries, or a downstream dependency delay.`);
+    }
+    if (lockCount > 0) {
+      explanation.push(`Lock contention was detected: ${lockCount} hit(s). That points to a request waiting on another operation, which can cause long hangs or timeout behavior.`);
+    }
+    if (opsCount > 0 && errorCount === 0) {
+      explanation.push(`The scan found operational calls but no direct error pattern. The issue may be in a dependency, data mismatch, or a code path that does not log exceptions clearly.`);
+    }
+  }
+
+  const topSeeds = formatTopSeeds(result.topSeeds);
+  if (topSeeds.length > 0) {
+    explanation.push(`Top repeated signals: ${topSeeds.join(', ')}.`);
+  }
+
+  if (result.spreadsheetSummaries.length > 0) {
+    const sheetFindings = result.spreadsheetSummaries
+      .flatMap((summary) => summary.findings ?? [])
+      .slice(0, 4);
+    if (sheetFindings.length > 0) {
+      explanation.push(`Spreadsheet attachments add more context: ${sheetFindings.join(' | ')}.`);
+    } else {
+      explanation.push('Spreadsheet attachments were parsed successfully and may contain supporting evidence such as rows, counts, or mappings.');
+    }
+  }
+
+  if (result.imageSummaries.length > 0) {
+    const imageSignals = result.imageSummaries
+      .flatMap((image) => image.findings ?? [])
+      .slice(0, 3);
+    if (imageSignals.length > 0) {
+      explanation.push(`Image OCR found additional signals: ${imageSignals.join(' | ')}.`);
+    } else {
+      explanation.push('Image attachments were OCR-scanned and may show UI text, screenshots, or error dialogs that are not present in the log files.');
+    }
+  }
+
+  if (result.skipped.length > 0) {
+    explanation.push(`Some attachments were skipped or only reviewed as evidence: ${result.skipped.slice(0, 3).join(' | ')}.`);
+  }
+
+  if (result.lockPairs.length > 0) {
+    explanation.push('Lock start/end pairs were matched, which helps confirm whether the failure was caused by a long-running or blocked operation.');
+  }
+
+  return explanation;
+}
+
 // GET /api/log-analysis/:recordSysId — download + parse all log attachments for a SNOW record
 logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
   const { recordSysId } = req.params;
@@ -739,6 +834,18 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
       spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
       imageSummaries: imageSummaries.slice(0, 40),
       suggestions,
+      explanation: buildExplanation({
+        totalAttachments: attachments.length,
+        scannableAttachments: scannableFiles.length,
+        analyzed,
+        skipped,
+        totalHits: allHits.length,
+        byCategory,
+        topSeeds: summariseBySeeds(allHits),
+        spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
+        imageSummaries: imageSummaries.slice(0, 40),
+        lockPairs: lockPairs.slice(0, 20),
+      }),
       cached: false,
     };
 

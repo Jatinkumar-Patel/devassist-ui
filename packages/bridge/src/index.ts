@@ -25,9 +25,9 @@ const server = app.listen(PORT, '127.0.0.1', () => {
   console.log('  Press Ctrl+C to stop.\n');
 
   if (!process.argv.includes('--no-open')) {
-    // Enterprise default: prefer latest web build while continuing to use local bridge APIs.
-    const preferredUrl = OPEN_LOCAL_UI_ONLY ? localUrl : webUrl;
-    const fallbackUrl = OPEN_LOCAL_UI_ONLY ? webUrl : localUrl;
+    // Prefer the local built UI first so the browser always lands on the current workspace build.
+    const preferredUrl = OPEN_LOCAL_UI_ONLY ? webUrl : localUrl;
+    const fallbackUrl = OPEN_LOCAL_UI_ONLY ? localUrl : webUrl;
     open(preferredUrl).catch(() => open(fallbackUrl).catch(() => open(PAGES_URL).catch(() => {})));
   }
 });

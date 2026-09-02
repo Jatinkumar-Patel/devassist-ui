@@ -30,6 +30,7 @@ interface LogAnalysisResult {
   hits: LogHit[];
   byCategory: Record<string, LogHit[]>;
   topSeeds: Record<string, number>;
+  explanation?: string[];
   spreadsheetSummaries?: Array<{
     file: string;
     sheet: string;
@@ -73,6 +74,77 @@ const SEVERITY_COLOR = {
   high:     'border-orange-700 bg-orange-950/20 text-orange-300',
   medium:   'border-yellow-700 bg-yellow-950/20 text-yellow-300',
 };
+
+interface FileAnalysisCard {
+  file: string;
+  kind: 'text' | 'spreadsheet' | 'image' | 'large-text' | 'zip-member' | 'skipped';
+  summary: string;
+  details: string[];
+}
+
+function parseAnalysisCard(entry: string): FileAnalysisCard {
+  const trimmed = entry.trim();
+  const openParen = trimmed.indexOf(' (');
+  const file = openParen >= 0 ? trimmed.slice(0, openParen) : trimmed;
+  const note = openParen >= 0 ? trimmed.slice(openParen + 2, -1) : '';
+
+  if (/spreadsheet parsed:/i.test(note)) {
+    return {
+      file,
+      kind: 'spreadsheet',
+      summary: 'Spreadsheet parsed',
+      details: note.split(',').map((part) => part.trim()).filter(Boolean),
+    };
+  }
+
+  if (/image OCR:/i.test(note)) {
+    return {
+      file,
+      kind: 'image',
+      summary: 'Image OCR scanned',
+      details: note.split(',').map((part) => part.trim()).filter(Boolean),
+    };
+  }
+
+  if (/\[last \d+ lines of/i.test(trimmed)) {
+    return {
+      file,
+      kind: 'large-text',
+      summary: 'Large text file scanned from tail',
+      details: note ? [note] : [],
+    };
+  }
+
+  if (/\/.+\//.test(file)) {
+    return {
+      file,
+      kind: 'zip-member',
+      summary: 'Attachment inside zip scanned',
+      details: note ? [note] : [],
+    };
+  }
+
+  return {
+    file,
+    kind: 'text',
+    summary: 'Text log scanned',
+    details: note ? [note] : [],
+  };
+}
+
+function parseSkippedCard(entry: string): FileAnalysisCard {
+  const trimmed = entry.trim();
+  const openParen = trimmed.indexOf(' (');
+  const file = openParen >= 0 ? trimmed.slice(0, openParen) : trimmed;
+  const note = openParen >= 0 ? trimmed.slice(openParen + 2, -1) : '';
+
+  return {
+    file,
+    kind: 'skipped',
+    summary: 'Not analyzed',
+    details: note ? [note] : [],
+  };
+}
 
 export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, snowTaskNumber, autoResult, onResult, blockedReason }: Props) {
   const [running, setRunning] = useState(false);
@@ -255,6 +327,51 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
             <div className="bg-gray-800 rounded p-2">
               <p className="text-gray-500 font-medium">Pattern hits</p>
               <p className="text-gray-200 font-mono">{result.totalHits ?? 0}</p>
+            </div>
+          </div>
+
+          {result.explanation && result.explanation.length > 0 && (
+            <div className="rounded-lg border border-cyan-900/60 bg-cyan-950/20 p-3 space-y-2">
+              <p className="text-xs font-medium text-cyan-200 uppercase tracking-wide">Error explanation</p>
+              <div className="space-y-1 text-xs text-cyan-50/90">
+                {result.explanation.map((line, i) => (
+                  <p key={i} className="leading-relaxed">{line}</p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
+              <FileSearch size={11} /> File-level analysis
+            </p>
+            <div className="grid gap-2">
+              {result.analyzed.map((entry, i) => {
+                const card = parseAnalysisCard(entry);
+                return (
+                  <div key={`analyzed-${i}`} className="rounded-lg border border-gray-800 bg-gray-950/50 p-3 space-y-1.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-gray-200 break-all">{card.file}</p>
+                        <p className="text-[11px] text-cyan-300 uppercase tracking-wide">{card.summary}</p>
+                      </div>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded border border-gray-700 text-gray-400 uppercase">
+                        {card.kind}
+                      </span>
+                    </div>
+                    {card.details.length > 0 && (
+                      <div className="space-y-0.5">
+                        {card.details.map((detail, idx) => (
+                          <p key={idx} className="text-xs text-gray-400">{detail}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {!result.analyzed.length && (
+                <p className="text-xs text-gray-600">No applicable files were analyzed.</p>
+              )}
             </div>
           </div>
 
