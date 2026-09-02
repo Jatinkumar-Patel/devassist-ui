@@ -234,7 +234,30 @@ function ProductEditor({ product, onSave, saving }: { product: Product; onSave: 
             {snowLookupLoading && <span className="text-xs text-gray-500 animate-pulse">Loading SNOW options...</span>}
             {!snowLookupLoading && snowLookupStamp && <span className="text-[11px] text-gray-500">Last sync: {snowLookupStamp}</span>}
           </div>
-          {snowLookupError && <p className="text-xs text-red-400">{snowLookupError}</p>}
+          {snowLookupError && (
+            <div className="rounded border border-amber-800/60 bg-amber-950/20 p-2.5 space-y-1.5">
+              <p className="text-xs text-amber-200">{snowLookupError}</p>
+              <p className="text-[11px] text-amber-100/90">
+                End-user quick fix: restart DevAssist Bridge, then click Refresh from SNOW again.
+              </p>
+              <div className="flex flex-wrap gap-2 pt-0.5">
+                <a
+                  href="#/settings"
+                  className="text-[11px] px-2.5 py-1 rounded border border-amber-700 text-amber-100 hover:bg-amber-900/40"
+                >
+                  Open Settings
+                </a>
+                <a
+                  href="http://localhost:7447/api/status"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] px-2.5 py-1 rounded border border-gray-700 text-gray-200 hover:bg-gray-800"
+                >
+                  Check bridge status
+                </a>
+              </div>
+            </div>
+          )}
 
           <SnowLookupMultiSelect
             label="Mapped SNOW Product values"
