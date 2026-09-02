@@ -9,7 +9,7 @@ const PAGES_URL = process.env.PAGES_URL ?? 'https://jatinkumar-patel.github.io/d
 
 const app = createServer({ spaOrigin: SPA_ORIGIN });
 
-app.listen(PORT, '127.0.0.1', () => {
+const server = app.listen(PORT, '127.0.0.1', () => {
   const localUrl = `http://localhost:${PORT}`;
   console.log('\n╔══════════════════════════════════════════════════════╗');
   console.log('║             DevAssist  v0.1.0                      ║');
@@ -24,4 +24,14 @@ app.listen(PORT, '127.0.0.1', () => {
     // Prefer local bridge-served SPA to avoid stale GitHub Pages cache.
     open(localUrl).catch(() => open(PAGES_URL).catch(() => {}));
   }
+});
+
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.log(`\nDevAssist Bridge is already running on http://localhost:${PORT}`);
+    console.log('Use the existing window/browser tab. Do not start a second bridge instance.\n');
+    process.exit(0);
+  }
+  console.error('Bridge failed to start:', err.message);
+  process.exit(1);
 });
