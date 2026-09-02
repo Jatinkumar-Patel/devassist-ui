@@ -48,13 +48,28 @@ export async function fetchSnowKbSearch(terms: string[], releaseHints: string[] 
 
 export async function fetchSnowLookups() {
   const res = await fetch(bridgeApi('/api/snow/lookups'));
-  if (!res.ok) throw new Error(`SNOW lookups ${res.status}: ${await res.text()}`);
-  return res.json() as Promise<{
+  const body = await res.text();
+  if (!res.ok) throw new Error(`SNOW lookups ${res.status}: ${body.slice(0, 220)}`);
+
+  const contentType = (res.headers.get('content-type') ?? '').toLowerCase();
+  const looksLikeHtml = /<!doctype html>|<html[\s>]/i.test(body);
+  if (!contentType.includes('application/json') || looksLikeHtml) {
+    throw new Error('SNOW lookups endpoint unavailable on this bridge. Restart bridge with latest code (npm run bridge).');
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    throw new Error('SNOW lookups returned invalid JSON. Restart bridge with latest code (npm run bridge).');
+  }
+
+  return parsed as {
     assignmentGroups: string[];
     products: string[];
     sampledAt?: string;
     sourceTables?: string[];
-  }>;
+  };
 }
 
 /** List attachment metadata — use fetchSnowAttachment() to download the binary */
