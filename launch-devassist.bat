@@ -76,30 +76,26 @@ if errorlevel 1 (
   )
 ) else (
   git fetch origin main --prune
-  if errorlevel 1 goto :reclone
+  if errorlevel 1 goto :fallback_refresh
   git checkout main
-  if errorlevel 1 goto :reclone
+  if errorlevel 1 goto :fallback_refresh
   git reset --hard origin/main
-  if errorlevel 1 goto :reclone
+  if errorlevel 1 goto :fallback_refresh
 )
 goto :post_update
 
-:reclone
-echo [INFO] Local repo could not be updated cleanly. Re-downloading latest copy...
-popd
-rmdir /s /q "%REPO_DIR%" >nul 2>&1
-pushd "%BASE_DIR%"
-git clone "%REPO_URL%" devassist-ui
+:fallback_refresh
+echo [INFO] Git sync failed. Trying fallback refresh without deleting local repo...
+call npx --yes degit Jatinkumar-Patel/devassist-ui "%REPO_DIR%" --force
 if errorlevel 1 (
-  popd
   echo.
-  echo [ERROR] Could not refresh DevAssist repo.
+  echo [ERROR] Could not refresh DevAssist from origin/main.
   echo Check VPN/network access and try again.
+  echo Optional: install Git for Windows for more reliable updates.
+  popd
   pause
   exit /b 1
 )
-popd
-pushd "%REPO_DIR%"
 
 :post_update
 
