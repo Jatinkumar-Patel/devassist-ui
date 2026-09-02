@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
 import { Bug, Database, Settings, RefreshCw } from 'lucide-react';
 import BridgeStatus from './BridgeStatus';
 
@@ -11,6 +12,45 @@ const links = [
 export default function NavBar({ showSettings = true, deploymentMode = 'Local' }: { showSettings?: boolean; deploymentMode?: 'Managed' | 'Local Fallback' | 'Local' }) {
   const visibleLinks = showSettings ? links : links.filter((x) => x.to !== '/settings');
   const buildLabel = __APP_BUILD__;
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+
+  const currentAssetName = useMemo(() => {
+    const script = document.querySelector('script[type="module"][src*="/assets/index-"]') as HTMLScriptElement | null;
+    const src = script?.src ?? '';
+    const match = src.match(/index-[A-Za-z0-9_-]+\.js/);
+    return match?.[0] ?? '';
+  }, []);
+
+  useEffect(() => {
+    if (!currentAssetName) return;
+
+    let cancelled = false;
+
+    const checkForUpdate = async () => {
+      try {
+        const indexUrl = `${window.location.origin}${window.location.pathname}?check=${Date.now()}`;
+        const res = await fetch(indexUrl, { cache: 'no-store' });
+        if (!res.ok) return;
+        const html = await res.text();
+        const match = html.match(/index-[A-Za-z0-9_-]+\.js/);
+        const latest = match?.[0] ?? '';
+        if (!cancelled && latest && latest !== currentAssetName) {
+          setUpdateAvailable(true);
+        }
+      } catch {
+        // Silent: connectivity issues should not interrupt normal use.
+      }
+    };
+
+    // Initial check + periodic checks so users get a clear prompt when deployment finishes.
+    void checkForUpdate();
+    const timer = window.setInterval(() => { void checkForUpdate(); }, 60_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [currentAssetName]);
 
   const refreshLatest = () => {
     const base = `${window.location.origin}${window.location.pathname}`;
@@ -54,6 +94,16 @@ export default function NavBar({ showSettings = true, deploymentMode = 'Local' }
           </nav>
         </div>
         <div className="self-start sm:self-auto flex items-center gap-2">
+          {updateAvailable && (
+            <button
+              type="button"
+              onClick={refreshLatest}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/45 bg-emerald-500/15 px-2.5 py-1.5 text-xs text-emerald-100 hover:bg-emerald-500/25"
+              title="A newer DevAssist build is available"
+            >
+              New update available
+            </button>
+          )}
           <span
             className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${
               deploymentMode === 'Managed'
