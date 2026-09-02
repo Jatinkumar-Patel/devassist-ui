@@ -622,6 +622,44 @@ function formatAuditValue(value: unknown): string {
   return truncateEvidence(text, 150);
 }
 
+const SNOW_STATE_LABELS: Record<string, string> = {
+  '-5': 'Pending',
+  '-4': 'Awaiting Evidence',
+  '-3': 'Awaiting Vendor',
+  '-2': 'Awaiting Customer',
+  '-1': 'On Hold',
+  '1': 'Open',
+  '2': 'Work In Progress',
+  '3': 'Closed Complete',
+  '4': 'Closed Incomplete',
+  '6': 'Resolved',
+  '7': 'Closed',
+  '8': 'Canceled',
+};
+
+function formatStateCode(value: string): string {
+  const key = value.trim();
+  const label = SNOW_STATE_LABELS[key];
+  return label ? `${label} (${key})` : key;
+}
+
+function summarizeWorkNoteIntent(note: string): string | null {
+  const text = note.toLowerCase();
+  if (/please let us know|looking forward|awaiting your response|kindly confirm|need your assistance/i.test(text)) {
+    return 'Support requested customer confirmation; this note is follow-up communication, not root-cause evidence.';
+  }
+  if (/logs? attached|attached|uploaded|screenshot/i.test(text)) {
+    return 'Support indicated new evidence was attached; prioritize reviewing the latest attachments.';
+  }
+  if (/repro|reproduce|replicate/i.test(text)) {
+    return 'Support documented reproduction context; compare this against product behavior and logs.';
+  }
+  if (/resolved|fixed|working now|closed/i.test(text)) {
+    return 'Support note suggests a mitigation or closure path; verify if the underlying defect remains reproducible.';
+  }
+  return null;
+}
+
 function isNoiseAuditField(fieldName: string): boolean {
   if (NOISE_AUDIT_FIELDS.has(fieldName)) return true;
   if (fieldName.startsWith('u_vsts_')) return true;
@@ -649,14 +687,19 @@ function summarizeSnowWorkNotes(raw: string): string[] {
         const user = row?.user?.display_value ?? row?.user?.value ?? row?.sys_created_by?.display_value ?? row?.sys_created_by ?? '';
         const when = row?.sys_created_on?.display_value ?? row?.sys_created_on?.value ?? row?.sys_created_on ?? '';
 
-        if (oldVal === newVal) continue;
+        const oldState = fieldName === 'state' ? formatStateCode(oldVal) : oldVal;
+        const newState = fieldName === 'state' ? formatStateCode(newVal) : newVal;
+
+        if (oldState === newState) continue;
 
         const label = prettifyAuditField(fieldName || 'field');
         if (fieldName === 'work_notes' || fieldName === 'comments') {
           const journalText = newVal === 'Note added' ? 'Note added' : newVal;
           summaries.push(truncateEvidence(`${label}: ${journalText}${user ? ` | ${user}` : ''}${when ? ` | ${when}` : ''}`));
+          const noteIntent = summarizeWorkNoteIntent(journalText);
+          if (noteIntent) summaries.push(noteIntent);
         } else {
-          summaries.push(truncateEvidence(`${label}: ${oldVal} -> ${newVal}${user ? ` | ${user}` : ''}${when ? ` | ${when}` : ''}`));
+          summaries.push(truncateEvidence(`${label}: ${oldState} -> ${newState}${user ? ` | ${user}` : ''}${when ? ` | ${when}` : ''}`));
         }
 
         if (summaries.length >= 8) break;
@@ -681,6 +724,33 @@ function extractTechTerms(snowText: string): string[] {
     .map(m => m[1])
     .filter((v, i, arr) => arr.indexOf(v) === i)
     .slice(0, 8);
+}
+
+function summarizeSpreadsheetFindings(spreadsheetSummaries: SpreadsheetSummaryInput[]): string[] {
+  const out: string[] = [];
+
+  for (const sheet of spreadsheetSummaries.slice(0, 8)) {
+    const source = `${sheet.file}#${sheet.sheet}`;
+    const findings = (sheet.findings ?? []).map((f) => String(f).trim()).filter(Boolean);
+    if (!findings.length) {
+      out.push(`${source}: parsed ${sheet.rowCount} rows and ${sheet.columnCount} columns; no high-signal anomalies reported.`);
+      continue;
+    }
+
+    const duplicate = findings.find((f) => /Duplicate display names/i.test(f));
+    const statusMix = findings.find((f) => /Status counts|Active flag counts/i.test(f));
+    const conversion = findings.find((f) => /Conversion summary|Potential mapping gaps/i.test(f));
+
+    if (duplicate) out.push(`${source}: ${duplicate}`);
+    if (statusMix) out.push(`${source}: ${statusMix}`);
+    if (conversion) out.push(`${source}: ${conversion}`);
+
+    if (!duplicate && !statusMix && !conversion) {
+      out.push(`${source}: ${findings.slice(0, 2).join(' | ')}`);
+    }
+  }
+
+  return Array.from(new Set(out)).slice(0, 8);
 }
 
 export async function buildSkillDrivenAssessment(
@@ -846,7 +916,10 @@ export async function buildSkillDrivenAssessment(
   }
   if (spreadsheetSummaries.length > 0) {
     logEvidence.push(`Spreadsheet evidence: ${spreadsheetSummaries.length} sheet summary row(s) extracted from attachments`);
-    logEvidence.push(`Spreadsheet highlights: ${spreadsheetEvidenceLines.slice(0, 3).join(' || ')}`);
+    const spreadsheetInsights = summarizeSpreadsheetFindings(spreadsheetSummaries);
+    if (spreadsheetInsights.length > 0) {
+      logEvidence.push(`Spreadsheet analysis: ${spreadsheetInsights.join(' || ')}`);
+    }
   }
   if (imageSummaries.length > 0) {
     logEvidence.push(`Image OCR evidence: ${imageSummaries.length} attachment(s) produced OCR text`);
@@ -864,7 +937,7 @@ export async function buildSkillDrivenAssessment(
       matchedPlaybookPattern.confirm ? `Confirm with: ${matchedPlaybookPattern.confirm.slice(0, 300)}` : '',
       repoRow ? `Priority code areas: ${repoRow}` : '',
       codeHits.length ? `Code hits: ${codeHits.map(h => h.path).slice(0,4).join(', ')}` : 'Code hits: none from API search',
-      versionEvidence.length ? `Version-linked area items: ${versionEvidence.slice(0, 4).map((i) => `#${i.id} (${i.state})`).join(', ')}` : '',
+      versionEvidence.length ? `Historical same-version items (context only): ${versionEvidence.slice(0, 4).map((i) => `#${i.id} (${i.state})`).join(', ')}` : '',
       databaseEvidence.length ? `Database repo hits: ${databaseEvidence.slice(0, 4).map((h) => `${h.repo}:${h.path}`).join(', ')}` : '',
     ]);
   } else if (keywordPattern) {
@@ -874,7 +947,7 @@ export async function buildSkillDrivenAssessment(
       `Repos: ${product.repos.filter(r => r.required).map(r => `${r.owner}/${r.repo}`).join(', ')}`,
       snowTechTerms.length ? `SNOW technical terms: ${snowTechTerms.join(', ')}` : '',
       codeHits.length ? `Code hits: ${codeHits.map(h => h.path).slice(0,4).join(', ')}` : 'Code hits: none (consider local clone search)',
-      versionEvidence.length ? `Version-linked area items: ${versionEvidence.slice(0, 4).map((i) => `#${i.id} ${i.type} (${i.state})`).join(', ')}` : '',
+      versionEvidence.length ? `Historical same-version items (context only): ${versionEvidence.slice(0, 4).map((i) => `#${i.id} ${i.type} (${i.state})`).join(', ')}` : '',
       databaseEvidence.length ? `Database repo hits: ${databaseEvidence.slice(0, 4).map((h) => `${h.repo}:${h.path}`).join(', ')}` : '',
     ]);
   } else {
@@ -885,9 +958,9 @@ export async function buildSkillDrivenAssessment(
       `Repos: ${product.repos.map(r => `${r.owner}/${r.repo}`).join(', ')}`,
       areaId
         ? `Skill area: ${areaId} (${playbook.length} patterns loaded, none high-confidence)`
-        : `No skills pack mapped for this product yet`,
+        : `No skill-area mapping for this product/area path. Configure skill mapping in product registry or skill-area rules.`,
       codeHits.length ? `Code hits: ${codeHits.map(h => h.path).slice(0,4).join(', ')}` : 'Code hits: none',
-      versionEvidence.length ? `Version-linked area items: ${versionEvidence.slice(0, 4).map((i) => `#${i.id} ${i.type} (${i.state})`).join(', ')}` : '',
+      versionEvidence.length ? `Historical same-version items (context only): ${versionEvidence.slice(0, 4).map((i) => `#${i.id} ${i.type} (${i.state})`).join(', ')}` : '',
       databaseEvidence.length ? `Database repo hits: ${databaseEvidence.slice(0, 4).map((h) => `${h.repo}:${h.path}`).join(', ')}` : '',
     ]);
   }

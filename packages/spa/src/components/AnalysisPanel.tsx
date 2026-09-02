@@ -30,6 +30,38 @@ function compactText(value: string, max = 240): string {
   return `${clean.slice(0, max - 1)}...`;
 }
 
+const SNOW_STATE_LABELS: Record<string, string> = {
+  '-5': 'Pending',
+  '-4': 'Awaiting Evidence',
+  '-3': 'Awaiting Vendor',
+  '-2': 'Awaiting Customer',
+  '-1': 'On Hold',
+  '1': 'Open',
+  '2': 'Work In Progress',
+  '3': 'Closed Complete',
+  '4': 'Closed Incomplete',
+  '6': 'Resolved',
+  '7': 'Closed',
+  '8': 'Canceled',
+};
+
+function formatSnowStateLabel(rawValue: string): string {
+  const key = rawValue.trim();
+  const label = SNOW_STATE_LABELS[key];
+  return label ? `${label} (${key})` : key;
+}
+
+function humanizeTimelineDetail(label: string, detail: string): string {
+  if (/^state$/i.test(label)) {
+    const match = detail.match(/^(.+?)\s*->\s*(.+)$/);
+    if (match) {
+      return `${formatSnowStateLabel(match[1])} -> ${formatSnowStateLabel(match[2])}`;
+    }
+    return formatSnowStateLabel(detail);
+  }
+  return detail;
+}
+
 type SnowEvidenceUiEntry = {
   category: 'record' | 'summary' | 'timeline' | 'generic';
   label: string;
@@ -67,7 +99,8 @@ function parseSnowEvidenceForUi(rows: string[]): SnowEvidenceUiEntry[] {
     if (parts.length >= 3 && /^[A-Za-z _-]+:/.test(parts[0])) {
       const idx = parts[0].indexOf(':');
       const label = idx >= 0 ? parts[0].slice(0, idx).trim() : 'Event';
-      const detail = idx >= 0 ? parts[0].slice(idx + 1).trim() : parts[0];
+      const detailRaw = idx >= 0 ? parts[0].slice(idx + 1).trim() : parts[0];
+      const detail = humanizeTimelineDetail(label, detailRaw);
       parsed.push({
         category: 'timeline',
         label,
@@ -685,7 +718,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
                 <Bug size={11} className="text-amber-400" />
-                Version evidence (25.1/PR hints) · {session.versionEvidence!.length} found
+                Similar historical items in same release context · {session.versionEvidence!.length} found
               </p>
               {session.versionEvidence!.slice(0, 8).map(item => (
                 <div key={item.id} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-800 last:border-0">
