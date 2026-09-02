@@ -63,7 +63,18 @@ pushd "%REPO_DIR%"
 
 echo [3/7] Updating to latest version...
 where git >nul 2>&1
-if not errorlevel 1 (
+if errorlevel 1 (
+  echo [INFO] Git not found. Refreshing latest source via npm package mirror...
+  call npx --yes degit Jatinkumar-Patel/devassist-ui "%REPO_DIR%" --force
+  if errorlevel 1 (
+    echo.
+    echo [ERROR] Could not refresh DevAssist without Git.
+    echo Install Git for Windows or check internet/VPN and try again.
+    popd
+    pause
+    exit /b 1
+  )
+) else (
   git fetch origin main --prune
   if errorlevel 1 goto :reclone
   git checkout main
@@ -129,6 +140,9 @@ start "DevAssist Bridge" cmd /k "node packages/bridge/dist/index.js --no-open"
 
 echo Waiting for startup...
 powershell -NoProfile -Command "$ok=$false; for($i=0;$i -lt 15;$i++){ try { $r=Invoke-RestMethod 'http://localhost:7447/api/status' -TimeoutSec 3; if($r.bridge -eq 'ok'){ $ok=$true; break } } catch {}; Start-Sleep -Milliseconds 800 }; if($ok){ 'READY' } else { 'NOT_READY' }"
+for /f "delims=" %%v in ('powershell -NoProfile -Command "try { (Invoke-RestMethod 'http://localhost:7447/api/status' -TimeoutSec 5).version } catch { 'unknown' }"') do set "BRIDGE_VERSION=%%v"
+echo Running Bridge version: %BRIDGE_VERSION%
+echo Expected minimum version: 0.2.0
 
 echo.
 echo Opening DevAssist in browser...
