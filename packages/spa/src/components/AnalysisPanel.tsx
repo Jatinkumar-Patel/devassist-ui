@@ -284,6 +284,9 @@ function buildPrintableHtml(session: TriageSession, analysis: TriageAnalysis, sn
   const versionEvidence = session.versionEvidence ?? [];
   const recentCommits = session.recentCommits ?? [];
   const blindSpots = analysis.blindSpots.length ? analysis.blindSpots : ['None'];
+  const problemStatementRows = parseBulletLines(analysis.clientReported);
+  const assessmentRows = parseBulletLines(analysis.gap);
+  const recommendedSteps = buildRecommendedNextSteps(analysis);
 
   const listToHtml = (items: string[]) => items.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
 
@@ -318,19 +321,17 @@ function buildPrintableHtml(session: TriageSession, analysis: TriageAnalysis, sn
 
   const artifactLedgerHtml = artifactLedger
     ? `
-      <div class="section">
-        <h3>Attachment Coverage</h3>
-        <p><strong>Coverage timeframe:</strong> ${escapeHtml(artifactLedger.coverageTimeframe)}</p>
-        <p><strong>Coverage subject:</strong> ${escapeHtml(artifactLedger.coverageSubject)}</p>
-        <div class="grid two">
-          <div>
-            <h4>Analyzed</h4>
-            <ul>${listToHtml(artifactLedger.analyzed.map((item) => `${item.source} | ${item.file} | ${item.finding}`))}</ul>
-          </div>
-          <div>
-            <h4>Not Analyzed</h4>
-            <ul>${listToHtml(artifactLedger.notAnalyzed.map((item) => `${item.source} | ${item.file} | ${item.reason}`))}</ul>
-          </div>
+      <h3>Attachment Coverage</h3>
+      <p><strong>Coverage timeframe:</strong> ${escapeHtml(artifactLedger.coverageTimeframe)}</p>
+      <p><strong>Coverage subject:</strong> ${escapeHtml(artifactLedger.coverageSubject)}</p>
+      <div class="grid two">
+        <div>
+          <h4>Analyzed</h4>
+          <ul>${listToHtml(artifactLedger.analyzed.map((item) => `${item.source} | ${item.file} | ${item.finding}`))}</ul>
+        </div>
+        <div>
+          <h4>Not Analyzed</h4>
+          <ul>${listToHtml(artifactLedger.notAnalyzed.map((item) => `${item.source} | ${item.file} | ${item.reason}`))}</ul>
         </div>
       </div>
     `
@@ -424,30 +425,47 @@ function buildPrintableHtml(session: TriageSession, analysis: TriageAnalysis, sn
       </div>
 
       <div class="section">
-        <h2>SNOW Evidence</h2>
-        <ul>${evidenceHtml}</ul>
+        <h2>Problem Statement</h2>
+        <ul>${listToHtml(problemStatementRows.length ? problemStatementRows : [analysis.clientReported])}</ul>
       </div>
 
       <div class="section">
-        <h2>Code Analysis</h2>
+        <h2>Diagnostic Evidence</h2>
+        <h3>SNOW Evidence</h3>
+        <ul>${evidenceHtml}</ul>
+        <h3>Code and Runtime Evidence</h3>
         <div class="pre">${escapeHtml(analysis.codeAnalysis)}</div>
       </div>
 
       <div class="section">
-        <h2>Gap / Recommendation</h2>
-        <div class="pre">${escapeHtml(analysis.gap)}</div>
+        <h2>Assessment</h2>
+        <ul>${listToHtml(assessmentRows.length ? assessmentRows : [analysis.gap])}</ul>
       </div>
 
       <div class="section">
-        <h2>Blind Spots</h2>
+        <h2>Artifact Coverage</h2>
+        ${artifactLedgerHtml || '<p>No artifact coverage metadata found.</p>'}
+        <h3>Attachments</h3>
+        <ul>${attachmentHtml}</ul>
+      </div>
+
+      <div class="section">
+        <h2>Recommended Next Steps</h2>
+        <ol>${recommendedSteps.map((s) => `<li>${escapeHtml(s)}</li>`).join('') || '<li>No additional action list generated.</li>'}</ol>
+      </div>
+
+      <div class="section">
+        <h2>Evidence Gaps</h2>
         <ul>${listToHtml(blindSpots)}</ul>
       </div>
 
-      ${artifactLedgerHtml}
-
       <div class="section">
-        <h2>Attachments</h2>
-        <ul>${attachmentHtml}</ul>
+        <h2>Unique DevAssist Sections</h2>
+        <ul>
+          <li>Analysis Framework Trace (skills routing, preflight checks, evidence quality)</li>
+          <li>Repo / MTM Comparison (related bugs, test cases, release history)</li>
+          <li>AI Assessment Panel (supplemental reasoning draft)</li>
+        </ul>
       </div>
 
       <div class="grid two">
@@ -474,7 +492,7 @@ function buildPrintableHtml(session: TriageSession, analysis: TriageAnalysis, sn
 
       ${session.analysis?.l2Draft ? `
         <div class="section">
-          <h2>L2 Commentary Draft</h2>
+          <h2>Suggested L2 Commentary</h2>
           <div class="pre">${escapeHtml(session.analysis.l2Draft)}</div>
         </div>
       ` : ''}
@@ -612,6 +630,14 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
   const recommendedSteps = buildRecommendedNextSteps(analysis);
   const analyzedArtifacts = session.artifactLedger?.analyzed ?? [];
   const notAnalyzedArtifacts = session.artifactLedger?.notAnalyzed ?? [];
+  const hasRepoComparisonSections = Boolean(
+    session.relatedItems?.length ||
+    session.testCases?.length ||
+    session.recentCommits?.length ||
+    session.areaEvidence?.length ||
+    session.versionEvidence?.length ||
+    session.kbEvidence?.length
+  );
   const emailHref = buildAnalysisEmail(session, analysis, snowEvidenceRows);
 
   const copyL2 = () => {
@@ -832,6 +858,15 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
             </details>
           </section>
         )}
+
+        <section className="space-y-2">
+          <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Unique DevAssist Sections</p>
+          <div className="rounded border border-gray-800 bg-gray-950/70 p-2.5 space-y-1">
+            <p className="text-xs text-gray-200">- Analysis Framework Trace (skills): preflight checks, routing, and evidence quality.</p>
+            {hasRepoComparisonSections && <p className="text-xs text-gray-200">- Repo / MTM Comparison: cross-checks against related bugs, test coverage, commits, and release context.</p>}
+            <p className="text-xs text-gray-200">- AI Assessment Panel: optional secondary perspective for reviewer comparison.</p>
+          </div>
+        </section>
       </div>
 
       {/* Repo / MTM Comparison */}
@@ -1003,7 +1038,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
       {analysis.l2Draft && (
         <div className="rounded-lg border border-altera-blue/40 bg-altera-blue/10 p-4 space-y-2">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <p className="text-xs font-medium text-altera-teal">L2 Commentary Draft (review before posting)</p>
+            <p className="text-xs font-medium text-altera-teal">Suggested L2 Commentary (review before posting)</p>
             <div className="flex items-center gap-2">
               <button
                 type="button"
