@@ -104,16 +104,26 @@ interface LogAnalysisResult {
   scannableAttachments: number;
   analyzed: string[];
   skipped: string[];
+  suppressedNoiseCount: number;
   totalHits: number;
   hits: LogHit[];
   byCategory: Record<string, LogHit[]>;
   lockPairs: LogHit[];
   topSeeds: Record<string, number>;
+  stackTraces: StackTraceSummary[];
   spreadsheetSummaries: SpreadsheetSummary[];
   imageSummaries: ImageSummary[];
   suggestions: CodeSuggestion[];
   explanation: string[];
   cached?: boolean;
+}
+
+interface StackTraceSummary {
+  file: string;
+  exception: string;
+  signature: string;
+  firstLine: number;
+  preview: string;
 }
 
 interface LogAnalysisCacheEntry {
@@ -132,6 +142,12 @@ const MAX_CHUNK_BYTES  = 200 * 1024 * 1024; // 200 MB — read last N lines
 const TAIL_LINES       = 5000;               // lines to tail on very large files
 const MAX_SKIP_BYTES   = 500 * 1024 * 1024; // 500 MB — truly skip
 const MAX_OCR_IMAGE_BYTES = 15 * 1024 * 1024;
+const MAX_STACK_TRACES = 5;
+const SKIP_OPERATIONS = ['CheckShellForIdle', 'GetConnectedHCServerName', 'ResolveLocalHost'];
+
+function shouldSkipOperationLine(line: string): boolean {
+  return SKIP_OPERATIONS.some((op) => line.toLowerCase().includes(op.toLowerCase()));
+}
 
 /** Read up to TAIL_LINES from the end of a large log file */
 function readTail(filePath: string, maxLines: number): string {
@@ -280,6 +296,7 @@ function parseHwsLog(content: string, fileName: string): LogHit[] {
   const lines = content.split('\n');
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    if (shouldSkipOperationLine(line)) continue;
     for (const seed of GREP_SEEDS) {
       if (line.toLowerCase().includes(seed.toLowerCase())) {
         hits.push({
@@ -294,6 +311,54 @@ function parseHwsLog(content: string, fileName: string): LogHit[] {
     }
   }
   return hits;
+}
+
+function extractStackTraces(content: string, fileName: string, maxCount: number): StackTraceSummary[] {
+  const traces: StackTraceSummary[] = [];
+  const lines = content.split('\n');
+
+  for (let i = 0; i < lines.length && traces.length < maxCount; i++) {
+    const line = lines[i]?.trim() ?? '';
+    if (!/(Exception|ERROR|FATAL|SqlException|NullReferenceException|UnauthorizedAccessException|ArgumentException)/i.test(line)) continue;
+
+    const block: string[] = [line];
+    let j = i + 1;
+    while (j < lines.length && block.length < 12) {
+      const next = (lines[j] ?? '').trim();
+      if (!next) break;
+      if (!/^at\s+|^--- End of|^Inner Exception|Exception|ERROR|FATAL/i.test(next)) break;
+      block.push(next);
+      j += 1;
+    }
+
+    const preview = block.join(' | ').slice(0, 380);
+    const exceptionMatch = line.match(/([A-Za-z0-9_.]+Exception)/);
+    const exception = exceptionMatch?.[1] ?? 'Exception';
+    const signature = `${exception}|${(block[1] ?? '').replace(/\s+/g, ' ').trim().slice(0, 140)}`;
+    traces.push({
+      file: fileName,
+      exception,
+      signature,
+      firstLine: i + 1,
+      preview,
+    });
+
+    i = j;
+  }
+
+  return traces;
+}
+
+function dedupeStackTraces(traces: StackTraceSummary[], maxCount: number): StackTraceSummary[] {
+  const seen = new Set<string>();
+  const out: StackTraceSummary[] = [];
+  for (const trace of traces) {
+    if (seen.has(trace.signature)) continue;
+    seen.add(trace.signature);
+    out.push(trace);
+    if (out.length >= maxCount) break;
+  }
+  return out;
 }
 
 function parseSpreadsheet(filePath: string, fileName: string): { hits: LogHit[]; summaries: SpreadsheetSummary[] } {
@@ -581,9 +646,11 @@ function buildExplanation(result: {
   totalHits: number;
   byCategory: Record<string, LogHit[]>;
   topSeeds: Record<string, number>;
+  stackTraces: StackTraceSummary[];
   spreadsheetSummaries: SpreadsheetSummary[];
   imageSummaries: ImageSummary[];
   lockPairs: LogHit[];
+  suppressedNoiseCount: number;
 }): string[] {
   const explanation: string[] = [];
 
@@ -626,6 +693,10 @@ function buildExplanation(result: {
     explanation.push(`Top repeated signals: ${topSeeds.join(', ')}.`);
   }
 
+  if (result.stackTraces.length > 0) {
+    explanation.push(`Top exception stack traces extracted: ${result.stackTraces.map((t) => `${t.exception} in ${t.file}:${t.firstLine}`).join(' | ')}.`);
+  }
+
   if (result.spreadsheetSummaries.length > 0) {
     const sheetFindings = result.spreadsheetSummaries
       .flatMap((summary) => summary.findings ?? [])
@@ -656,6 +727,10 @@ function buildExplanation(result: {
     explanation.push('Lock start/end pairs were matched, which helps confirm whether the failure was caused by a long-running or blocked operation.');
   }
 
+  if (result.suppressedNoiseCount > 0) {
+    explanation.push(`Suppressed ${result.suppressedNoiseCount} noisy operation line(s) (${SKIP_OPERATIONS.join(', ')}) to keep the analysis focused on diagnostic signals.`);
+  }
+
   return explanation;
 }
 
@@ -681,10 +756,12 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
     const scannableFiles: AttachmentMeta[] = [];
 
     const allHits: LogHit[] = [];
+    const rawTextBlocks: Array<{ file: string; content: string }> = [];
     const spreadsheetSummaries: SpreadsheetSummary[] = [];
     const imageSummaries: ImageSummary[] = [];
     const analyzed: string[] = [];
     const skipped: string[] = [];
+    let suppressedNoiseCount = 0;
 
     for (const att of attachments) {
       const fileName = val(att.file_name) || '(unnamed attachment)';
@@ -766,6 +843,8 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
               } else {
                 content = readTextFile(innerPath);
               }
+              suppressedNoiseCount += content.split('\n').filter((line) => shouldSkipOperationLine(line)).length;
+              rawTextBlocks.push({ file: `${fileName}/${relativeName}`, content });
               hits = parseHwsLog(content, `${fileName}/${relativeName}`);
               analyzed.push(`${fileName}/${relativeName}${note} (${hits.length} hit(s))`);
             }
@@ -805,6 +884,8 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
             } else {
               content = readTextFile(outPath);
             }
+            suppressedNoiseCount += content.split('\n').filter((line) => shouldSkipOperationLine(line)).length;
+            rawTextBlocks.push({ file: fileName, content });
             hits = parseHwsLog(content, fileName);
             analyzed.push(`${fileName}${note} (${hits.length} hit(s))`);
           }
@@ -820,17 +901,23 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
     const lockPairs = extractLockPairs(allHits);
     const byCategory = groupByCategory(allHits);
     const suggestions = buildSuggestions(allHits);
+    const stackTraces = dedupeStackTraces(
+      rawTextBlocks.flatMap((b) => extractStackTraces(b.content, b.file, MAX_STACK_TRACES)),
+      MAX_STACK_TRACES
+    );
 
     const result: LogAnalysisResult = {
       totalAttachments: attachments.length,
       scannableAttachments: scannableFiles.length,
       analyzed,
       skipped,
+      suppressedNoiseCount,
       totalHits: allHits.length,
       hits: allHits.slice(0, 100), // cap display at 100
       byCategory,
       lockPairs: lockPairs.slice(0, 20),
       topSeeds: summariseBySeeds(allHits),
+      stackTraces,
       spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
       imageSummaries: imageSummaries.slice(0, 40),
       suggestions,
@@ -842,9 +929,11 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
         totalHits: allHits.length,
         byCategory,
         topSeeds: summariseBySeeds(allHits),
+        stackTraces,
         spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
         imageSummaries: imageSummaries.slice(0, 40),
         lockPairs: lockPairs.slice(0, 20),
+        suppressedNoiseCount,
       }),
       cached: false,
     };

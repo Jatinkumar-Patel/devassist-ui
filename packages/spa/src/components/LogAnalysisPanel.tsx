@@ -26,10 +26,18 @@ interface LogAnalysisResult {
   scannableAttachments?: number;
   analyzed: string[];
   skipped: string[];
+  suppressedNoiseCount?: number;
   totalHits: number;
   hits: LogHit[];
   byCategory: Record<string, LogHit[]>;
   topSeeds: Record<string, number>;
+  stackTraces?: Array<{
+    file: string;
+    exception: string;
+    signature: string;
+    firstLine: number;
+    preview: string;
+  }>;
   explanation?: string[];
   spreadsheetSummaries?: Array<{
     file: string;
@@ -191,10 +199,12 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
       scannableAttachments: items.reduce((sum, x) => sum + (x.scannableAttachments ?? 0), 0),
       analyzed,
       skipped,
+      suppressedNoiseCount: items.reduce((sum, x) => sum + (x.suppressedNoiseCount ?? 0), 0),
       totalHits: hits.length,
       hits,
       byCategory,
       topSeeds,
+      stackTraces: items.flatMap((x) => x.stackTraces ?? []).slice(0, 8),
       spreadsheetSummaries,
       imageSummaries,
       suggestions: items.flatMap((x) => x.suggestions ?? []),
@@ -329,6 +339,16 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
               <p className="text-gray-200 font-mono">{result.totalHits ?? 0}</p>
             </div>
           </div>
+
+          {(result.suppressedNoiseCount ?? 0) > 0 && (
+            <div className="rounded-lg border border-indigo-900/60 bg-indigo-950/20 p-3">
+              <p className="text-xs font-medium text-indigo-200">Noise filtering applied</p>
+              <p className="text-xs text-indigo-100/80 mt-1">
+                Suppressed {result.suppressedNoiseCount} low-value operation line(s) (CheckShellForIdle, GetConnectedHCServerName, ResolveLocalHost)
+                so diagnostics focus on errors, warnings, lock contention, and exception traces.
+              </p>
+            </div>
+          )}
 
           {result.explanation && result.explanation.length > 0 && (
             <div className="rounded-lg border border-cyan-900/60 bg-cyan-950/20 p-3 space-y-2">
@@ -477,6 +497,24 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
                         ))}
                       </div>
                     )}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {result.stackTraces && result.stackTraces.length > 0 && (
+            <details className="rounded-lg border border-fuchsia-900/60 bg-fuchsia-950/20 p-3 group" open>
+              <summary className="flex items-center justify-between cursor-pointer list-none select-none">
+                <span className="text-xs font-medium text-fuchsia-200">Top exception stack traces ({result.stackTraces.length})</span>
+                <ChevronDown size={11} className="group-open:rotate-180 transition-transform text-fuchsia-300" />
+              </summary>
+              <div className="mt-2 space-y-2 max-h-56 overflow-auto">
+                {result.stackTraces.map((trace, i) => (
+                  <div key={`${trace.file}-${trace.firstLine}-${i}`} className="text-xs rounded border border-fuchsia-900/50 bg-black/20 p-2 space-y-1">
+                    <p className="text-fuchsia-200 font-mono break-all">{trace.file}:{trace.firstLine}</p>
+                    <p className="text-fuchsia-100/90">{trace.exception}</p>
+                    <p className="text-gray-400 font-mono break-all">{trace.preview}</p>
                   </div>
                 ))}
               </div>
