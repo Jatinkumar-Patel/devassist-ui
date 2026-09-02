@@ -695,7 +695,7 @@ function summarizeSnowWorkNotes(raw: string): string[] {
         const label = prettifyAuditField(fieldName || 'field');
         if (fieldName === 'work_notes' || fieldName === 'comments') {
           const journalText = newVal === 'Note added' ? 'Note added' : newVal;
-          summaries.push(truncateEvidence(`${label}: ${journalText}${user ? ` | ${user}` : ''}${when ? ` | ${when}` : ''}`));
+          summaries.push(truncateEvidence(`${label}: ${journalText}${user ? ` | ${user}` : ''}${when ? ` | ${when}` : ''}`, 1400));
           const noteIntent = summarizeWorkNoteIntent(journalText);
           if (noteIntent) summaries.push(noteIntent);
         } else {
@@ -712,7 +712,7 @@ function summarizeSnowWorkNotes(raw: string): string[] {
   const lines = raw.split(/\n|\\n/)
     .map(l => l.replace(/\[.*?\]/g, '').trim())
     .filter(l => l.length > 15 && /error|exception|fail|cannot|unable|version|repro|confirm|observed|occur|steps|workaround|found|tested|timed out|timeout|format|spacing|line break|missing|broken|incorrect|wrong|reproduc|screen|attach|upload|check|verify|investigat|customer|report|ticket|impact|updated|priority|assigned|state/i.test(l))
-    .map(l => truncateEvidence(l))
+    .map(l => truncateEvidence(l, 900))
     .slice(0, 8);
 
   return lines;

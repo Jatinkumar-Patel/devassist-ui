@@ -62,6 +62,14 @@ function humanizeTimelineDetail(label: string, detail: string): string {
   return detail;
 }
 
+function evidenceDetailMax(label: string, category: SnowEvidenceUiEntry['category']): number {
+  if (/^work\s*notes?$/i.test(label) || /^comments?$/i.test(label)) return 1600;
+  if (category === 'timeline') return 280;
+  if (category === 'record') return 180;
+  if (category === 'summary') return 260;
+  return 240;
+}
+
 type SnowEvidenceUiEntry = {
   category: 'record' | 'summary' | 'timeline' | 'generic';
   label: string;
@@ -83,7 +91,7 @@ function parseSnowEvidenceForUi(rows: string[]): SnowEvidenceUiEntry[] {
       const idx = row.indexOf(':');
       const label = idx >= 0 ? row.slice(0, idx).trim() : 'SNOW Record';
       const detail = idx >= 0 ? row.slice(idx + 1).trim() : row;
-      parsed.push({ category: 'record', label, detail: compactText(detail, 180) });
+      parsed.push({ category: 'record', label, detail: compactText(detail, evidenceDetailMax(label, 'record')) });
       continue;
     }
 
@@ -91,7 +99,7 @@ function parseSnowEvidenceForUi(rows: string[]): SnowEvidenceUiEntry[] {
       const idx = row.indexOf(':');
       const label = idx >= 0 ? row.slice(0, idx).trim() : 'SNOW Summary';
       const detail = idx >= 0 ? row.slice(idx + 1).trim() : row;
-      parsed.push({ category: 'summary', label, detail: compactText(detail, 220) });
+      parsed.push({ category: 'summary', label, detail: compactText(detail, evidenceDetailMax(label, 'summary')) });
       continue;
     }
 
@@ -104,7 +112,7 @@ function parseSnowEvidenceForUi(rows: string[]): SnowEvidenceUiEntry[] {
       parsed.push({
         category: 'timeline',
         label,
-        detail: compactText(detail, 220),
+        detail: compactText(detail, evidenceDetailMax(label, 'timeline')),
         actor: compactText(parts[1], 64),
         time: compactText(parts[2], 48),
       });
@@ -115,7 +123,7 @@ function parseSnowEvidenceForUi(rows: string[]): SnowEvidenceUiEntry[] {
       const idx = row.indexOf(':');
       const label = idx >= 0 ? row.slice(0, idx).trim() : 'Evidence';
       const detail = idx >= 0 ? row.slice(idx + 1).trim() : row;
-      parsed.push({ category: 'generic', label, detail: compactText(detail, 220) });
+      parsed.push({ category: 'generic', label, detail: compactText(detail, evidenceDetailMax(label, 'generic')) });
       continue;
     }
 
@@ -652,9 +660,22 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                   <p className="text-[11px] uppercase tracking-wide text-gray-500">Additional evidence</p>
                   {snowOther.map((item, idx) => (
                     <div key={`snow-other-${idx}`} className="rounded border border-gray-800 bg-gray-900/70 px-2.5 py-2">
-                      <p className="text-xs text-gray-200">
-                        <span className="text-cyan-300 font-semibold">{item.label}:</span> {item.detail}
-                      </p>
+                      {item.detail.length > 260 ? (
+                        <details className="group">
+                          <summary className="cursor-pointer text-xs text-gray-200 list-none">
+                            <span className="text-cyan-300 font-semibold">{item.label}:</span> {compactText(item.detail, 260)}
+                            <span className="text-cyan-400 ml-2 group-open:hidden">Show more</span>
+                            <span className="text-cyan-400 ml-2 hidden group-open:inline">Show less</span>
+                          </summary>
+                          <p className="text-xs text-gray-200 mt-2 whitespace-pre-wrap leading-relaxed">
+                            <span className="text-cyan-300 font-semibold">{item.label}:</span> {item.detail}
+                          </p>
+                        </details>
+                      ) : (
+                        <p className="text-xs text-gray-200 whitespace-pre-wrap leading-relaxed">
+                          <span className="text-cyan-300 font-semibold">{item.label}:</span> {item.detail}
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
