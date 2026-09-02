@@ -120,6 +120,10 @@ export default function RegistryPage() {
 }
 
 function ProductEditor({ product, onSave, saving }: { product: Product; onSave: (p: Product) => void; saving: boolean }) {
+  const roleRank: Record<ProductSkillRef['role'], number> = { primary: 0, secondary: 1 };
+  const sortSkillPriority = (items: ProductSkillRef[]) =>
+    [...items].sort((a, b) => (roleRank[a.role] ?? 99) - (roleRank[b.role] ?? 99));
+
   const initialGithubSkills: ProductSkillRef[] =
     product.githubSkills?.length
       ? product.githubSkills
@@ -182,8 +186,8 @@ function ProductEditor({ product, onSave, saving }: { product: Product; onSave: 
   }, []);
 
   const saveProduct = () => {
-    const enabledLocalSkills = (p.localSkills ?? []).filter((x) => x.enabled !== false && x.path.trim());
-    const enabledGithubSkills = (p.githubSkills ?? []).filter((x) => x.enabled !== false && x.path.trim());
+    const enabledLocalSkills = sortSkillPriority((p.localSkills ?? []).filter((x) => x.enabled !== false && x.path.trim()));
+    const enabledGithubSkills = sortSkillPriority((p.githubSkills ?? []).filter((x) => x.enabled !== false && x.path.trim()));
     const enabledPastedMd = (p.pastedSkillMd ?? []).filter((x) => x.enabled !== false && (x.title.trim() || x.content.trim()));
     const databaseRepoPaths = Array.from(new Set((p.databaseRepoPaths ?? []).map((x) => x.trim()).filter(Boolean)));
     const snowProducts = Array.from(new Set((p.snowProducts ?? []).map((x) => x.trim()).filter(Boolean)));
@@ -352,6 +356,7 @@ function ProductEditor({ product, onSave, saving }: { product: Product; onSave: 
             set("githubSkills", v);
             set("githubSkillPaths", v.filter((x) => x.enabled !== false).map((x) => x.path));
           }}
+          defaultRole="primary"
           placeholder="https://github.com/org/repo/tree/main/skills/devassist-triage/areas/shm"
         />
       </Section>
@@ -363,6 +368,7 @@ function ProductEditor({ product, onSave, saving }: { product: Product; onSave: 
             set("skillPaths", v.filter((x) => x.enabled !== false).map((x) => x.path));
             set("skillPath", v.find((x) => x.enabled !== false)?.path ?? "");
           }}
+          defaultRole="secondary"
           placeholder="C:\skills\shm-playbook.md"
         />
       </Section>
@@ -779,8 +785,8 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
   );
 }
 
-function SkillPathEditor({ values, onChange, placeholder }: { values: ProductSkillRef[]; onChange: (v: ProductSkillRef[]) => void; placeholder?: string }) {
-  const add = () => onChange([...values, { path: "", role: "secondary", enabled: true }]);
+function SkillPathEditor({ values, onChange, placeholder, defaultRole = 'secondary' }: { values: ProductSkillRef[]; onChange: (v: ProductSkillRef[]) => void; placeholder?: string; defaultRole?: ProductSkillRef['role'] }) {
+  const add = () => onChange([...values, { path: "", role: defaultRole, enabled: true }]);
   const del = (i: number) => onChange(values.filter((_, j) => j !== i));
   const updPath = (i: number, path: string) => onChange(values.map((x, j) => j === i ? { ...x, path } : x));
   const updRole = (i: number, role: ProductSkillRef['role']) => onChange(values.map((x, j) => j === i ? { ...x, role } : x));

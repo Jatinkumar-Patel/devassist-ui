@@ -827,6 +827,25 @@ export async function buildSkillDrivenAssessment(
   imageSummaries: ImageSummaryInput[] = [],
   snowContext: SnowContextInput = {}
 ): Promise<TriageAnalysis> {
+  const collectGithubSkillPaths = (): string[] => {
+    const prioritized = (product.githubSkills ?? [])
+      .filter((s) => s.enabled !== false && String(s.path ?? '').trim())
+      .sort((a, b) => (a.role === 'primary' ? 0 : 1) - (b.role === 'primary' ? 0 : 1))
+      .map((s) => s.path.trim());
+
+    const legacy = (product.githubSkillPaths ?? []).map((v) => String(v ?? '').trim()).filter(Boolean);
+    const merged = [...prioritized, ...legacy];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const pathValue of merged) {
+      const key = pathValue.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(pathValue);
+    }
+    return out.slice(0, 5);
+  };
+
   const snowField = (value: unknown): string => {
     if (!value) return '';
     if (typeof value === 'string') return value;
@@ -899,20 +918,48 @@ export async function buildSkillDrivenAssessment(
   let profileMd = '';
   let resolvedAreaId = '';
   let loadedSkillFiles: string[] = [];
+  let skillSource: 'local' | 'github' | 'none' = 'none';
+  const githubSkillPaths = collectGithubSkillPaths();
 
   for (const areaId of areaCandidates) {
+    let files: Record<string, string> | null = null;
+
     try {
       const r = await fetch(`${bridge}/api/skills/area/${encodeURIComponent(areaId)}`, { signal: AbortSignal.timeout(4000) });
-      if (!r.ok) continue;
-      const data = await r.json() as { files: Record<string, string> };
-      if (data.files['analysis-playbook.md']) playbook = parsePlaybook(data.files['analysis-playbook.md']);
-      reposMd = data.files['repositories.md'] ?? '';
-      profileMd = data.files['profile.md'] ?? '';
-      loadedSkillFiles = Object.keys(data.files ?? {});
+      if (r.ok) {
+        const data = await r.json() as { files: Record<string, string> };
+        files = data.files ?? {};
+        if (Object.keys(files).length) skillSource = 'local';
+      }
+    } catch {
+      // Try GitHub fallback.
+    }
+
+    if ((!files || !Object.keys(files).length) && githubSkillPaths.length > 0) {
+      try {
+        const gh = await fetch(`${bridge}/api/skills/github-area/${encodeURIComponent(areaId)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ githubSkillPaths }),
+          signal: AbortSignal.timeout(7000),
+        });
+        if (gh.ok) {
+          const data = await gh.json() as { files: Record<string, string> };
+          files = data.files ?? {};
+          if (Object.keys(files).length) skillSource = 'github';
+        }
+      } catch {
+        // Non-fatal: continue trying next candidate.
+      }
+    }
+
+    if (files && Object.keys(files).length) {
+      if (files['analysis-playbook.md']) playbook = parsePlaybook(files['analysis-playbook.md']);
+      reposMd = files['repositories.md'] ?? '';
+      profileMd = files['profile.md'] ?? '';
+      loadedSkillFiles = Object.keys(files);
       resolvedAreaId = areaId;
       break;
-    } catch {
-      // Non-fatal: continue trying the next candidate.
     }
   }
 
@@ -1124,6 +1171,7 @@ export async function buildSkillDrivenAssessment(
       `Input type: ${String((adoItem as any)?.id ? 'DA/TFS' : 'Direct SNOW')}`,
       `Bridge endpoint: ${bridge}`,
       `Skill root status: ${resolvedAreaId ? 'matched' : 'not matched'}`,
+      `Skill source: ${skillSource}`,
       `Playbook patterns loaded: ${playbook.length}`,
     ],
     routingDecision: [
