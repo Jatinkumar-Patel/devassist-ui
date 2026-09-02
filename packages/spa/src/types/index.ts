@@ -43,6 +43,8 @@ export interface Product {
   areaPathPrefixes?: string[];  // additional area path prefixes
   databaseRepoPaths?: string[];
   snowProduct: string;
+  snowProducts?: string[];
+  snowAssignmentGroups?: string[];
   snowTaskTable: 'incident_task' | 'sc_task';
   repos: RepoRef[];
   mtmPlans: MtmPlan[];

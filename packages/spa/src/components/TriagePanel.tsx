@@ -25,6 +25,13 @@ interface Props {
   onAnalysisComplete: (analysis: TriageAnalysis) => void;
 }
 
+function normalizedMappedValues(values: string[] | undefined, fallback?: string): string[] {
+  const normalized = Array.from(new Set((values ?? []).map((v) => String(v ?? '').trim()).filter(Boolean)));
+  if (normalized.length) return normalized;
+  const base = String(fallback ?? '').trim();
+  return base ? [base] : [];
+}
+
 function isLocalBridgeUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -74,6 +81,9 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
         ? `SNOW-backed artifacts are unavailable on this machine. ${bridgeStatus.snowAuth}. Connect VPN, refresh status, then re-run analysis.`
         : null
     : null;
+
+  const mappedSnowProducts = normalizedMappedValues(product?.snowProducts, product?.snowProduct);
+  const mappedAssignmentGroups = normalizedMappedValues(product?.snowAssignmentGroups);
 
   if (error) {
     const message = friendlyErrorMessage(error, bridgeUrl);
@@ -202,6 +212,30 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
                 ))}
               </div>
             )}
+            {(mappedSnowProducts.length > 0 || mappedAssignmentGroups.length > 0) && (
+              <div className="space-y-1 mt-1.5">
+                {mappedSnowProducts.length > 0 && (
+                  <div className="flex flex-wrap gap-1 text-xs">
+                    <span className="text-gray-500">Evidence Product Scope:</span>
+                    {mappedSnowProducts.map((value) => (
+                      <span key={`snow-product-${value}`} className="bg-cyan-950/40 border border-cyan-800/70 rounded px-1.5 py-0.5 text-cyan-200">
+                        {value}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {mappedAssignmentGroups.length > 0 && (
+                  <div className="flex flex-wrap gap-1 text-xs">
+                    <span className="text-gray-500">Evidence Assignment Group Scope:</span>
+                    {mappedAssignmentGroups.map((value) => (
+                      <span key={`snow-group-${value}`} className="bg-indigo-950/40 border border-indigo-800/70 rounded px-1.5 py-0.5 text-indigo-200">
+                        {value}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -323,6 +357,8 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
                 <Package size={12} /> {product.displayName} — {product.snowProduct}
               </div>
               <InfoRow label="Task table" value={product.snowTaskTable} />
+              {mappedSnowProducts.length > 0 && <InfoRow label="Mapped SNOW products" value={mappedSnowProducts.join(', ')} />}
+              {mappedAssignmentGroups.length > 0 && <InfoRow label="Mapped assignment groups" value={mappedAssignmentGroups.join(', ')} />}
               <div className="flex flex-wrap gap-x-3">
                 {product.repos.map((r) => (
                   <a key={r.key} href={`https://github.com/${r.owner}/${r.repo}`}

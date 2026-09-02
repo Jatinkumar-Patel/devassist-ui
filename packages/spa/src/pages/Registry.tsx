@@ -3,9 +3,11 @@ import { Package, GitBranch, TestTube2, Plus, Trash2, Save, ChevronDown, Folder,
 import { loadRegistry, saveRegistry, invalidateRegistry } from "../lib/product-registry";
 import type { ProductRegistry, Product, RepoRef, MtmPlan, ProductGroup, ProductSkillRef, PastedSkillMdRef } from "../types";
 import { bridgeApi } from "../lib/bridge-url";
+import { fetchSnowLookups } from "../lib/snow-client";
 
 const EMPTY_PRODUCT: Product = {
   id: "", displayName: "", areaPathPrefix: "", snowProduct: "",
+  snowProducts: [], snowAssignmentGroups: [],
   snowTaskTable: "incident_task", repos: [], mtmPlans: [], databaseRepoPaths: [],
   skillPaths: [], localSkills: [], githubSkillPaths: [], githubSkills: [], pastedSkillMd: [], docUrl: "", localFolder: "", notes: "",
 };
@@ -132,22 +134,57 @@ function ProductEditor({ product, onSave, saving }: { product: Product; onSave: 
   const [p, setP] = useState<Product>({
     ...product,
     databaseRepoPaths: product.databaseRepoPaths ?? [],
+    snowProducts: Array.from(new Set((product.snowProducts ?? [product.snowProduct]).map((x) => String(x ?? '').trim()).filter(Boolean))),
+    snowAssignmentGroups: Array.from(new Set((product.snowAssignmentGroups ?? []).map((x) => String(x ?? '').trim()).filter(Boolean))),
     skillPaths: product.skillPaths ?? (product.skillPath ? [product.skillPath] : []),
     localSkills: initialLocalSkills,
     githubSkillPaths: product.githubSkillPaths ?? [],
     githubSkills: initialGithubSkills,
     pastedSkillMd: initialPastedMd,
   });
+  const [snowLookupLoading, setSnowLookupLoading] = useState(false);
+  const [snowLookupError, setSnowLookupError] = useState("");
+  const [snowProductsCatalog, setSnowProductsCatalog] = useState<string[]>([]);
+  const [snowGroupCatalog, setSnowGroupCatalog] = useState<string[]>([]);
+  const [snowLookupStamp, setSnowLookupStamp] = useState("");
   const set = <K extends keyof Product>(k: K, v: Product[K]) => setP(prev => ({ ...prev, [k]: v }));
+
+  const loadSnowLookupCatalog = async () => {
+    setSnowLookupLoading(true);
+    setSnowLookupError("");
+    try {
+      const data = await fetchSnowLookups();
+      setSnowProductsCatalog(Array.isArray(data.products) ? data.products : []);
+      setSnowGroupCatalog(Array.isArray(data.assignmentGroups) ? data.assignmentGroups : []);
+      setSnowLookupStamp(data.sampledAt ? new Date(data.sampledAt).toLocaleString() : '');
+    } catch (e: any) {
+      setSnowLookupError(e?.message ?? 'Unable to load SNOW lookups');
+    } finally {
+      setSnowLookupLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadSnowLookupCatalog();
+  }, []);
 
   const saveProduct = () => {
     const enabledLocalSkills = (p.localSkills ?? []).filter((x) => x.enabled !== false && x.path.trim());
     const enabledGithubSkills = (p.githubSkills ?? []).filter((x) => x.enabled !== false && x.path.trim());
     const enabledPastedMd = (p.pastedSkillMd ?? []).filter((x) => x.enabled !== false && (x.title.trim() || x.content.trim()));
     const databaseRepoPaths = Array.from(new Set((p.databaseRepoPaths ?? []).map((x) => x.trim()).filter(Boolean)));
+    const snowProducts = Array.from(new Set((p.snowProducts ?? []).map((x) => x.trim()).filter(Boolean)));
+    const snowAssignmentGroups = Array.from(new Set((p.snowAssignmentGroups ?? []).map((x) => x.trim()).filter(Boolean)));
+    const primarySnowProduct = p.snowProduct?.trim() || snowProducts[0] || '';
+    const normalizedSnowProducts = primarySnowProduct
+      ? Array.from(new Set([primarySnowProduct, ...snowProducts]))
+      : snowProducts;
 
     onSave({
       ...p,
+      snowProduct: primarySnowProduct,
+      snowProducts: normalizedSnowProducts,
+      snowAssignmentGroups,
       databaseRepoPaths,
       skillPaths: enabledLocalSkills.map((x) => x.path),
       skillPath: enabledLocalSkills[0]?.path ?? p.skillPath ?? '',
@@ -164,12 +201,62 @@ function ProductEditor({ product, onSave, saving }: { product: Product; onSave: 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="ID (slug)" value={p.id} onChange={v => set("id", v)} mono placeholder="e.g. shm"/>
           <Field label="Display name" value={p.displayName} onChange={v => set("displayName", v)} placeholder="Secure Health Messaging"/>
-          <Field label="SNOW product" value={p.snowProduct} onChange={v => set("snowProduct", v)} placeholder="Sunrise Ambulatory Care"/>
+          <Field
+            label="Primary SNOW product"
+            value={p.snowProduct}
+            onChange={v => {
+              set("snowProduct", v);
+              const trimmed = v.trim();
+              if (!trimmed) return;
+              const merged = Array.from(new Set([trimmed, ...(p.snowProducts ?? [])]));
+              set("snowProducts", merged);
+            }}
+            placeholder="Sunrise Ambulatory Care"
+          />
           <div><label className="block text-xs text-gray-500 mb-1">SNOW task table</label>
             <select value={p.snowTaskTable} onChange={e => set("snowTaskTable", e.target.value as Product["snowTaskTable"])} className={inp + " cursor-pointer"}>
               <option value="incident_task">incident_task</option><option value="sc_task">sc_task</option>
             </select>
           </div>
+        </div>
+      </Section>
+
+      <Section title="SNOW mapping filters (multi-select)">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => { void loadSnowLookupCatalog(); }}
+              className="text-xs px-2.5 py-1.5 rounded border border-cyan-700 text-cyan-200 hover:bg-cyan-950/30"
+            >
+              Refresh from SNOW
+            </button>
+            {snowLookupLoading && <span className="text-xs text-gray-500 animate-pulse">Loading SNOW options...</span>}
+            {!snowLookupLoading && snowLookupStamp && <span className="text-[11px] text-gray-500">Last sync: {snowLookupStamp}</span>}
+          </div>
+          {snowLookupError && <p className="text-xs text-red-400">{snowLookupError}</p>}
+
+          <SnowLookupMultiSelect
+            label="Mapped SNOW Product values"
+            options={snowProductsCatalog}
+            selected={p.snowProducts ?? []}
+            onChange={(values) => {
+              set("snowProducts", values);
+              if (!p.snowProduct && values.length) set("snowProduct", values[0]);
+            }}
+            placeholder="Type to filter product values..."
+          />
+
+          <SnowLookupMultiSelect
+            label="Mapped SNOW Assignment Group values"
+            options={snowGroupCatalog}
+            selected={p.snowAssignmentGroups ?? []}
+            onChange={(values) => set("snowAssignmentGroups", values)}
+            placeholder="Type to filter assignment groups..."
+          />
+          <p className="text-[11px] text-gray-500">
+            These values are used as signal terms during SNOW KB evidence search so product scope matches support ownership patterns.
+          </p>
         </div>
       </Section>
       <Section title="Area paths">
@@ -392,6 +479,104 @@ function StringListEditor({ values, onChange, placeholder, mono }: { values: str
         </div>
       ))}
       <button onClick={add} className="flex items-center gap-1 text-xs text-gray-600 hover:text-altera-teal"><Plus size={12}/> Add</button>
+    </div>
+  );
+}
+
+function SnowLookupMultiSelect({
+  label,
+  options,
+  selected,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  options: string[];
+  selected: string[];
+  onChange: (v: string[]) => void;
+  placeholder: string;
+}) {
+  const [query, setQuery] = useState('');
+  const normalizedSelected = Array.from(new Set(selected.map((x) => x.trim()).filter(Boolean)));
+  const q = query.trim().toLowerCase();
+
+  const filteredOptions = options
+    .filter((option) => !q || option.toLowerCase().includes(q))
+    .slice(0, 120);
+
+  const toggle = (value: string) => {
+    if (normalizedSelected.includes(value)) {
+      onChange(normalizedSelected.filter((v) => v !== value));
+      return;
+    }
+    onChange([...normalizedSelected, value]);
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <label className="text-xs text-gray-400">{label}</label>
+        <span className="text-[11px] text-gray-500">{normalizedSelected.length} selected</span>
+      </div>
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={placeholder}
+        className={inp + ' text-[11px]'}
+      />
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => onChange(filteredOptions.length ? Array.from(new Set([...normalizedSelected, ...filteredOptions])) : normalizedSelected)}
+          className="text-[11px] px-2 py-1 rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
+        >
+          Add visible
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange(q ? normalizedSelected.filter((v) => !v.toLowerCase().includes(q)) : [])}
+          className="text-[11px] px-2 py-1 rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
+        >
+          {q ? 'Remove visible' : 'Clear all'}
+        </button>
+      </div>
+      <div className="max-h-44 overflow-auto border border-gray-800 rounded p-2 space-y-1 bg-gray-950/40">
+        {filteredOptions.length === 0 ? (
+          <p className="text-xs text-gray-500">No matching options.</p>
+        ) : (
+          filteredOptions.map((value) => {
+            const checked = normalizedSelected.includes(value);
+            return (
+              <label key={value} className="flex items-start gap-2 text-xs text-gray-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggle(value)}
+                  className="accent-altera-teal mt-0.5"
+                />
+                <span>{value}</span>
+              </label>
+            );
+          })
+        )}
+      </div>
+      {!!normalizedSelected.length && (
+        <div className="flex flex-wrap gap-1.5">
+          {normalizedSelected.map((value) => (
+            <span key={value} className="inline-flex items-center gap-1 rounded border border-cyan-800/60 bg-cyan-950/30 px-2 py-0.5 text-[11px] text-cyan-200">
+              {value}
+              <button
+                type="button"
+                onClick={() => onChange(normalizedSelected.filter((v) => v !== value))}
+                className="text-cyan-300/80 hover:text-cyan-100"
+                aria-label={`Remove ${value}`}
+              >
+                x
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

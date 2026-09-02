@@ -35,6 +35,21 @@ export async function saveRegistry(data: ProductRegistry): Promise<void> {
   registry = { ...data };  // update cache
 }
 
+function normalizeAreaPath(value: string): string {
+  return value
+    .replace(/\\\\/g, '\\')
+    .trim()
+    .replace(/^\\+|\\+$/g, '')
+    .toLowerCase();
+}
+
+function areaPathMatchesPrefix(areaPath: string, prefix: string): boolean {
+  const area = normalizeAreaPath(areaPath);
+  const base = normalizeAreaPath(prefix);
+  if (!area || !base) return false;
+  return area === base || area.startsWith(`${base}\\`);
+}
+
 export function routeByAreaPath(areaPath: string, reg: ProductRegistry, title?: string): Product | undefined {
   const lower = areaPath.toLowerCase();
   const titleLower = (title ?? '').toLowerCase();
@@ -45,7 +60,7 @@ export function routeByAreaPath(areaPath: string, reg: ProductRegistry, title?: 
       const prefixes = [p.areaPathPrefix, ...(p.areaPathPrefixes ?? [])]
         .map((x) => x.toLowerCase().replace(/\\\\/g, '\\'))
         .filter(Boolean);
-      return prefixes.some((prefix) => lower.startsWith(prefix));
+      return prefixes.some((prefix) => areaPathMatchesPrefix(lower, prefix));
     })
     .sort((a, b) => {
       const maxA = Math.max(...[a.areaPathPrefix, ...(a.areaPathPrefixes ?? [])].map((x) => x.length));

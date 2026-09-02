@@ -46,6 +46,17 @@ export async function fetchSnowKbSearch(terms: string[], releaseHints: string[] 
   return res.json() as Promise<{ result?: Array<Record<string, unknown>> }>;
 }
 
+export async function fetchSnowLookups() {
+  const res = await fetch(bridgeApi('/api/snow/lookups'));
+  if (!res.ok) throw new Error(`SNOW lookups ${res.status}: ${await res.text()}`);
+  return res.json() as Promise<{
+    assignmentGroups: string[];
+    products: string[];
+    sampledAt?: string;
+    sourceTables?: string[];
+  }>;
+}
+
 /** List attachment metadata — use fetchSnowAttachment() to download the binary */
 export async function fetchSnowAttachments(sysId: string) {
   const res = await fetch(bridgeApi(`/api/snow/attachments/${encodeURIComponent(sysId)}`));

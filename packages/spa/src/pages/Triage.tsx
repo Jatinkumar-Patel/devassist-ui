@@ -146,17 +146,21 @@ function buildKbTerms(adoItem: any, product?: Product, userSelectedScope?: boole
   // Only use the work item's SnowProduct field when no explicit scope is selected;
   // otherwise it may contaminate results with a different product's terms.
   const snowProduct = userSelectedScope ? '' : String(adoItem?.fields?.['Allscripts.Field.SnowProduct'] ?? '');
+  const mappedSnowProducts = product?.snowProducts ?? (product?.snowProduct ? [product.snowProduct] : []);
+  const mappedAssignmentGroups = product?.snowAssignmentGroups ?? [];
 
   const seedWords = [
     ...title.split(/[^A-Za-z0-9.]+/),
     ...productName.split(/[^A-Za-z0-9.]+/),
     ...snowProduct.split(/[^A-Za-z0-9.]+/),
+    ...mappedSnowProducts.flatMap((value) => value.split(/[^A-Za-z0-9.]+/)),
+    ...mappedAssignmentGroups.flatMap((value) => value.split(/[^A-Za-z0-9.]+/)),
   ]
     .map((w) => w.trim())
     .filter((w) => w.length >= 4)
     .filter((w) => !/^(devassit|devassist|the|with|from|that|this|have|your|for|when|only)$/i.test(w));
 
-  return Array.from(new Set(seedWords)).slice(0, 8);
+  return Array.from(new Set(seedWords)).slice(0, 16);
 }
 
 function phase(s: TriageSession, p: SessionPhase): TriageSession {
@@ -268,9 +272,14 @@ function buildSelectedScope(selectedProducts: Product[]): Product | undefined {
     })), (x) => x.path);
 
     const pastedSkillMd = normalizeSkillEntries(product.pastedSkillMd ?? [], (x) => `${x.title}\n${x.content}`);
+    const snowProducts = normalizeStringList(product.snowProducts ?? [product.snowProduct]);
+    const snowAssignmentGroups = normalizeStringList(product.snowAssignmentGroups ?? []);
 
     return {
       ...product,
+      snowProduct: product.snowProduct?.trim() || snowProducts[0] || '',
+      snowProducts,
+      snowAssignmentGroups,
       databaseRepoPaths: normalizeStringList(product.databaseRepoPaths),
       githubSkills,
       githubSkillPaths: githubSkills.map((x) => x.path),
@@ -298,13 +307,17 @@ function buildSelectedScope(selectedProducts: Product[]): Product | undefined {
   const githubSkillsOrdered = selectedProducts.flatMap((p) => normalizeProduct(p).githubSkills ?? []);
   const localSkillsOrdered = selectedProducts.flatMap((p) => normalizeProduct(p).localSkills ?? []);
   const pastedSkillMdOrdered = selectedProducts.flatMap((p) => normalizeProduct(p).pastedSkillMd ?? []);
+  const snowProducts = Array.from(new Set(selectedProducts.flatMap((p) => normalizeProduct(p).snowProducts ?? [])));
+  const snowAssignmentGroups = Array.from(new Set(selectedProducts.flatMap((p) => normalizeProduct(p).snowAssignmentGroups ?? [])));
 
   return {
     id: `selected-${selectedProducts.map((p) => p.id).join('-')}`,
     displayName: `${selectedProducts.length} selected products`,
     areaPathPrefix: primary.areaPathPrefix,
     areaPathPrefixes: Array.from(new Set(allPrefixes)),
-    snowProduct: selectedProducts.map((p) => p.snowProduct).join(' / '),
+    snowProduct: snowProducts[0] ?? selectedProducts.map((p) => p.snowProduct).filter(Boolean).join(' / '),
+    snowProducts,
+    snowAssignmentGroups,
     snowTaskTable: primary.snowTaskTable,
     repos: Array.from(repoMap.values()),
     mtmPlans: selectedProducts.flatMap((p) => p.mtmPlans),
