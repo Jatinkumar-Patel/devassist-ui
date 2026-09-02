@@ -15,10 +15,27 @@
             .map(function (s) { return s.replace(/~and~/g, '&'); })
             .join('?');
           window.history.replaceState(null, '', location.pathname.slice(0, -1) + decoded + location.hash);
+          return;
+        }
+
+        // Daily cache-bust on GitHub Pages so users get latest deployed index/assets
+        // without manual Ctrl+F5.
+        if (/\.github\.io$/i.test(location.hostname)) {
+          var d = new Date();
+          var stamp = d.getUTCFullYear().toString() +
+            String(d.getUTCMonth() + 1).padStart(2, '0') +
+            String(d.getUTCDate()).padStart(2, '0');
+
+          var params = new URLSearchParams(location.search);
+          if (params.get('v') !== stamp) {
+            params.set('v', stamp);
+            var next = location.pathname + '?' + params.toString() + location.hash;
+            location.replace(next);
+          }
         }
       })(window.location);
     </script>
-    <script type="module" crossorigin src="/assets/index-TOSmKoRP.js"></script>
+    <script type="module" crossorigin src="/assets/index-B3fHvumj.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-CDTTs5R8.css">
   </head>
   <body class="bg-gray-950 text-gray-100">
