@@ -35,6 +35,8 @@ export default function SettingsPage() {
   const [bridgeCardOpen, setBridgeCardOpen] = useState<boolean>(() => localStorage.getItem('devassist-settings-bridge-open') !== '0');
   const [adoDraft, setAdoDraft] = useState('');
   const [githubDraft, setGithubDraft] = useState('');
+  const [bridgeReachable, setBridgeReachable] = useState<boolean | null>(null);
+  const [supportModeEnabled, setSupportModeEnabled] = useState<boolean>(() => localStorage.getItem('devassist-support-mode') === '1');
   const localBridgeMode = isLocalBridgeUrl(bridgeUrl);
 
   useEffect(() => {
@@ -49,6 +51,19 @@ export default function SettingsPage() {
     })();
     return () => { cancelled = true; };
   }, [setSecretStatus]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`${bridgeUrl}/api/status`, { signal: AbortSignal.timeout(2500) });
+        if (!cancelled) setBridgeReachable(res.ok);
+      } catch {
+        if (!cancelled) setBridgeReachable(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [bridgeUrl]);
 
   const reRunWizard = () => {
     localStorage.removeItem('devassist-setup-done');
@@ -67,6 +82,14 @@ export default function SettingsPage() {
     setBridgeCardOpen((prev) => {
       const next = !prev;
       localStorage.setItem('devassist-settings-bridge-open', next ? '1' : '0');
+      return next;
+    });
+  };
+
+  const toggleSupportMode = () => {
+    setSupportModeEnabled((prev) => {
+      const next = !prev;
+      localStorage.setItem('devassist-support-mode', next ? '1' : '0');
       return next;
     });
   };
@@ -165,10 +188,26 @@ export default function SettingsPage() {
           <p className="text-xs text-gray-300">
             Mode: <strong className="text-gray-100">{localBridgeMode ? 'Local fallback' : 'Managed website (enterprise)'}</strong>
           </p>
+          <p className="text-xs mt-1">
+            Bridge status:{' '}
+            <strong className={bridgeReachable === true ? 'text-emerald-400' : bridgeReachable === false ? 'text-red-400' : 'text-gray-400'}>
+              {bridgeReachable === true ? 'Connected' : bridgeReachable === false ? 'Not reachable' : 'Checking...'}
+            </strong>
+          </p>
           <p className="text-xs text-gray-500 mt-1">
             End users should only open the DevAssist URL. Manual bridge commands are for support users only.
           </p>
         </div>
+
+        <div className="rounded-lg border border-cyan-900/60 bg-cyan-950/20 p-3 space-y-1.5">
+          <p className="text-xs font-semibold text-cyan-200">End-user action</p>
+          <p className="text-xs text-cyan-100/90">
+            {localBridgeMode
+              ? 'You do not need terminal commands. Keep DevAssist Bridge running from Start menu and use the website. If analysis fails, click Run diagnostics below and share the result with support.'
+              : 'No local commands required. Just use the managed DevAssist website URL.'}
+          </p>
+        </div>
+
         <div className="space-y-1.5">
           <label className="text-xs text-gray-400">Bridge URL</label>
           <input
@@ -191,24 +230,40 @@ export default function SettingsPage() {
               </p>
               <button
                 type="button"
-                onClick={toggleBridgeCard}
-                className="text-xs px-2.5 py-1 rounded-md border border-cyan-500/70 bg-cyan-500/15 text-cyan-200 hover:bg-cyan-500/25 font-medium"
-                aria-label={bridgeCardOpen ? 'Collapse bridge setup card' : 'Expand bridge setup card'}
+                onClick={toggleSupportMode}
+                className={`text-xs px-2.5 py-1 rounded-md border font-medium ${supportModeEnabled
+                  ? 'border-amber-500/70 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25'
+                  : 'border-cyan-500/70 bg-cyan-500/15 text-cyan-200 hover:bg-cyan-500/25'}`}
               >
-                <ChevronDown size={14} className={`transition-transform ${bridgeCardOpen ? '' : '-rotate-90'}`} />
+                {supportModeEnabled ? 'Disable support commands' : 'Enable support commands'}
               </button>
             </div>
-            {bridgeCardOpen && (
+            {supportModeEnabled && (
               <>
-                <div className="text-xs font-mono text-altera-teal bg-gray-950 rounded p-2 overflow-x-auto space-y-2">
-                  <p className="text-[11px] text-gray-400 font-sans">Command Prompt (cmd)</p>
-                  <p className="break-all">{installCmds.cmd}</p>
-                  <p className="text-[11px] text-gray-400 font-sans">PowerShell</p>
-                  <p className="break-all">{installCmds.powershell}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] text-amber-300">For support engineers only.</p>
+                  <button
+                    type="button"
+                    onClick={toggleBridgeCard}
+                    className="text-xs px-2.5 py-1 rounded-md border border-cyan-500/70 bg-cyan-500/15 text-cyan-200 hover:bg-cyan-500/25 font-medium"
+                    aria-label={bridgeCardOpen ? 'Collapse bridge setup card' : 'Expand bridge setup card'}
+                  >
+                    <ChevronDown size={14} className={`transition-transform ${bridgeCardOpen ? '' : '-rotate-90'}`} />
+                  </button>
                 </div>
-                <p className="text-xs text-gray-600">
-                  Local fallback only. Enterprise users should access DevAssist via managed website URL.
-                </p>
+                {bridgeCardOpen && (
+                  <>
+                    <div className="text-xs font-mono text-altera-teal bg-gray-950 rounded p-2 overflow-x-auto space-y-2">
+                      <p className="text-[11px] text-gray-400 font-sans">Command Prompt (cmd)</p>
+                      <p className="break-all">{installCmds.cmd}</p>
+                      <p className="text-[11px] text-gray-400 font-sans">PowerShell</p>
+                      <p className="break-all">{installCmds.powershell}</p>
+                    </div>
+                    <p className="text-xs text-gray-600">
+                      Local fallback only. Enterprise users should access DevAssist via managed website URL.
+                    </p>
+                  </>
+                )}
               </>
             )}
           </div>
