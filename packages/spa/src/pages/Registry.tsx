@@ -520,12 +520,31 @@ function SnowLookupMultiSelect({
   placeholder: string;
 }) {
   const [query, setQuery] = useState('');
+  const [selectedOnly, setSelectedOnly] = useState(false);
   const normalizedSelected = Array.from(new Set(selected.map((x) => x.trim()).filter(Boolean)));
   const q = query.trim().toLowerCase();
+  const queryTerms = q.split(/\s+/).filter(Boolean);
 
-  const filteredOptions = options
-    .filter((option) => !q || option.toLowerCase().includes(q))
-    .slice(0, 120);
+  const matchesQuery = (option: string) => {
+    if (!queryTerms.length) return true;
+    const normalized = option.toLowerCase();
+    return queryTerms.every((term) => normalized.includes(term));
+  };
+
+  const rankedOptions = options
+    .filter((option) => matchesQuery(option))
+    .sort((a, b) => {
+      const aSelected = normalizedSelected.includes(a);
+      const bSelected = normalizedSelected.includes(b);
+      if (aSelected !== bSelected) return aSelected ? -1 : 1;
+      return a.localeCompare(b, undefined, { sensitivity: 'base' });
+    });
+
+  const filteredOptions = rankedOptions
+    .filter((option) => !selectedOnly || normalizedSelected.includes(option))
+    .slice(0, 200);
+
+  const selectedVisibleCount = filteredOptions.filter((value) => normalizedSelected.includes(value)).length;
 
   const toggle = (value: string) => {
     if (normalizedSelected.includes(value)) {
@@ -544,9 +563,35 @@ function SnowLookupMultiSelect({
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder={placeholder}
+        placeholder={placeholder + ' (search by multiple words)'}
         className={inp + ' text-[11px]'}
       />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => setSelectedOnly((v) => !v)}
+            className={`text-[11px] px-2 py-1 rounded border ${selectedOnly
+              ? 'border-cyan-700 text-cyan-200 bg-cyan-950/30'
+              : 'border-gray-700 text-gray-300 hover:bg-gray-800'}`}
+          >
+            {selectedOnly ? 'Showing selected only' : 'Show selected only'}
+          </button>
+          {!!q && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              className="text-[11px] px-2 py-1 rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
+            >
+              Clear search
+            </button>
+          )}
+        </div>
+        <span className="text-[11px] text-gray-500">
+          Showing {filteredOptions.length} of {rankedOptions.length} matches
+          {selectedVisibleCount > 0 ? ` · ${selectedVisibleCount} selected in view` : ''}
+        </span>
+      </div>
       <div className="flex flex-wrap gap-1.5">
         <button
           type="button"
@@ -563,7 +608,27 @@ function SnowLookupMultiSelect({
           {q ? 'Remove visible' : 'Clear all'}
         </button>
       </div>
-      <div className="max-h-44 overflow-auto border border-gray-800 rounded p-2 space-y-1 bg-gray-950/40">
+      {!!normalizedSelected.length && (
+        <div className="flex flex-wrap gap-1.5 rounded border border-cyan-900/50 bg-cyan-950/10 p-2">
+          {normalizedSelected.slice(0, 24).map((value) => (
+            <span key={value} className="inline-flex items-center gap-1 rounded border border-cyan-800/60 bg-cyan-950/30 px-2 py-0.5 text-[11px] text-cyan-200">
+              {value}
+              <button
+                type="button"
+                onClick={() => onChange(normalizedSelected.filter((v) => v !== value))}
+                className="text-cyan-300/80 hover:text-cyan-100"
+                aria-label={`Remove ${value}`}
+              >
+                x
+              </button>
+            </span>
+          ))}
+          {normalizedSelected.length > 24 && (
+            <span className="text-[11px] text-cyan-300/80 px-1 py-0.5">+{normalizedSelected.length - 24} more selected</span>
+          )}
+        </div>
+      )}
+      <div className="max-h-64 overflow-auto border border-gray-800 rounded p-2 space-y-1 bg-gray-950/40">
         {filteredOptions.length === 0 ? (
           <p className="text-xs text-gray-500">No matching options.</p>
         ) : (
@@ -583,23 +648,6 @@ function SnowLookupMultiSelect({
           })
         )}
       </div>
-      {!!normalizedSelected.length && (
-        <div className="flex flex-wrap gap-1.5">
-          {normalizedSelected.map((value) => (
-            <span key={value} className="inline-flex items-center gap-1 rounded border border-cyan-800/60 bg-cyan-950/30 px-2 py-0.5 text-[11px] text-cyan-200">
-              {value}
-              <button
-                type="button"
-                onClick={() => onChange(normalizedSelected.filter((v) => v !== value))}
-                className="text-cyan-300/80 hover:text-cyan-100"
-                aria-label={`Remove ${value}`}
-              >
-                x
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
