@@ -26,6 +26,9 @@ function isLocalHostPage(): boolean {
   return host === 'localhost' || host === '127.0.0.1';
 }
 
+const START_BRIDGE_CMD = '"%USERPROFILE%\\source\\repos\\devassist-ui\\start.bat"';
+const START_BRIDGE_POWERSHELL = '& "$env:USERPROFILE\\source\\repos\\devassist-ui\\start.bat"';
+
 export default function SettingsPage() {
   const {
     openaiKey,
@@ -228,6 +231,21 @@ export default function SettingsPage() {
             Default comes from VITE_BRIDGE_URL for enterprise deployments. If managed bridge is unreachable, app can fall back to localhost when available.
           </p>
         </div>
+
+        {localBridgeMode && (
+          <div className="rounded-lg border border-cyan-900/60 bg-cyan-950/20 p-4 space-y-2" id="start-bridge-guide">
+            <p className="text-xs font-semibold text-cyan-200">Bridge start command (end-user)</p>
+            <p className="text-xs text-cyan-100/90">
+              If header shows "Bridge update required" or "Bridge offline", run one command below, then reopen DevAssist.
+            </p>
+            <div className="text-xs font-mono text-altera-teal bg-gray-950 rounded p-2 overflow-x-auto space-y-2">
+              <p className="text-[11px] text-gray-400 font-sans">Windows Run / Command Prompt</p>
+              <p className="break-all">{START_BRIDGE_CMD}</p>
+              <p className="text-[11px] text-gray-400 font-sans">PowerShell</p>
+              <p className="break-all">{START_BRIDGE_POWERSHELL}</p>
+            </div>
+          </div>
+        )}
 
         {localBridgeMode && localHostPage && (
           <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-2">

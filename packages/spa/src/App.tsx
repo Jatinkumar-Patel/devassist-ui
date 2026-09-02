@@ -219,7 +219,7 @@ export default function App() {
               href="#/settings"
               className="inline-flex items-center justify-center rounded-md border border-amber-400/60 bg-amber-500/15 px-2.5 py-1 text-amber-100 hover:bg-amber-500/25"
             >
-              Open Settings and start Bridge
+              Open Settings for Start Command
             </a>
           </div>
         </div>
