@@ -79,6 +79,19 @@ function parseBulletLines(text: string): string[] {
     .filter(Boolean);
 }
 
+function buildStructuredRows(lines: string[]): Array<{ attribute: string; evidence: string }> {
+  const entries = lines.length ? lines : ['Issue: No detail available'];
+  return entries.map((line) => {
+    const idx = line.indexOf(':');
+    const attribute = idx >= 0 ? line.slice(0, idx).trim() : 'Observation';
+    const evidence = idx >= 0 ? line.slice(idx + 1).trim() : line.trim();
+    return {
+      attribute: attribute || 'Observation',
+      evidence: evidence || '-',
+    };
+  }).filter((row) => row.evidence && row.evidence !== '-');
+}
+
 function buildRecommendedNextSteps(analysis: TriageAnalysis): string[] {
   const steps: string[] = [];
   const gapLines = parseBulletLines(analysis.gap);
@@ -708,8 +721,8 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
     const snowTimeline = snowEvidenceStructured.filter((item) => item.category === 'timeline');
     const snowOther = snowEvidenceStructured.filter((item) => item.category === 'generic');
     const codeAnalysisRows = parseCodeAnalysisForUi(analysis.codeAnalysis);
-  const problemStatementRows = parseBulletLines(analysis.clientReported);
-  const gapRows = parseBulletLines(analysis.gap);
+  const problemStatementRows = buildStructuredRows(parseBulletLines(analysis.clientReported));
+  const gapRows = buildStructuredRows(parseBulletLines(analysis.gap));
   const recommendedSteps = buildRecommendedNextSteps(analysis);
   const analyzedArtifacts = session.artifactLedger?.analyzed ?? [];
   const notAnalyzedArtifacts = session.artifactLedger?.notAnalyzed ?? [];
@@ -783,10 +796,23 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
 
       <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-2 text-sm">
         <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Problem Statement</p>
-        <div className="rounded border border-gray-800 bg-gray-950/70 p-2.5 space-y-1">
-          {problemStatementRows.map((line, idx) => (
-            <p key={`problem-${idx}`} className="text-xs text-gray-200 leading-relaxed">- {line}</p>
-          ))}
+        <div className="overflow-hidden rounded border border-gray-800 bg-gray-950/70">
+          <table className="w-full border-collapse text-left text-xs text-gray-200">
+            <thead>
+              <tr className="bg-gray-800/80 text-gray-300 uppercase tracking-wide">
+                <th className="border border-gray-800 px-2.5 py-2 font-medium">Attribute</th>
+                <th className="border border-gray-800 px-2.5 py-2 font-medium">Evidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {problemStatementRows.map((row, idx) => (
+                <tr key={`problem-row-${idx}`} className="align-top">
+                  <td className="border border-gray-800 px-2.5 py-2 text-gray-100 font-medium">{row.attribute}</td>
+                  <td className="border border-gray-800 px-2.5 py-2 text-gray-200 leading-relaxed">{row.evidence}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -856,19 +882,29 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
 
         <section className="space-y-2">
           <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Assessment</p>
-          <div className="analysis-scroll max-h-56 rounded border border-gray-800 bg-gray-950/70 p-2.5 space-y-1.5">
-            {codeAnalysisRows.map((item, idx) => (
-              <div key={`code-analysis-${idx}`} className="rounded border border-gray-800 bg-gray-900/70 px-2.5 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-gray-500">{item.label}</p>
-                <p className="text-xs text-gray-200 leading-relaxed">{item.detail}</p>
-              </div>
-            ))}
-            {gapRows.map((line, idx) => (
-              <div key={`assessment-gap-${idx}`} className="rounded border border-gray-800 bg-gray-900/70 px-2.5 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-gray-500">Reasoning step</p>
-                <p className="text-xs text-gray-200 leading-relaxed">{line}</p>
-              </div>
-            ))}
+          <div className="overflow-hidden rounded border border-gray-800 bg-gray-950/70">
+            <table className="w-full border-collapse text-left text-xs text-gray-200">
+              <thead>
+                <tr className="bg-gray-800/80 text-gray-300 uppercase tracking-wide">
+                  <th className="border border-gray-800 px-2.5 py-2 font-medium">Reasoning step</th>
+                  <th className="border border-gray-800 px-2.5 py-2 font-medium">Finding</th>
+                </tr>
+              </thead>
+              <tbody>
+                {codeAnalysisRows.map((item, idx) => (
+                  <tr key={`code-analysis-${idx}`} className="align-top">
+                    <td className="border border-gray-800 px-2.5 py-2 text-gray-100 font-medium">{item.label}</td>
+                    <td className="border border-gray-800 px-2.5 py-2 text-gray-200 leading-relaxed">{item.detail}</td>
+                  </tr>
+                ))}
+                {gapRows.map((row, idx) => (
+                  <tr key={`assessment-gap-${idx}`} className="align-top">
+                    <td className="border border-gray-800 px-2.5 py-2 text-gray-100 font-medium">{row.attribute}</td>
+                    <td className="border border-gray-800 px-2.5 py-2 text-gray-200 leading-relaxed">{row.evidence}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </section>
 
