@@ -56,7 +56,7 @@ export interface Product {
   githubSkills?: ProductSkillRef[]; // prioritized GitHub skill paths
   pastedSkillMd?: PastedSkillMdRef[]; // pasted markdown skill blocks
   docUrl?: string;
-  localFolder?: string;         // local DA folder, e.g. C:\temp\DA#
+  localFolder?: string;         // local product folder, e.g. C:\Temp\DA\DevAssist\SHM
   notes?: string;
 }
 

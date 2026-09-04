@@ -380,7 +380,7 @@ function ProductEditor({ product, onSave, saving }: { product: Product; onSave: 
       </Section>
       <Section title={<><Folder size={11}/> Local paths</>}>
         <div className="grid grid-cols-1 gap-3">
-          <Field label="Local DA folder (# = DA number)" value={p.localFolder ?? ""} onChange={v => set("localFolder", v)} mono placeholder="C:\temp\DA#"/>
+          <Field label="Local DA folder (C:\Temp\DA\DevAssist\<Product>)" value={p.localFolder ?? ""} onChange={v => set("localFolder", v)} mono placeholder="C:\Temp\DA\DevAssist\SHM"/>
           <Field label="Documentation URL or path" value={p.docUrl ?? ""} onChange={v => set("docUrl", v)} placeholder="https://wiki/... or C:\docs\..."/>
         </div>
       </Section>
