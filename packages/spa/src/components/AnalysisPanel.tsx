@@ -264,6 +264,19 @@ function escapeHtml(value: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
+function sanitizeForReport(value: unknown): string {
+  const text = String(value ?? '');
+  const redacted = text
+    .replace(/https?:\/\/[^\s]+/gi, '[REDACTED_URL]')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[REDACTED_EMAIL]')
+    .replace(/(?:gh[pousr]_[A-Za-z0-9_]+|sk-[A-Za-z0-9]+|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16})/gi, '[REDACTED_TOKEN]')
+    .replace(/\b(?:patient|provider|account|email|host|token|secret|api[_-]?key)\b(?::?\s*[A-Za-z0-9._@:/\\-]+)/gi, '$1: [REDACTED]')
+    .replace(/\b(?:\d{4}[-\s]?){3,}\d{1,4}\b/g, '[REDACTED_ACCOUNT]')
+    .replace(/(?:[A-Za-z0-9-]+\.){2,}[A-Za-z]{2,}/g, '[REDACTED_HOST]');
+
+  return redacted.trim();
+}
+
 function dedupeAttachments(attachments: any[] = []): any[] {
   const grouped = new Map<string, any>();
 
@@ -293,6 +306,8 @@ function buildPrintableHtml(session: TriageSession, analysis: TriageAnalysis, sn
   const workItemId = session.adoItem?.id ? `#${session.adoItem.id}` : '';
   const verdict = analysis.verdict ?? 'NEED MORE INFO';
   const confidence = analysis.confidence ?? 'Low';
+  const reportTitle = sanitizeForReport(title);
+  const sanitizedGeneratedFor = `Generated for DA ${session.adoItem?.id ?? 'unknown'} — Sanitized: no patient, provider, account, email, host, or token values included.`;
   const artifactLedger = session.artifactLedger;
   const attachments = dedupeAttachments(session.attachments ?? []);
   const relatedItems = session.relatedItems ?? [];
@@ -447,9 +462,9 @@ function buildPrintableHtml(session: TriageSession, analysis: TriageAnalysis, sn
         <button onclick="window.close()" style="padding:8px 12px;border:1px solid #94a3b8;border-radius:8px;background:#fff;color:#0f172a;font-weight:600;">Close</button>
       </div>
       <h1>DevAssist Analysis Report</h1>
-      <p class="muted">Generated ${escapeHtml(new Date().toLocaleString())}</p>
+      <p class="muted">${escapeHtml(sanitizedGeneratedFor)} • ${escapeHtml(new Date().toLocaleString())}</p>
       <div class="card">
-        <h2>${escapeHtml(title)} ${escapeHtml(workItemId)}</h2>
+        <h2>${escapeHtml(reportTitle)} ${escapeHtml(workItemId)}</h2>
         <div>
           <span class="pill">Verdict: ${escapeHtml(verdict)}</span>
           <span class="pill">Confidence: ${escapeHtml(confidence)}</span>
@@ -1289,7 +1304,13 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
         signal: AbortSignal.timeout(120_000),
       });
       const data = await res.json() as { assessment?: string; error?: string; source?: string };
-      if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
+      if (!res.ok || data.error) {
+        const message = data?.error ?? `HTTP ${res.status}`;
+        const detail = /Unknown API route|outdated|Bridge may be outdated|/i.test(message)
+          ? 'Bridge is out of date for the new AI route. Restart or rebuild the bridge, then retry.'
+          : message;
+        throw new Error(detail);
+      }
       const answer = data.assessment ?? '';
       setFollowUpResult(answer);
       setChatHistory((prev) => [
