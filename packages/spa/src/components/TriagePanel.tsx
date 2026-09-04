@@ -57,7 +57,27 @@ function friendlyErrorMessage(error: string, bridgeUrl: string): string {
 export default function TriagePanel({ session, onAnalysisComplete }: Props) {
   const bridgeUrl = useSettingsStore((s) => s.bridgeUrl);
   const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>({ bridge: 'offline' });
-  const { adoItem, snowTask, product, error, currentPhase, clarityGaps, attachments, artifactLedger } = session;
+  const { adoItem, snowTask, product, error, currentPhase, clarityGaps, artifactLedger } = session;
+  const attachments = Array.isArray(session.attachments)
+    ? (() => {
+        const grouped = new Map<string, any>();
+        for (const item of session.attachments as any[]) {
+          const name = snowVal((item as any)?.file_name ?? '').trim();
+          if (!name) continue;
+          const key = name.toLowerCase();
+          const existing = grouped.get(key);
+          const source = String((item as any)?._source ?? 'SNOW').trim();
+          if (!existing) {
+            grouped.set(key, { ...item, _source: source });
+            continue;
+          }
+          const existingSources = String((existing as any)?._source ?? '').split(/[;,]/).map((v) => v.trim()).filter(Boolean);
+          const nextSources = source.split(/[;,]/).map((v) => v.trim()).filter(Boolean);
+          grouped.set(key, { ...existing, ...item, _source: Array.from(new Set([...existingSources, ...nextSources])).join(', ') || source });
+        }
+        return Array.from(grouped.values());
+      })()
+    : [];
 
   useEffect(() => {
     let cancelled = false;

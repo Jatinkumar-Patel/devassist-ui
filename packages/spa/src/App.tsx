@@ -231,7 +231,7 @@ export default function App() {
           </div>
         </div>
       )}
-      <main className="flex-1 container mx-auto px-3 sm:px-5 py-4 sm:py-7 max-w-7xl">
+      <main className="flex-1 w-full px-3 sm:px-4 py-4 sm:py-6">
         <Routes>
           <Route path="/" element={<Navigate to="/triage" replace />} />
           <Route path="/triage" element={<TriagePage />} />

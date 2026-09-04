@@ -100,7 +100,7 @@ export default function NavBar({ showSettings = true, deploymentMode = 'Local' }
 
   return (
     <header className="sticky top-0 z-30 px-3 sm:px-4 py-3 border-b border-white/10 bg-slate-950/70 backdrop-blur-md">
-      <div className="container mx-auto max-w-7xl flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="w-full flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center justify-between sm:justify-start gap-4 sm:gap-6 min-w-0">
           <div className="flex items-center gap-2 min-w-0 shrink">
             <span className="font-extrabold text-base sm:text-lg tracking-tight shrink-0 bg-gradient-to-r from-cyan-300 via-sky-300 to-blue-400 bg-clip-text text-transparent">

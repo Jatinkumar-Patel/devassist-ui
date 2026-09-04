@@ -1221,7 +1221,7 @@ export default function TriagePage() {
         </button>
       </div>
 
-      <div className={`grid grid-cols-1 ${leftPaneHidden ? '' : 'xl:grid-cols-[420px_1fr]'} gap-5 sm:gap-7 items-start xl:h-[calc(100vh-10rem)] xl:overflow-hidden`}>
+      <div className={`grid grid-cols-1 ${leftPaneHidden ? '' : 'xl:grid-cols-[minmax(280px,420px)_minmax(0,1fr)]'} gap-4 sm:gap-5 items-start xl:h-[calc(100vh-10rem)] xl:overflow-hidden`}>
       {/* Left: input + session list */}
       <aside className={`${leftPaneHidden ? 'hidden' : 'space-y-5 xl:h-full xl:overflow-y-auto xl:pr-1'}`}>
         <div className="glass-panel rounded-2xl p-3 sm:p-4 space-y-2">

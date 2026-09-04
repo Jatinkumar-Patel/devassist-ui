@@ -264,13 +264,37 @@ function escapeHtml(value: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
+function dedupeAttachments(attachments: any[] = []): any[] {
+  const grouped = new Map<string, any>();
+
+  for (const item of attachments) {
+    const name = snowVal((item as any)?.file_name ?? '').trim();
+    const source = String((item as any)?._source ?? 'SNOW').trim();
+    if (!name) continue;
+
+    const key = name.toLowerCase();
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, { ...item, _source: source });
+      continue;
+    }
+
+    const existingSources = String((existing as any)?._source ?? '').split(/[;,]/).map((v) => v.trim()).filter(Boolean);
+    const nextSources = String(source).split(/[;,]/).map((v) => v.trim()).filter(Boolean);
+    const merged = Array.from(new Set([...existingSources, ...nextSources])).filter(Boolean);
+    grouped.set(key, { ...existing, ...item, _source: merged.join(', ') || source });
+  }
+
+  return Array.from(grouped.values());
+}
+
 function buildPrintableHtml(session: TriageSession, analysis: TriageAnalysis, snowEvidenceRows: string[]): string {
   const title = session.adoItem?.fields['System.Title'] ?? 'Triage Analysis';
   const workItemId = session.adoItem?.id ? `#${session.adoItem.id}` : '';
   const verdict = analysis.verdict ?? 'NEED MORE INFO';
   const confidence = analysis.confidence ?? 'Low';
   const artifactLedger = session.artifactLedger;
-  const attachments = session.attachments ?? [];
+  const attachments = dedupeAttachments(session.attachments ?? []);
   const relatedItems = session.relatedItems ?? [];
   const areaEvidence = session.areaEvidence ?? [];
   const versionEvidence = session.versionEvidence ?? [];
@@ -368,6 +392,28 @@ function buildPrintableHtml(session: TriageSession, analysis: TriageAnalysis, sn
       margin-bottom: 8px;
       background: #fff;
     }
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      background: #fff;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .data-table th, .data-table td {
+      border: 1px solid #d1d5db;
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .data-table th {
+      background: #eef2ff;
+      color: #1f2937;
+      font-weight: 700;
+    }
     .grid.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     ul { padding-left: 18px; }
     li { margin-bottom: 6px; }
@@ -418,7 +464,22 @@ function buildPrintableHtml(session: TriageSession, analysis: TriageAnalysis, sn
 
       <div class="section">
         <h2>Problem Statement</h2>
-        <ul>${listToHtml(problemStatementRows.length ? problemStatementRows : [analysis.clientReported])}</ul>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width: 32%;">Attribute</th>
+              <th>Evidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(problemStatementRows.length ? problemStatementRows : [analysis.clientReported]).map((row) => {
+              const idx = row.indexOf(':');
+              const attribute = idx >= 0 ? row.slice(0, idx).trim() : 'Problem';
+              const value = idx >= 0 ? row.slice(idx + 1).trim() : row.trim();
+              return `<tr><td>${escapeHtml(attribute || 'Problem')}</td><td>${escapeHtml(value || '-')}</td></tr>`;
+            }).join('')}
+          </tbody>
+        </table>
       </div>
 
       <div class="section">
@@ -431,7 +492,22 @@ function buildPrintableHtml(session: TriageSession, analysis: TriageAnalysis, sn
 
       <div class="section">
         <h2>Assessment</h2>
-        <ul>${listToHtml(assessmentRows.length ? assessmentRows : [analysis.gap])}</ul>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width: 36%;">Reasoning step</th>
+              <th>Finding</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(assessmentRows.length ? assessmentRows : [analysis.gap]).map((row) => {
+              const idx = row.indexOf(':');
+              const step = idx >= 0 ? row.slice(0, idx).trim() : 'Observation';
+              const finding = idx >= 0 ? row.slice(idx + 1).trim() : row.trim();
+              return `<tr><td>${escapeHtml(step || 'Observation')}</td><td>${escapeHtml(finding || '-')}</td></tr>`;
+            }).join('')}
+          </tbody>
+        </table>
       </div>
 
       <div class="section">
