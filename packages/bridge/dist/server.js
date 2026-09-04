@@ -17,9 +17,10 @@ const ai_analysis_1 = require("./routes/ai-analysis");
 const registry_1 = require("./routes/registry");
 const skills_1 = require("./routes/skills");
 const secrets_1 = require("./routes/secrets");
-function createServer({ spaOrigin, pagesUrl }) {
+function createServer({ spaOrigin, pagesUrl, allowedOrigins }) {
     const app = (0, express_1.default)();
     const allowedExactOrigins = new Set([
+        ...allowedOrigins.map((origin) => origin.trim()).filter(Boolean),
         spaOrigin,
         'https://jatinkumar-patel.github.io',
     ]);
@@ -66,9 +67,13 @@ function createServer({ spaOrigin, pagesUrl }) {
         next();
     });
     app.get('/', (_req, res) => {
-        const localBridgeUrl = 'http://localhost:7447';
-        const redirectUrl = `${pagesUrl}?bridgeUrl=${encodeURIComponent(localBridgeUrl)}&v=${Date.now()}#/triage`;
-        res.redirect(302, redirectUrl);
+        res.sendFile(path_1.default.join(spaPath, 'index.html'), (err) => {
+            if (err) {
+                res.status(404).json({
+                    error: 'SPA not found. From repo root run: npm run build (or npm run bridge, which now builds automatically).',
+                });
+            }
+        });
     });
     app.use(express_1.default.static(spaPath));
     app.get('*', (_req, res) => {

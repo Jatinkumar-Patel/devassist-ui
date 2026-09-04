@@ -111,6 +111,12 @@ const MAX_CHUNK_BYTES = 200 * 1024 * 1024; // 200 MB — read last N lines
 const TAIL_LINES = 5000; // lines to tail on very large files
 const MAX_SKIP_BYTES = 500 * 1024 * 1024; // 500 MB — truly skip
 const MAX_OCR_IMAGE_BYTES = 15 * 1024 * 1024;
+const MAX_STACK_TRACES = 5;
+const SKIP_OPERATIONS = ['CheckShellForIdle', 'GetConnectedHCServerName', 'ResolveLocalHost'];
+const TIMELINE_DELAY_THRESHOLD_SECONDS = 2.0;
+function shouldSkipOperationLine(line) {
+    return SKIP_OPERATIONS.some((op) => line.toLowerCase().includes(op.toLowerCase()));
+}
 /** Read up to TAIL_LINES from the end of a large log file */
 function readTail(filePath, maxLines) {
     const stat = fs_1.default.statSync(filePath);
@@ -243,6 +249,8 @@ function parseHwsLog(content, fileName) {
     const lines = content.split('\n');
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
+        if (shouldSkipOperationLine(line))
+            continue;
         for (const seed of GREP_SEEDS) {
             if (line.toLowerCase().includes(seed.toLowerCase())) {
                 hits.push({
@@ -257,6 +265,120 @@ function parseHwsLog(content, fileName) {
         }
     }
     return hits;
+}
+function parseOperationTimelineRows(content, fileName) {
+    const hits = [];
+    const parsedRows = [];
+    let errorRows = 0;
+    const lines = content.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+        const raw = lines[i]?.replace(/\r/g, '').trim() ?? '';
+        if (!raw)
+            continue;
+        if (!raw.includes(' - '))
+            continue;
+        const cols = raw.split(/\t+|\s{2,}/).map((x) => x.trim()).filter(Boolean);
+        if (cols.length < 5)
+            continue;
+        const operation = cols[0];
+        const duration = Number(cols[1]);
+        const logs = Number(cols[4]);
+        if (!Number.isFinite(duration) || !Number.isFinite(logs))
+            continue;
+        if (shouldSkipOperationLine(operation))
+            continue;
+        parsedRows.push({ operation, durationSeconds: duration, logs, line: i + 1 });
+        if (/logerror|logexception/i.test(operation)) {
+            errorRows += 1;
+            hits.push({
+                file: fileName,
+                line: i + 1,
+                text: `${operation} reported at timeline row (${duration.toFixed(3)}s, logs=${logs})`,
+                seed: 'OperationTimelineError',
+                category: 'error',
+            });
+            continue;
+        }
+        if (duration > TIMELINE_DELAY_THRESHOLD_SECONDS) {
+            hits.push({
+                file: fileName,
+                line: i + 1,
+                text: `${operation} exceeded ${TIMELINE_DELAY_THRESHOLD_SECONDS}s threshold (${duration.toFixed(3)}s, logs=${logs})`,
+                seed: 'OperationTimelineDelay',
+                category: 'warning',
+            });
+        }
+    }
+    if (!parsedRows.length) {
+        return { hits, summary: null };
+    }
+    const delayed = parsedRows.filter((row) => row.durationSeconds > TIMELINE_DELAY_THRESHOLD_SECONDS);
+    const topDelayed = delayed
+        .sort((a, b) => b.durationSeconds - a.durationSeconds)
+        .slice(0, 5)
+        .map((row) => ({
+        operation: row.operation,
+        durationSeconds: row.durationSeconds,
+        logs: row.logs,
+        line: row.line,
+    }));
+    return {
+        hits,
+        summary: {
+            file: fileName,
+            rowsParsed: parsedRows.length,
+            delayedCount: delayed.length,
+            errorRows,
+            thresholdSeconds: TIMELINE_DELAY_THRESHOLD_SECONDS,
+            topDelayed,
+        },
+    };
+}
+function extractStackTraces(content, fileName, maxCount) {
+    const traces = [];
+    const lines = content.split('\n');
+    for (let i = 0; i < lines.length && traces.length < maxCount; i++) {
+        const line = lines[i]?.trim() ?? '';
+        if (!/(Exception|ERROR|FATAL|SqlException|NullReferenceException|UnauthorizedAccessException|ArgumentException)/i.test(line))
+            continue;
+        const block = [line];
+        let j = i + 1;
+        while (j < lines.length && block.length < 12) {
+            const next = (lines[j] ?? '').trim();
+            if (!next)
+                break;
+            if (!/^at\s+|^--- End of|^Inner Exception|Exception|ERROR|FATAL/i.test(next))
+                break;
+            block.push(next);
+            j += 1;
+        }
+        const preview = block.join(' | ').slice(0, 380);
+        const exceptionMatch = line.match(/([A-Za-z0-9_.]+Exception)/);
+        const exception = exceptionMatch?.[1] ?? 'Exception';
+        const signature = `${exception}|${(block[1] ?? '').replace(/\s+/g, ' ').trim().slice(0, 140)}`;
+        traces.push({
+            file: fileName,
+            exception,
+            signature,
+            firstLine: i + 1,
+            preview,
+        });
+        i = j;
+    }
+    return traces;
+}
+function dedupeStackTraces(traces, maxCount) {
+    const seen = new Set();
+    const out = [];
+    for (const trace of traces) {
+        if (seen.has(trace.signature))
+            continue;
+        seen.add(trace.signature);
+        out.push(trace);
+        if (out.length >= maxCount)
+            break;
+    }
+    return out;
 }
 function parseSpreadsheet(filePath, fileName) {
     const hits = [];
@@ -513,6 +635,92 @@ function analyzeConversionRows(fileName, sheetName, headers, rows) {
     out.syntheticHits = out.syntheticHits.slice(0, 40);
     return out;
 }
+function formatTopSeeds(topSeeds) {
+    return Object.entries(topSeeds)
+        .filter(([, count]) => count > 0)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([seed, count]) => `${seed} (${count})`);
+}
+function buildExplanation(result) {
+    const explanation = [];
+    if (result.totalAttachments === 0) {
+        explanation.push('No attachments were found for this record chain, so there is no log evidence to explain yet.');
+        return explanation;
+    }
+    if (result.scannableAttachments === 0) {
+        explanation.push('Attachments exist, but none are in a scan-friendly format such as log, text, spreadsheet, image, or zip.');
+        explanation.push('Use the attachment names and skipped list to review the evidence manually.');
+        return explanation;
+    }
+    if (result.totalHits === 0) {
+        explanation.push('The attachments were scanned successfully, but no known error, warning, lock, or operation patterns were found.');
+        explanation.push('This usually means the logs are clean, the issue happened outside the scanned window, or the problem is in a non-log attachment.');
+    }
+    else {
+        const errorCount = result.byCategory.error?.length ?? 0;
+        const warningCount = result.byCategory.warning?.length ?? 0;
+        const lockCount = result.byCategory.lock?.length ?? 0;
+        const opsCount = result.byCategory.ops?.length ?? 0;
+        if (errorCount > 0) {
+            explanation.push(`Primary signal is errors/fatals: ${errorCount} hit(s). Start with the first red entries because they usually point to the failing component or exception type.`);
+        }
+        if (warningCount > 0) {
+            explanation.push(`Warnings/timeouts were also found: ${warningCount} hit(s). These often indicate slow processing, retries, or a downstream dependency delay.`);
+        }
+        if (lockCount > 0) {
+            explanation.push(`Lock contention was detected: ${lockCount} hit(s). That points to a request waiting on another operation, which can cause long hangs or timeout behavior.`);
+        }
+        if (opsCount > 0 && errorCount === 0) {
+            explanation.push(`The scan found operational calls but no direct error pattern. The issue may be in a dependency, data mismatch, or a code path that does not log exceptions clearly.`);
+        }
+    }
+    const topSeeds = formatTopSeeds(result.topSeeds);
+    if (topSeeds.length > 0) {
+        explanation.push(`Top repeated signals: ${topSeeds.join(', ')}.`);
+    }
+    if (result.stackTraces.length > 0) {
+        explanation.push(`Top exception stack traces extracted: ${result.stackTraces.map((t) => `${t.exception} in ${t.file}:${t.firstLine}`).join(' | ')}.`);
+    }
+    if (result.operationTimelineSummaries.length > 0) {
+        const totalRows = result.operationTimelineSummaries.reduce((sum, s) => sum + s.rowsParsed, 0);
+        const delayedRows = result.operationTimelineSummaries.reduce((sum, s) => sum + s.delayedCount, 0);
+        const errorRows = result.operationTimelineSummaries.reduce((sum, s) => sum + s.errorRows, 0);
+        explanation.push(`Operation timeline format detected: ${totalRows} row(s) parsed, ${delayedRows} delay row(s) over ${TIMELINE_DELAY_THRESHOLD_SECONDS}s, ${errorRows} error row(s).`);
+    }
+    if (result.spreadsheetSummaries.length > 0) {
+        const sheetFindings = result.spreadsheetSummaries
+            .flatMap((summary) => summary.findings ?? [])
+            .slice(0, 4);
+        if (sheetFindings.length > 0) {
+            explanation.push(`Spreadsheet attachments add more context: ${sheetFindings.join(' | ')}.`);
+        }
+        else {
+            explanation.push('Spreadsheet attachments were parsed successfully and may contain supporting evidence such as rows, counts, or mappings.');
+        }
+    }
+    if (result.imageSummaries.length > 0) {
+        const imageSignals = result.imageSummaries
+            .flatMap((image) => image.findings ?? [])
+            .slice(0, 3);
+        if (imageSignals.length > 0) {
+            explanation.push(`Image OCR found additional signals: ${imageSignals.join(' | ')}.`);
+        }
+        else {
+            explanation.push('Image attachments were OCR-scanned and may show UI text, screenshots, or error dialogs that are not present in the log files.');
+        }
+    }
+    if (result.skipped.length > 0) {
+        explanation.push(`Some attachments were skipped or only reviewed as evidence: ${result.skipped.slice(0, 3).join(' | ')}.`);
+    }
+    if (result.lockPairs.length > 0) {
+        explanation.push('Lock start/end pairs were matched, which helps confirm whether the failure was caused by a long-running or blocked operation.');
+    }
+    if (result.suppressedNoiseCount > 0) {
+        explanation.push(`Suppressed ${result.suppressedNoiseCount} noisy operation line(s) (${SKIP_OPERATIONS.join(', ')}) to keep the analysis focused on diagnostic signals.`);
+    }
+    return explanation;
+}
 // GET /api/log-analysis/:recordSysId — download + parse all log attachments for a SNOW record
 exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
     const { recordSysId } = req.params;
@@ -530,10 +738,13 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
         }
         const scannableFiles = [];
         const allHits = [];
+        const rawTextBlocks = [];
         const spreadsheetSummaries = [];
         const imageSummaries = [];
+        const operationTimelineSummaries = [];
         const analyzed = [];
         const skipped = [];
+        let suppressedNoiseCount = 0;
         for (const att of attachments) {
             const fileName = val(att.file_name) || '(unnamed attachment)';
             const ext = extensionOf(fileName);
@@ -609,8 +820,14 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
                             else {
                                 content = readTextFile(innerPath);
                             }
-                            hits = parseHwsLog(content, `${fileName}/${relativeName}`);
-                            analyzed.push(`${fileName}/${relativeName}${note} (${hits.length} hit(s))`);
+                            suppressedNoiseCount += content.split('\n').filter((line) => shouldSkipOperationLine(line)).length;
+                            rawTextBlocks.push({ file: `${fileName}/${relativeName}`, content });
+                            const timelineParsed = parseOperationTimelineRows(content, `${fileName}/${relativeName}`);
+                            if (timelineParsed.summary)
+                                operationTimelineSummaries.push(timelineParsed.summary);
+                            hits = [...parseHwsLog(content, `${fileName}/${relativeName}`), ...timelineParsed.hits];
+                            const timelineNote = timelineParsed.summary ? `, timeline rows=${timelineParsed.summary.rowsParsed}, delayed=${timelineParsed.summary.delayedCount}` : '';
+                            analyzed.push(`${fileName}/${relativeName}${note} (${hits.length} hit(s)${timelineNote})`);
                         }
                         allHits.push(...hits);
                     }
@@ -649,8 +866,14 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
                         else {
                             content = readTextFile(outPath);
                         }
-                        hits = parseHwsLog(content, fileName);
-                        analyzed.push(`${fileName}${note} (${hits.length} hit(s))`);
+                        suppressedNoiseCount += content.split('\n').filter((line) => shouldSkipOperationLine(line)).length;
+                        rawTextBlocks.push({ file: fileName, content });
+                        const timelineParsed = parseOperationTimelineRows(content, fileName);
+                        if (timelineParsed.summary)
+                            operationTimelineSummaries.push(timelineParsed.summary);
+                        hits = [...parseHwsLog(content, fileName), ...timelineParsed.hits];
+                        const timelineNote = timelineParsed.summary ? `, timeline rows=${timelineParsed.summary.rowsParsed}, delayed=${timelineParsed.summary.delayedCount}` : '';
+                        analyzed.push(`${fileName}${note} (${hits.length} hit(s)${timelineNote})`);
                     }
                     allHits.push(...hits);
                 }
@@ -663,19 +886,38 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
         const lockPairs = extractLockPairs(allHits);
         const byCategory = groupByCategory(allHits);
         const suggestions = buildSuggestions(allHits);
+        const stackTraces = dedupeStackTraces(rawTextBlocks.flatMap((b) => extractStackTraces(b.content, b.file, MAX_STACK_TRACES)), MAX_STACK_TRACES);
         const result = {
             totalAttachments: attachments.length,
             scannableAttachments: scannableFiles.length,
             analyzed,
             skipped,
+            suppressedNoiseCount,
             totalHits: allHits.length,
             hits: allHits.slice(0, 100), // cap display at 100
             byCategory,
             lockPairs: lockPairs.slice(0, 20),
             topSeeds: summariseBySeeds(allHits),
+            stackTraces,
+            operationTimelineSummaries: operationTimelineSummaries.slice(0, 20),
             spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
             imageSummaries: imageSummaries.slice(0, 40),
             suggestions,
+            explanation: buildExplanation({
+                totalAttachments: attachments.length,
+                scannableAttachments: scannableFiles.length,
+                analyzed,
+                skipped,
+                totalHits: allHits.length,
+                byCategory,
+                topSeeds: summariseBySeeds(allHits),
+                stackTraces,
+                operationTimelineSummaries: operationTimelineSummaries.slice(0, 20),
+                spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
+                imageSummaries: imageSummaries.slice(0, 40),
+                lockPairs: lockPairs.slice(0, 20),
+                suppressedNoiseCount,
+            }),
             cached: false,
         };
         logAnalysisCache.set(recordSysId, {
