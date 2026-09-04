@@ -86,6 +86,15 @@ ${logSample || 'No log evidence available'}
 
 Based on all of the above, produce the structured assessment.`;
 }
+function buildFollowUpPrompt(req) {
+    const prior = [
+        req.priorVerdict ? `Prior verdict: ${req.priorVerdict}` : '',
+        req.priorConfidence ? `Prior confidence: ${req.priorConfidence}` : '',
+        req.priorAssessment ? `Prior assessment:\n${req.priorAssessment.slice(0, 2000)}` : '',
+        req.priorGap ? `Prior gap:\n${req.priorGap.slice(0, 1500)}` : '',
+    ].filter(Boolean).join('\n\n');
+    return `User follow-up question: ${req.question}\n\nUse the prior assessment and evidence as your starting point. Answer directly and stay anchored to the facts.\n\nPrior context:\n${prior || 'No prior assessment was supplied.'}\n\n## DA ${req.da.id} — ${req.da.title}\nArea: ${req.da.areaPath}\nCustomer: ${req.da.customer}\nRelease: ${req.da.release}\nSeverity: ${req.da.severity}\n${req.da.description ? `Description:\n${req.da.description.slice(0, 800)}` : ''}\n\n## SNOW Task\n${req.snowTask?.number ?? 'not available'}\nState: ${req.snowTask?.state ?? '—'}\nShort description: ${req.snowTask?.shortDescription ?? '—'}\n${req.snowTask?.workNotes ? `Work notes excerpt:\n${req.snowTask.workNotes.slice(0, 600)}` : ''}\n\n## Key signals\n${Object.entries(req.topSeeds).map(([s, c]) => `- ${s}: ${c}x`).join('\n') || 'No signal summary available'}\n\n## Log evidence\n${req.logHits.slice(0, 20).map((h) => `[${h.file}:${h.line}] (${h.seed}) ${h.text}`).join('\n') || 'No log evidence available'}\n\nAnswer the user's question using the above context and be explicit about missing evidence if needed.`;
+}
 /** Call GitHub Models API via PowerShell — uses Windows DNS which resolves on corp network */
 function callGitHubModels(pat, messages) {
     const os = require('os');
@@ -248,6 +257,47 @@ exports.aiAnalysisRouter.post('/', async (req, res) => {
         else {
             return res.status(503).json({
                 error: 'No AI available. Options:\n1. Install Ollama (free, local): ollama.com → run "ollama pull llama3.2"\n2. Add OpenAI API key in Settings\n3. Ensure GitHub PAT has Models access',
+            });
+        }
+        return res.json({ assessment, source });
+    }
+    catch (err) {
+        return res.status(502).json({ error: err.message });
+    }
+});
+// Follow-up route: continues the same investigation using the previous assessment and evidence
+exports.aiAnalysisRouter.post('/continue', async (req, res) => {
+    const body = req.body;
+    if (!body.question || !body.question.trim()) {
+        return res.status(400).json({ error: 'Question is required.' });
+    }
+    const messages = [
+        {
+            role: 'system',
+            content: 'You are continuing a DevAssist investigation for the same work item. Use the prior assessment, evidence, and user question. Answer directly, stay grounded in facts, and clearly state uncertainty or missing evidence when needed.',
+        },
+        { role: 'user', content: buildFollowUpPrompt(body) },
+    ];
+    try {
+        const bridgeSecrets = (0, mcp_secrets_1.readMcpSecrets)();
+        const ollamaUp = await isOllamaRunning();
+        let assessment;
+        let source;
+        if (ollamaUp) {
+            assessment = await callOllama(messages);
+            source = 'ollama';
+        }
+        else if (body.openaiKey) {
+            assessment = await callOpenAI(body.openaiKey, messages);
+            source = 'openai';
+        }
+        else if (body.githubPat || bridgeSecrets.githubPat) {
+            assessment = await callGitHubModels(body.githubPat || bridgeSecrets.githubPat || '', messages);
+            source = 'github-models';
+        }
+        else {
+            return res.status(503).json({
+                error: 'No AI backend is available for follow-up. Install Ollama or add an OpenAI key in Settings.',
             });
         }
         return res.json({ assessment, source });

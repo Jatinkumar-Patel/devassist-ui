@@ -1077,6 +1077,10 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
   const [copied, setCopied]     = useState(false);
   const [aiSource, setAiSource] = useState<string | null>(null);
   const [ollamaOk, setOllamaOk] = useState<boolean | null>(null);
+  const [followUpQuestion, setFollowUpQuestion] = useState('');
+  const [followUpRunning, setFollowUpRunning] = useState(false);
+  const [followUpResult, setFollowUpResult] = useState<string | null>(null);
+  const [followUpError, setFollowUpError] = useState<string | null>(null);
 
   const BRIDGE = getBridgeUrl();
 
@@ -1142,6 +1146,57 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
     if (result) { navigator.clipboard.writeText(result); setCopied(true); setTimeout(() => setCopied(false), 2000); }
   };
 
+  const runFollowUp = async () => {
+    if (!followUpQuestion.trim() || !session.adoItem) return;
+    setFollowUpRunning(true); setFollowUpError(null); setFollowUpResult(null);
+    try {
+      const f = session.adoItem.fields;
+      const logHits: Array<{file:string;line:number;seed:string;text:string}> = (session.snowTask as any)?._logHits ?? [];
+      const topSeeds: Record<string, number> = (session.snowTask as any)?._topSeeds ?? {};
+      const body = {
+        openaiKey: openaiKey || undefined,
+        githubPat: githubPat || undefined,
+        question: followUpQuestion.trim(),
+        priorAssessment: result ?? session.analysis?.codeAnalysis ?? session.analysis?.gap ?? session.analysis?.l2Draft ?? '',
+        priorVerdict: session.analysis?.verdict ?? '',
+        priorConfidence: session.analysis?.confidence ?? '',
+        priorGap: session.analysis?.gap ?? '',
+        da: {
+          id: session.adoItem.id,
+          title: f['System.Title'],
+          areaPath: f['System.AreaPath'],
+          customer: String(f['Allscripts.Field.CustomerName'] ?? ''),
+          release: String(f['Allscripts.Field.SupportVersion'] ?? ''),
+          severity: String(f['Microsoft.VSTS.Common.Severity'] ?? ''),
+          description: String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '').replace(/<[^>]+>/g,' ').slice(0, 800),
+        },
+        snowTask: session.snowTask ? {
+          number: String((session.snowTask as any).number?.display_value ?? (session.snowTask as any).number ?? ''),
+          shortDescription: String((session.snowTask as any).short_description?.display_value ?? ''),
+          state: String((session.snowTask as any).state?.display_value ?? ''),
+          workNotes: JSON.stringify((session.snowTask as any)._workNotes ?? '').slice(0, 1200),
+        } : null,
+        logHits,
+        topSeeds,
+        repos: session.product?.repos.map(r => `${r.owner}/${r.repo}`) ?? [],
+      };
+      const res = await fetch(`${BRIDGE}/api/ai-analyze/continue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(120_000),
+      });
+      const data = await res.json() as { assessment?: string; error?: string; source?: string };
+      if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setFollowUpResult(data.assessment ?? '');
+      setAiSource(data.source ?? aiSource ?? null);
+    } catch (e: any) {
+      setFollowUpError(e.message);
+    } finally {
+      setFollowUpRunning(false);
+    }
+  };
+
   const sourceLabel: Record<string, string> = {
     'ollama': '🦙 Ollama (local)',
     'openai': '🤖 OpenAI',
@@ -1192,6 +1247,34 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
           {result}
         </pre>
       )}
+
+      <div className="rounded-lg border border-gray-700 bg-gray-900/40 p-3 space-y-2">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Continue with AI</p>
+        <textarea
+          value={followUpQuestion}
+          onChange={(e) => setFollowUpQuestion(e.target.value)}
+          rows={3}
+          placeholder="Ask a follow-up: What should I validate next? Why is this likely not a product defect? What logs are most important?"
+          className="w-full bg-gray-950 border border-gray-700 rounded px-3 py-2 text-xs text-gray-200 resize-y focus:outline-none focus:border-altera-teal/60"
+        />
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={runFollowUp}
+            disabled={followUpRunning || !canRun || !followUpQuestion.trim()}
+            className="flex items-center justify-center gap-1.5 text-xs bg-cyan-900/50 hover:bg-cyan-900/80 disabled:opacity-40 border border-cyan-600 text-cyan-100 px-3 py-1.5 rounded font-medium"
+          >
+            {followUpRunning ? <><Loader2 size={11} className="animate-spin" /> Continuing...</> : <><Sparkles size={11} /> Continue</>}
+          </button>
+        </div>
+        {followUpError && <p className="text-xs text-red-400 font-mono whitespace-pre-wrap">Error: {followUpError}</p>}
+        {followUpResult && (
+          <pre className="text-xs text-gray-200 whitespace-pre-wrap font-mono leading-relaxed bg-gray-950/50 rounded p-3 max-h-72 overflow-auto border border-gray-700">
+            {followUpResult}
+          </pre>
+        )}
+      </div>
+
       {!result && !error && canRun && !running && (
         <p className="text-xs text-gray-600">
           {ollamaOk ? 'Ollama detected — click "Ask AI" to run locally.' : 'Click "Ask AI" to analyze with OpenAI.'}
