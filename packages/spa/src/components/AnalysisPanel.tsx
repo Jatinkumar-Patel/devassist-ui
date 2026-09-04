@@ -1069,6 +1069,12 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
   );
 }
 
+type FollowUpHistoryEntry = {
+  question: string;
+  answer: string;
+  at: string;
+};
+
 function AiAssessmentPanel({ session }: { session: TriageSession }) {
   const { openaiKey, githubPat, hasGithubPat } = useSettingsStore();
   const [running, setRunning]   = useState(false);
@@ -1081,6 +1087,24 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
   const [followUpRunning, setFollowUpRunning] = useState(false);
   const [followUpResult, setFollowUpResult] = useState<string | null>(null);
   const [followUpError, setFollowUpError] = useState<string | null>(null);
+  const [chatHistory, setChatHistory] = useState<FollowUpHistoryEntry[]>([]);
+
+  useEffect(() => {
+    const key = `devassist-ai-followups-${session.id}`;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as FollowUpHistoryEntry[];
+      if (Array.isArray(parsed)) setChatHistory(parsed);
+    } catch {
+      // ignore malformed local state
+    }
+  }, [session.id]);
+
+  useEffect(() => {
+    if (!session.id) return;
+    localStorage.setItem(`devassist-ai-followups-${session.id}`, JSON.stringify(chatHistory));
+  }, [chatHistory, session.id]);
 
   const BRIDGE = getBridgeUrl();
 
@@ -1153,10 +1177,12 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
       const f = session.adoItem.fields;
       const logHits: Array<{file:string;line:number;seed:string;text:string}> = (session.snowTask as any)?._logHits ?? [];
       const topSeeds: Record<string, number> = (session.snowTask as any)?._topSeeds ?? {};
+      const history = chatHistory.map((entry) => ({ question: entry.question, answer: entry.answer }));
       const body = {
         openaiKey: openaiKey || undefined,
         githubPat: githubPat || undefined,
         question: followUpQuestion.trim(),
+        history,
         priorAssessment: result ?? session.analysis?.codeAnalysis ?? session.analysis?.gap ?? session.analysis?.l2Draft ?? '',
         priorVerdict: session.analysis?.verdict ?? '',
         priorConfidence: session.analysis?.confidence ?? '',
@@ -1188,7 +1214,13 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
       });
       const data = await res.json() as { assessment?: string; error?: string; source?: string };
       if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
-      setFollowUpResult(data.assessment ?? '');
+      const answer = data.assessment ?? '';
+      setFollowUpResult(answer);
+      setChatHistory((prev) => [
+        ...prev,
+        { question: followUpQuestion.trim(), answer, at: new Date().toISOString() },
+      ]);
+      setFollowUpQuestion('');
       setAiSource(data.source ?? aiSource ?? null);
     } catch (e: any) {
       setFollowUpError(e.message);
@@ -1249,6 +1281,38 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
       )}
 
       <div className="rounded-lg border border-gray-700 bg-gray-900/40 p-3 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Saved follow-up history</p>
+          {chatHistory.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setChatHistory([])}
+              className="text-[10px] text-gray-400 hover:text-white border border-gray-700 rounded px-2 py-1"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
+        {chatHistory.length > 0 ? (
+          <div className="space-y-2 max-h-64 overflow-auto pr-1">
+            {chatHistory.map((entry, idx) => (
+              <div key={`${entry.at}-${idx}`} className="rounded border border-gray-700 bg-gray-950/40 p-2 space-y-2">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-gray-500">Question</p>
+                  <p className="text-xs text-gray-200 whitespace-pre-wrap">{entry.question}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-gray-500">Answer</p>
+                  <pre className="text-[11px] text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">{entry.answer}</pre>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500">No saved follow-up history yet. Ask the first question below.</p>
+        )}
+
         <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Continue with AI</p>
         <textarea
           value={followUpQuestion}
