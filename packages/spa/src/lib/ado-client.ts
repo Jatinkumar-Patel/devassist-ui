@@ -16,7 +16,7 @@ function adoHeaders(pat: string): HeadersInit {
 }
 
 export async function fetchWorkItem(id: number, pat: string) {
-  const url = bridgeApi(`/api/ado/SR/_apis/wit/workitems/${id}?$expand=all&api-version=${API_VER}`);
+  const url = bridgeApi(`/api/ado/SR/_apis/wit/workitems/${id}?api-version=${API_VER}`);
   const res = await fetch(url, { headers: adoHeaders(pat) });
   if (!res.ok) throw new Error(`ADO ${res.status}: ${await res.text()}`);
   return res.json();
