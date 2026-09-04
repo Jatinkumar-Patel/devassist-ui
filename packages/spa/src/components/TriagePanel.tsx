@@ -54,6 +54,16 @@ function friendlyErrorMessage(error: string, bridgeUrl: string): string {
   return error;
 }
 
+function getProgressSections(session: TriageSession) {
+  return [
+    { label: 'DA/TFS loaded', done: !!session.adoItem },
+    { label: 'SNOW task/incident/case', done: !!(session.snowTask || session.snowIncident || session.snowCase) },
+    { label: 'Attachments loaded', done: !!(session.attachments && session.attachments.length > 0) },
+    { label: 'Log scan complete', done: !!((session.snowTask as any)?._logHits?.length || (session.snowTask as any)?._logAnalysis) },
+    { label: 'Analysis ready', done: !!session.analysis },
+  ];
+}
+
 export default function TriagePanel({ session, onAnalysisComplete }: Props) {
   const bridgeUrl = useSettingsStore((s) => s.bridgeUrl);
   const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>({ bridge: 'offline' });
@@ -143,18 +153,60 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
     );
   }
 
-  // Show phase progress while loading
+  // Show phase progress while loading and keep partial evidence visible in read-only mode.
   if (session.status === 'loading') {
     const label = PHASE_LABELS[currentPhase] ?? currentPhase;
+    const progress = getProgressSections(session);
+    const hasPartialEvidence = !!(session.adoItem || session.snowTask || session.snowIncident || session.snowCase || session.attachments?.length);
+
     return (
       <div className="space-y-3">
-        <div className="flex items-center gap-2 text-xs text-altera-teal">
-          <div className="w-3 h-3 rounded-full border-2 border-altera-teal border-t-transparent animate-spin" />
-          {label}
+        <div className="rounded-lg border border-cyan-800/60 bg-cyan-950/15 p-3 space-y-3">
+          <div className="flex items-center gap-2 text-xs text-cyan-200">
+            <div className="w-3 h-3 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+            <span className="font-medium">{label}</span>
+          </div>
+          <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
+            <div className="h-1 bg-cyan-400 rounded-full w-1/3 transition-all animate-pulse" />
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 text-[11px] text-gray-300">
+            {progress.map((step) => (
+              <div key={step.label} className={`flex items-center gap-2 rounded border px-2 py-1 ${step.done ? 'border-emerald-800 bg-emerald-950/20 text-emerald-200' : 'border-gray-700 bg-gray-950/40 text-gray-400'}`}>
+                <span className={`inline-block h-2 w-2 rounded-full ${step.done ? 'bg-emerald-400' : 'bg-gray-500'}`} />
+                {step.label}
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-gray-400">Read-only mode: evidence already fetched is visible while the remaining background checks continue.</p>
         </div>
-        <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
-          <div className="h-1 bg-altera-teal rounded-full w-1/3 transition-all animate-pulse" />
-        </div>
+
+        {hasPartialEvidence && (
+          <div className="rounded-lg border border-gray-700 bg-gray-900 p-3 space-y-2">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Fetched so far</p>
+            {session.adoItem && (
+              <div className="rounded border border-gray-700 bg-gray-950/40 p-2">
+                <div className="text-[10px] uppercase tracking-wide text-gray-500">DA / TFS</div>
+                <div className="text-xs text-gray-200 mt-1">{String(session.adoItem.fields['System.Title'] ?? 'Work item loaded')}</div>
+              </div>
+            )}
+            {(session.snowTask || session.snowIncident || session.snowCase) && (
+              <div className="rounded border border-gray-700 bg-gray-950/40 p-2">
+                <div className="text-[10px] uppercase tracking-wide text-gray-500">SNOW</div>
+                <div className="text-xs text-gray-200 mt-1">
+                  {session.snowTask && `Task: ${snowVal((session.snowTask as any).number) || 'loaded'} `}
+                  {session.snowIncident && `Incident: ${snowVal((session.snowIncident as any).number) || 'loaded'} `}
+                  {session.snowCase && `Case: ${snowVal((session.snowCase as any).number) || 'loaded'}`}
+                </div>
+              </div>
+            )}
+            {session.attachments && session.attachments.length > 0 && (
+              <div className="rounded border border-gray-700 bg-gray-950/40 p-2">
+                <div className="text-[10px] uppercase tracking-wide text-gray-500">Attachments</div>
+                <div className="text-xs text-gray-200 mt-1">{session.attachments.slice(0, 3).map((a) => snowVal((a as any).file_name)).filter(Boolean).join(', ') || 'Loaded'}</div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   }

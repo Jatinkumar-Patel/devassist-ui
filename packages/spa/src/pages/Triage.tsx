@@ -534,6 +534,7 @@ export default function TriagePage() {
     return saved === '1';
   });
   const [loading, setLoading] = useState(false);
+  const [bridgeVersionNotice, setBridgeVersionNotice] = useState<string | null>(null);
   const cancelledRef = useRef(false);
   const activeSessionIdRef = useRef<string | null>(null);
 
@@ -575,9 +576,34 @@ export default function TriagePage() {
     const check = async () => {
       try {
         const res = await fetch(`${bridgeUrl}/api/status`, { signal: AbortSignal.timeout(2500) });
-        if (!cancelled) setBridgeHint(res.ok ? null : bridgeHelpMessage(bridgeUrl));
+        if (!res.ok) {
+          if (!cancelled) setBridgeHint(bridgeHelpMessage(bridgeUrl));
+          return;
+        }
+        const status = await res.json() as { version?: string };
+        const installed = String(status.version ?? '').trim();
+        if (installed && installed !== 'unknown') {
+          const parse = (value: string) => value.split('.').map((n) => Number.parseInt(n, 10) || 0);
+          const current = parse(installed);
+          const required = parse('0.2.0');
+          const maxLen = Math.max(current.length, required.length);
+          let isOutdated = false;
+          for (let i = 0; i < maxLen; i += 1) {
+            const a = current[i] ?? 0;
+            const b = required[i] ?? 0;
+            if (a < b) { isOutdated = true; break; }
+            if (a > b) break;
+          }
+          if (!cancelled) {
+            setBridgeVersionNotice(isOutdated ? 'New DevAssist update available. Your current session is still connected to an older bridge build. Restart the bridge or re-run the setup steps to load the latest fixes.' : null);
+          }
+        }
+        if (!cancelled) setBridgeHint(null);
       } catch {
-        if (!cancelled) setBridgeHint(bridgeHelpMessage(bridgeUrl));
+        if (!cancelled) {
+          setBridgeHint(bridgeHelpMessage(bridgeUrl));
+          setBridgeVersionNotice(null);
+        }
       }
     };
     check();
@@ -1206,6 +1232,12 @@ export default function TriagePage() {
     <div className="space-y-3">
       {bridgeHint && (
         <BridgeOfflineBanner installCmds={installCmds} bridgeUrl={bridgeUrl} />
+      )}
+      {bridgeVersionNotice && !bridgeHint && (
+        <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-100">
+          <div className="font-semibold">New DevAssist update available</div>
+          <p className="mt-1 text-xs text-amber-100/90">{bridgeVersionNotice}</p>
+        </div>
       )}
 
       <div className="flex items-center justify-end">
