@@ -274,16 +274,57 @@ async function getOcrWorker(): Promise<any> {
   return ocrWorkerPromise;
 }
 
+function normalizeOcrText(rawText: string): string {
+  return rawText
+    .replace(/\r/g, '\n')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\u2018|\u2019/g, "'")
+    .replace(/\u201C|\u201D/g, '"')
+    .replace(/\s{3,}/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 async function analyzeImage(filePath: string, fileName: string): Promise<{ hits: LogHit[]; summary: ImageSummary }> {
   const worker = await getOcrWorker();
-  const recognized = await worker.recognize(filePath);
-  const text = String(recognized?.data?.text ?? '').replace(/\s+/g, ' ').trim();
+  const ocrVariants = [
+    { psm: 6, rotateAuto: true, preserve_interword_spaces: 1 },
+    { psm: 11, rotateAuto: true, preserve_interword_spaces: 1 },
+    { psm: 4, rotateAuto: true, preserve_interword_spaces: 1 },
+  ];
+
+  let bestText = '';
+  let bestScore = -1;
+
+  for (const options of ocrVariants) {
+    try {
+      const recognized = await worker.recognize(filePath, options as any);
+      const text = normalizeOcrText(String(recognized?.data?.text ?? ''));
+      if (!text) continue;
+      const score = text.length + (/(error|exception|timeout|failed|missing|invalid|denied|unable|patient|search|schedule|expiration|record)/i.test(text) ? 160 : 0);
+      if (score > bestScore) {
+        bestScore = score;
+        bestText = text;
+      }
+    } catch {
+      // ignore and try next OCR mode
+    }
+  }
+
+  const text = bestText || '';
   const findings: string[] = [];
   const preview = text.slice(0, 240);
   if (text) {
     findings.push(`OCR extracted ${text.length} characters`);
-    if (/error|exception|timeout|failed|missing|invalid|denied|cannot|unable/i.test(text)) {
-      findings.push('Image text contains diagnostic keywords');
+    if (/duplicate|same patient|already exists|multiple records|not found|error|exception|timeout|failed|missing|invalid|denied|cannot|unable|schedule|patient|record|expiration/i.test(text)) {
+      findings.push('Image text contains strong workflow- or error-signaling keywords');
+    }
+    if (/duplicate|same patient|already exists|multiple records/i.test(text)) {
+      findings.push('OCR suggests a duplicate-record or selection problem in the UI');
+    }
+    if (/timeout|failed|unable|exception|error/i.test(text)) {
+      findings.push('OCR suggests a failing workflow or user-visible error message');
     }
   } else {
     findings.push('No OCR text detected');
@@ -797,7 +838,13 @@ function buildExplanation(result: {
     const sheetFindings = result.spreadsheetSummaries
       .flatMap((summary) => summary.findings ?? [])
       .slice(0, 4);
-    if (sheetFindings.length > 0) {
+    const duplicatePattern = sheetFindings.find((f) => /Duplicate display names|multiple NameTypeCode|PersonGUIDs with multiple/i.test(f));
+    const conversionPattern = sheetFindings.find((f) => /Conversion summary|Potential mapping gaps|Status distribution/i.test(f));
+    if (duplicatePattern) {
+      explanation.push(`Spreadsheet evidence is high-signal: ${duplicatePattern}. This suggests duplicate or stale data in the same record set rather than a benign export artifact.`);
+    } else if (conversionPattern) {
+      explanation.push(`Spreadsheet evidence shows a conversion/data-quality pattern: ${conversionPattern}. This is stronger than a raw export read because it points to mapping drift or stale state.`);
+    } else if (sheetFindings.length > 0) {
       explanation.push(`Spreadsheet attachments add more context: ${sheetFindings.join(' | ')}.`);
     } else {
       explanation.push('Spreadsheet attachments were parsed successfully and may contain supporting evidence such as rows, counts, or mappings.');
@@ -808,7 +855,10 @@ function buildExplanation(result: {
     const imageSignals = result.imageSummaries
       .flatMap((image) => image.findings ?? [])
       .slice(0, 3);
-    if (imageSignals.length > 0) {
+    const diagnosticImage = imageSignals.find((f) => /duplicate|error|exception|timeout|failed|unable|not found|schedule|patient|record/i.test(f));
+    if (diagnosticImage) {
+      explanation.push(`Image OCR found diagnostic UI text: ${diagnosticImage}. This points to a workflow or error state visible in the screenshot, not just an empty image preview.`);
+    } else if (imageSignals.length > 0) {
       explanation.push(`Image OCR found additional signals: ${imageSignals.join(' | ')}.`);
     } else {
       explanation.push('Image attachments were OCR-scanned and may show UI text, screenshots, or error dialogs that are not present in the log files.');

@@ -451,17 +451,24 @@ export function buildAssessment(
   const verdict = pattern?.verdict ?? 'NEED MORE INFO';
   let l2Draft: string | undefined;
   if (verdict === 'NEED MORE INFO') {
-    l2Draft = `Thank you for contacting Altera support.\n\n` +
-      `We have reviewed the information provided. To proceed with analysis, please provide:\n\n` +
-      `1. ${!logHits?.length ? 'Log files covering the exact incident window (see the area guide for which logs to collect)' : 'Additional log context if the attached logs do not cover the full incident window'}\n` +
-      `2. Exact ${version} build version\n` +
-      `3. Steps to reproduce on a test/dev environment\n` +
-      `4. Whether this affects all users or specific users/sites`;
+    const missingEvidence = [
+      !logHits?.length ? 'HWS/log evidence covering the exact incident window' : 'Additional log context if the attached logs do not cover the full incident window',
+      `Exact ${version} build version`,
+      'Reproduction steps from a test/dev environment',
+      'Scope: all users vs specific users/sites',
+    ];
+
+    l2Draft = `Current evidence is insufficient to confirm a code defect for DA ${adoItem.id}.\n\n` +
+      `Observed symptom: ${title}\n\n` +
+      `Priority evidence to collect:\n` +
+      `${missingEvidence.map((item, index) => `${index + 1}. ${item}`).join('\n')}\n\n` +
+      `The issue should stay in technical triage until the missing evidence confirms whether the failure is client-side, server-side, or configuration-driven.`;
   } else if (verdict === 'CODE BUG') {
-    l2Draft = `Thank you for contacting Altera support.\n\n` +
-      `Issue identified: ${pattern?.name ?? title}\n\n` +
-      `Analysis: ${gap}\n\n` +
-      `Confidence: ${confidence}${blindSpots.length > 0 ? `\nNote: ${blindSpots[0]}` : ''}`;
+    const evidenceSummary = [...snowEvidence, ...logEvidence].slice(0, 3).join(' | ') || gap;
+    l2Draft = `Initial technical assessment for DA ${adoItem.id}: ${pattern?.name ?? title}\n\n` +
+      `Observed gap: ${gap}\n\n` +
+      `Evidence: ${evidenceSummary}\n\n` +
+      `Confidence: ${confidence}${blindSpots.length > 0 ? `\nFollow-up check: ${blindSpots[0]}` : ''}`;
   }
 
   return {
@@ -726,27 +733,67 @@ function extractTechTerms(snowText: string): string[] {
     .slice(0, 8);
 }
 
-function summarizeSpreadsheetFindings(spreadsheetSummaries: SpreadsheetSummaryInput[]): string[] {
+export function summarizeSpreadsheetFindings(spreadsheetSummaries: SpreadsheetSummaryInput[]): string[] {
   const out: string[] = [];
 
   for (const sheet of spreadsheetSummaries.slice(0, 8)) {
     const source = `${sheet.file}#${sheet.sheet}`;
     const findings = (sheet.findings ?? []).map((f) => String(f).trim()).filter(Boolean);
+    const combined = findings.join(' ');
     if (!findings.length) {
       out.push(`${source}: parsed ${sheet.rowCount} rows and ${sheet.columnCount} columns; no high-signal anomalies reported.`);
       continue;
     }
 
-    const duplicate = findings.find((f) => /Duplicate display names/i.test(f));
-    const statusMix = findings.find((f) => /Status counts|Active flag counts/i.test(f));
-    const conversion = findings.find((f) => /Conversion summary|Potential mapping gaps/i.test(f));
+    const duplicateDisplayNames = findings.find((f) => /Duplicate display names|duplicate.*name/i.test(f));
+    const multipleNameTypes = findings.find((f) => /multiple NameTypeCode|multiple.*name.*type|same.*PersonGUID|PersonGUIDs? with multiple/i.test(f));
+    const statusMix = findings.find((f) => /Status counts|Active flag counts|Inactive|Active=/i.test(f));
+    const conversion = findings.find((f) => /Conversion summary|Potential mapping gaps|mapping gap|conversion/i.test(f));
 
-    if (duplicate) out.push(`${source}: ${duplicate}`);
-    if (statusMix) out.push(`${source}: ${statusMix}`);
-    if (conversion) out.push(`${source}: ${conversion}`);
+    if (duplicateDisplayNames || multipleNameTypes) {
+      const duplicateStatement = duplicateDisplayNames ?? multipleNameTypes ?? 'Duplicate record pattern detected';
+      out.push(`${source}: Likely duplicate-record problem — ${duplicateStatement}. The same patient/entity appears more than once or under multiple name-type values, which can produce unstable selection or duplicate-entry behavior in the workflow.`);
+    }
 
-    if (!duplicate && !statusMix && !conversion) {
-      out.push(`${source}: ${findings.slice(0, 2).join(' | ')}`);
+    if (statusMix) out.push(`${source}: Status mix indicates stale or partially converted data: ${statusMix}.`);
+    if (conversion) out.push(`${source}: Conversion pattern detected: ${conversion}.`);
+
+    if (!duplicateDisplayNames && !multipleNameTypes && !statusMix && !conversion) {
+      const snippet = findings.slice(0, 2).join(' | ');
+      if (/rows analyzed|unique|counts/i.test(combined)) {
+        out.push(`${source}: Data quality signal detected: ${snippet}. Review for duplicate rows, stale mappings, or mismatched conversion states.`);
+      } else {
+        out.push(`${source}: ${snippet}`);
+      }
+    }
+  }
+
+  return Array.from(new Set(out)).slice(0, 8);
+}
+
+export function summarizeImageFindings(imageSummaries: ImageSummaryInput[]): string[] {
+  const out: string[] = [];
+
+  for (const image of imageSummaries.slice(0, 8)) {
+    const previewText = String(image.textPreview ?? '').trim();
+    const findings = (image.findings ?? []).map((f) => String(f).trim()).filter(Boolean);
+    const combined = [previewText, ...findings].join(' ');
+
+    const issueSignals = [] as string[];
+    if (/duplicate|already exists|same person|same patient|multiple records|choose.*record|select.*patient/i.test(combined)) {
+      issueSignals.push('duplicate/selection issue');
+    }
+    if (/error|exception|failed|unable|not found|timeout|timed out|access denied/i.test(combined)) {
+      issueSignals.push('error state or failure message');
+    }
+    if (/patient|provider|medication|encounter|workflow|schedule|appointment/i.test(combined)) {
+      issueSignals.push('patient/workflow context');
+    }
+
+    if (issueSignals.length > 0) {
+      out.push(`${image.file}: OCR indicates a ${issueSignals.join(', ')} in the UI. The attachment is showing actionable workflow or error text rather than a generic screenshot only.`);
+    } else if (previewText || findings.length) {
+      out.push(`${image.file}: OCR captured UI text (${previewText ? previewText.slice(0, 140) : findings.slice(0, 2).join(' | ')}).`);
     }
   }
 
@@ -1247,28 +1294,39 @@ export async function buildSkillDrivenAssessment(
   let l2Draft: string | undefined;
   const clarityItems = profileMd.match(/- \[ \] \*\*([^*]+)\*\*/g)?.map(l => l.replace(/- \[ \] \*\*|\*\*/g, '').trim()) ?? [];
   if (rawVerdict === 'CONFIG / INSTALL') {
-    l2Draft = `Thank you for contacting Altera support.\n\nWe have reviewed DA ${adoItem.id} — ${title}\n\nBased on the information provided${snowEvidence.length ? ' and our SNOW review' : ''}:\n\nThis appears to be a configuration issue rather than a code defect. ${gap.slice(0, 400)}\n\nPlease work with your system administrator to review the domain/AD account configuration. If this does not resolve the issue, please provide additional details on the environment setup.`;
+    l2Draft = `Technical assessment for DA ${adoItem.id}: configuration-driven issue likely.\n\n` +
+      `Observed symptoms: ${title}\n\n` +
+      `${gap.slice(0, 500)}\n\n` +
+      `Most likely failure path: environment / identity / AD / service configuration rather than product logic. Validate the account, domain, and service identity mapping before escalating to product code.`;
   } else if (rawVerdict === 'INTENDED BEHAVIOR') {
-    l2Draft = `Thank you for contacting Altera support.\n\nWe have reviewed DA ${adoItem.id} — ${title}\n\nBased on our analysis, this appears to be working as designed. ${gap.slice(0, 400)}\n\nIf this is a business requirement to change the current behavior, please submit an enhancement request.`;
+    l2Draft = `Technical assessment for DA ${adoItem.id}: current behavior appears consistent with design.\n\n` +
+      `${gap.slice(0, 500)}\n\n` +
+      `This should be treated as expected behavior unless a product requirement or documented functional change is being requested.`;
   } else if (rawVerdict === 'ENHANCEMENT') {
-    l2Draft = `Thank you for contacting Altera support.\n\nWe have reviewed DA ${adoItem.id} — ${title}\n\nThis functionality is not currently supported. ${gap.slice(0, 400)}\n\nThis has been noted as a potential enhancement request for future consideration.`;
+    l2Draft = `Technical assessment for DA ${adoItem.id}: capability gap / enhancement candidate.\n\n` +
+      `${gap.slice(0, 500)}\n\n` +
+      `Current evidence suggests the feature is not implemented or not exposed in the relevant workflow; record this as an enhancement request rather than a defect unless reproducible code behavior contradicts the intended contract.`;
   } else if (rawVerdict === 'NEED MORE INFO' || confidence === 'Low') {
     if (operationalSignals.fmhWorkflow && operationalSignals.tokenExpired && operationalSignals.encryptionPath) {
-      l2Draft = `Thank you for contacting Altera support.\n\nWe reviewed DA ${adoItem.id} and the provided evidence for the FMH notification workflow.\n\nCurrent findings indicate notification processing is failing in the security/encryption path before downstream mail-delivery confirmation. We also see related enterprise-directory/LDAP authentication concerns in the same support timeline.\n\nPlease validate the FMH interface/service identity mapping and rights, confirm enterprise-directory + LDAP connectivity, then reproduce once and share the FMH/CryptoWebAPI logs and SMTP relay transaction evidence for the same window.`;
+      l2Draft = `Technical assessment for DA ${adoItem.id}: evidence indicates the FMH notification flow is failing in the security/encryption path before mail delivery confirmation.\n\n` +
+        `Current findings point to token validation / enterprise-directory / LDAP connectivity or service identity issues, not downstream delivery logic.\n\n` +
+        `Required follow-up: validate FMH service identity and rights, confirm enterprise-directory + LDAP connectivity, and collect the same-window FMH/CryptoWebAPI logs and SMTP relay transaction evidence.`;
     } else {
-      l2Draft = `Thank you for contacting Altera support.\n\nWe have reviewed the information provided for DA ${adoItem.id}.\n\nTo proceed with root cause analysis, please provide:\n${
-        clarityItems.length
-          ? clarityItems.slice(0, 5).map((c, i) => `${i+1}. ${c}`).join('\n')
-          : `1. Log files covering the exact incident window\n2. Exact version (SCM / HWS / app build)\n3. Steps to reproduce on test/dev\n4. Whether this affects all users or specific users`
-      }`;
+      l2Draft = `Current evidence is insufficient to conclude a root cause for DA ${adoItem.id}.\n\n` +
+        `Observed issue: ${title}\n\n` +
+        `Required evidence:\n${
+          clarityItems.length
+            ? clarityItems.slice(0, 5).map((c, i) => `${i + 1}. ${c}`).join('\n')
+            : `1. Log files covering the exact incident window\n2. Exact version (SCM / HWS / app build)\n3. Reproduction steps from test/dev\n4. Whether the issue is user-specific or environment-wide`
+        }`;
     }
   } else if (rawVerdict === 'CODE BUG') {
+    const evidenceSummary = [...snowEvidence, ...logEvidence].slice(0, 3).join(' | ') || gap.slice(0, 300);
     const confText = confidence === 'High' ? 'High confidence' : `${confidence} confidence${blindSpots.length ? ` — ${blindSpots[0]}` : ''}`;
-    l2Draft = `Thank you for contacting Altera support.\n\nWe have completed initial root cause analysis for DA ${adoItem.id}.\n\nFindings:\n${
-      matchedPlaybookPattern
-        ? `Pattern: ${matchedPlaybookPattern.name}\nFix direction: ${matchedPlaybookPattern.fixDirection.slice(0, 300)}`
-        : gap.slice(0, 300)
-    }\n\n${confText}.`;
+    l2Draft = `Initial technical findings for DA ${adoItem.id}:\n\n` +
+      `${matchedPlaybookPattern ? `Pattern: ${matchedPlaybookPattern.name}\nFix direction: ${matchedPlaybookPattern.fixDirection.slice(0, 300)}` : gap.slice(0, 300)}\n\n` +
+      `Evidence trail: ${evidenceSummary}\n\n` +
+      `${confText}.`;
   }
 
   const skillSections = {
