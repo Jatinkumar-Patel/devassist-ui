@@ -159,8 +159,8 @@ export default function SettingsPage() {
           }}
         />
         <PatField
-          label="OpenAI API Key"
-          hint="sk-… — enables inline AI analysis in the app (optional). Get one at platform.openai.com"
+          label="Optional OpenAI API Key"
+          hint="Fallback only. Prefer the VS Code/GitHub-managed model route or a GitHub PAT already available to this machine."
           value={openaiKey}
           onChange={setOpenaiKey}
           testUrl="https://api.openai.com/v1/models"

@@ -96,6 +96,24 @@ function buildFollowUpPrompt(req) {
     const history = (req.history ?? []).slice(-8).map((entry, idx) => `Previous turn ${idx + 1}:\nQ: ${entry.question}\nA: ${entry.answer.slice(0, 1200)}`).join('\n\n');
     return `User follow-up question: ${req.question}\n\nUse the prior assessment and evidence as your starting point. Answer directly and stay anchored to the facts.\n\nPrior context:\n${prior || 'No prior assessment was supplied.'}\n\nConversation history:\n${history || 'No prior follow-up history exists yet.'}\n\n## DA ${req.da.id} — ${req.da.title}\nArea: ${req.da.areaPath}\nCustomer: ${req.da.customer}\nRelease: ${req.da.release}\nSeverity: ${req.da.severity}\n${req.da.description ? `Description:\n${req.da.description.slice(0, 800)}` : ''}\n\n## SNOW Task\n${req.snowTask?.number ?? 'not available'}\nState: ${req.snowTask?.state ?? '—'}\nShort description: ${req.snowTask?.shortDescription ?? '—'}\n${req.snowTask?.workNotes ? `Work notes excerpt:\n${req.snowTask.workNotes.slice(0, 600)}` : ''}\n\n## Key signals\n${Object.entries(req.topSeeds).map(([s, c]) => `- ${s}: ${c}x`).join('\n') || 'No signal summary available'}\n\n## Log evidence\n${req.logHits.slice(0, 20).map((h) => `[${h.file}:${h.line}] (${h.seed}) ${h.text}`).join('\n') || 'No log evidence available'}\n\nAnswer the user's question using the above context and be explicit about missing evidence if needed.`;
 }
+function normalizeAiProviderError(message) {
+    const text = String(message ?? '').trim();
+    if (!text)
+        return 'AI request failed. Use the VS Code/GitHub-managed model route or add a GitHub PAT in Settings. Local Ollama/OpenAI are fallback-only options.';
+    if (/ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|timed out|network|fetch failed|getaddrinfo/i.test(text)) {
+        return 'The configured AI provider is unreachable from this environment. Use the VS Code/GitHub-managed model route or add a GitHub PAT in Settings. Local Ollama/OpenAI are fallback-only options.';
+    }
+    if (/GitHub Models/i.test(text)) {
+        return 'GitHub Models is unavailable from this environment. Use the VS Code/GitHub-managed model route or add a GitHub PAT in Settings. Local Ollama/OpenAI are fallback-only options.';
+    }
+    return text;
+}
+function getGitHubModelToken(body, bridgeSecrets) {
+    return (body.githubPat || bridgeSecrets.githubPat || process.env.GITHUB_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_MODELS_TOKEN || '').trim();
+}
+function getOpenAiKey(body) {
+    return (body.openaiKey || process.env.OPENAI_API_KEY || '').trim();
+}
 /** Call GitHub Models API directly from Node.js — avoids brittle PowerShell parsing and noisy stderr output */
 function callGitHubModels(pat, messages) {
     const payload = JSON.stringify({ model: MODEL_GH, messages, temperature: 0.1, max_tokens: 1200 });
@@ -261,29 +279,30 @@ exports.aiAnalysisRouter.post('/', async (req, res) => {
         let assessment;
         let source;
         const bridgeSecrets = (0, mcp_secrets_1.readMcpSecrets)();
+        const githubToken = getGitHubModelToken(body, bridgeSecrets);
+        const openaiKey = getOpenAiKey(body);
         const ollamaUp = await isOllamaRunning();
-        if (ollamaUp) {
-            // Prefer local Ollama — no internet, no auth, no firewall
+        if (githubToken) {
+            assessment = await callGitHubModels(githubToken, messages);
+            source = 'github-models';
+        }
+        else if (openaiKey) {
+            assessment = await callOpenAI(openaiKey, messages);
+            source = 'openai';
+        }
+        else if (ollamaUp) {
             assessment = await callOllama(messages);
             source = 'ollama';
         }
-        else if (body.openaiKey) {
-            assessment = await callOpenAI(body.openaiKey, messages);
-            source = 'openai';
-        }
-        else if (body.githubPat || bridgeSecrets.githubPat) {
-            assessment = await callGitHubModels(body.githubPat || bridgeSecrets.githubPat || '', messages);
-            source = 'github-models';
-        }
         else {
             return res.status(503).json({
-                error: 'No AI available. Options:\n1. Install Ollama (free, local): ollama.com → run "ollama pull llama3.2"\n2. Add OpenAI API key in Settings\n3. Ensure GitHub PAT has Models access',
+                error: 'No AI backend is available. Preferred path: use the VS Code/GitHub-managed model route or add a GitHub PAT in Settings. Local Ollama/OpenAI remain fallback options.',
             });
         }
         return res.json({ assessment, source });
     }
     catch (err) {
-        return res.status(502).json({ error: err.message });
+        return res.status(502).json({ error: normalizeAiProviderError(err.message) });
     }
 });
 // Follow-up route: continues the same investigation using the previous assessment and evidence
@@ -301,29 +320,31 @@ exports.aiAnalysisRouter.post('/continue', async (req, res) => {
     ];
     try {
         const bridgeSecrets = (0, mcp_secrets_1.readMcpSecrets)();
+        const githubToken = getGitHubModelToken(body, bridgeSecrets);
+        const openaiKey = getOpenAiKey(body);
         const ollamaUp = await isOllamaRunning();
         let assessment;
         let source;
-        if (ollamaUp) {
+        if (githubToken) {
+            assessment = await callGitHubModels(githubToken, messages);
+            source = 'github-models';
+        }
+        else if (openaiKey) {
+            assessment = await callOpenAI(openaiKey, messages);
+            source = 'openai';
+        }
+        else if (ollamaUp) {
             assessment = await callOllama(messages);
             source = 'ollama';
         }
-        else if (body.openaiKey) {
-            assessment = await callOpenAI(body.openaiKey, messages);
-            source = 'openai';
-        }
-        else if (body.githubPat || bridgeSecrets.githubPat) {
-            assessment = await callGitHubModels(body.githubPat || bridgeSecrets.githubPat || '', messages);
-            source = 'github-models';
-        }
         else {
             return res.status(503).json({
-                error: 'No AI backend is available for follow-up. Install Ollama or add an OpenAI key in Settings.',
+                error: 'No AI backend is available for follow-up. Preferred path: use the VS Code/GitHub-managed model route or add a GitHub PAT in Settings. Local Ollama/OpenAI remain fallback options.',
             });
         }
         return res.json({ assessment, source });
     }
     catch (err) {
-        return res.status(502).json({ error: err.message });
+        return res.status(502).json({ error: normalizeAiProviderError(err.message) });
     }
 });
