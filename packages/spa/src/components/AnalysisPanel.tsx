@@ -1404,9 +1404,9 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
 
       {!canRun && (
         <div className="text-xs text-yellow-600 space-y-1">
-          <p>No AI available. Options:</p>
-          <p>• <strong className="text-yellow-400">Free & local</strong>: Install <a href="https://ollama.com" target="_blank" rel="noreferrer" className="underline">Ollama</a>, then run: <code className="bg-gray-800 px-1 rounded">ollama pull llama3.2</code></p>
-          <p>• <strong className="text-yellow-400">OpenAI key</strong>: Add in <a href={`${import.meta.env.BASE_URL}settings`} className="underline text-yellow-400">Settings</a></p>
+          <p>No AI backend is configured for this session.</p>
+          <p>• <strong className="text-yellow-400">Preferred</strong>: use the VS Code / GitHub-managed model route already available in this environment.</p>
+          <p>• <strong className="text-yellow-400">If needed</strong>: add a GitHub PAT or valid OpenAI key in <a href={`${import.meta.env.BASE_URL}settings`} className="underline text-yellow-400">Settings</a>.</p>
         </div>
       )}
       {error && <p className="text-xs text-red-400 font-mono whitespace-pre-wrap">Error: {error}</p>}
@@ -1477,7 +1477,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
 
       {!result && !error && canRun && !running && (
         <p className="text-xs text-gray-600">
-          {ollamaOk ? 'Ollama detected — click "Ask AI" to run locally.' : 'Click "Ask AI" to analyze with OpenAI.'}
+          {ollamaOk ? 'Ollama detected — click "Ask AI" to run locally.' : 'Click "Ask AI" to use the configured model route for this session.'}
         </p>
       )}
     </div>

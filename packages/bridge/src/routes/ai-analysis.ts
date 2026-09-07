@@ -151,11 +151,11 @@ function normalizeAiProviderError(message: string): string {
 }
 
 function getGitHubModelToken(body: { githubPat?: string }, bridgeSecrets: ReturnType<typeof readMcpSecrets>) {
-  return (body.githubPat || bridgeSecrets.githubPat || process.env.GITHUB_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_MODELS_TOKEN || '').trim();
+  return (body.githubPat || bridgeSecrets.githubPat || '').trim();
 }
 
 function getOpenAiKey(body: { openaiKey?: string }) {
-  return (body.openaiKey || process.env.OPENAI_API_KEY || '').trim();
+  return (body.openaiKey || '').trim();
 }
 
 /** Call GitHub Models API directly from Node.js — avoids brittle PowerShell parsing and noisy stderr output */
