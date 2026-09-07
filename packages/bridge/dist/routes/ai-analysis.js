@@ -96,50 +96,70 @@ function buildFollowUpPrompt(req) {
     const history = (req.history ?? []).slice(-8).map((entry, idx) => `Previous turn ${idx + 1}:\nQ: ${entry.question}\nA: ${entry.answer.slice(0, 1200)}`).join('\n\n');
     return `User follow-up question: ${req.question}\n\nUse the prior assessment and evidence as your starting point. Answer directly and stay anchored to the facts.\n\nPrior context:\n${prior || 'No prior assessment was supplied.'}\n\nConversation history:\n${history || 'No prior follow-up history exists yet.'}\n\n## DA ${req.da.id} — ${req.da.title}\nArea: ${req.da.areaPath}\nCustomer: ${req.da.customer}\nRelease: ${req.da.release}\nSeverity: ${req.da.severity}\n${req.da.description ? `Description:\n${req.da.description.slice(0, 800)}` : ''}\n\n## SNOW Task\n${req.snowTask?.number ?? 'not available'}\nState: ${req.snowTask?.state ?? '—'}\nShort description: ${req.snowTask?.shortDescription ?? '—'}\n${req.snowTask?.workNotes ? `Work notes excerpt:\n${req.snowTask.workNotes.slice(0, 600)}` : ''}\n\n## Key signals\n${Object.entries(req.topSeeds).map(([s, c]) => `- ${s}: ${c}x`).join('\n') || 'No signal summary available'}\n\n## Log evidence\n${req.logHits.slice(0, 20).map((h) => `[${h.file}:${h.line}] (${h.seed}) ${h.text}`).join('\n') || 'No log evidence available'}\n\nAnswer the user's question using the above context and be explicit about missing evidence if needed.`;
 }
-/** Call GitHub Models API via PowerShell — uses Windows DNS which resolves on corp network */
+/** Call GitHub Models API directly from Node.js — avoids brittle PowerShell parsing and noisy stderr output */
 function callGitHubModels(pat, messages) {
-    const os = require('os');
-    const fs = require('fs');
-    const { exec } = require('child_process');
-    const ts = Date.now();
-    const bodyFile = `${os.tmpdir()}\\devassist-body-${ts}.json`;
-    const scriptFile = `${os.tmpdir()}\\devassist-ai-${ts}.ps1`;
-    // Write body to temp file — avoids all PS string-escaping issues
-    fs.writeFileSync(bodyFile, JSON.stringify({ model: MODEL_GH, messages, temperature: 0.1, max_tokens: 1200 }), 'utf-8');
-    // Write full PS script to a .ps1 file — run with -File so newlines are preserved
-    const script = `
-$body = Get-Content -Path '${bodyFile}' -Raw -Encoding UTF8
-$headers = @{
-    Authorization = 'Bearer ${pat}'
-    'Content-Type' = 'application/json'
-}
-$r = Invoke-WebRequest -Uri '${MODELS_API_URL}' -Method POST -Headers $headers -Body $body -UseBasicParsing -TimeoutSec 60
-$r.Content
-`;
-    fs.writeFileSync(scriptFile, script, 'utf-8');
+    const payload = JSON.stringify({ model: MODEL_GH, messages, temperature: 0.1, max_tokens: 1200 });
     return new Promise((resolve, reject) => {
-        exec(`powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${scriptFile}"`, { maxBuffer: 5 * 1024 * 1024, timeout: 90_000 }, (err, stdout, stderr) => {
-            // Clean up temp files
-            try {
-                fs.unlinkSync(bodyFile);
-            }
-            catch { /* ignore */ }
-            try {
-                fs.unlinkSync(scriptFile);
-            }
-            catch { /* ignore */ }
-            if (err)
-                return reject(new Error(stderr || err.message));
-            try {
-                const data = JSON.parse(stdout.trim());
-                if (data.error)
-                    return reject(new Error(String(data.error.message ?? data.error)));
-                resolve(data.choices?.[0]?.message?.content ?? '(no response)');
-            }
-            catch {
-                reject(new Error(`Invalid response: ${stdout.slice(0, 200)}`));
-            }
+        const req = https_1.default.request(MODELS_API_URL, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${pat}`,
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(payload),
+            },
+            timeout: 90_000,
+        }, (res) => {
+            let data = '';
+            res.on('data', (chunk) => {
+                data += chunk.toString();
+            });
+            res.on('end', () => {
+                if (res.statusCode && res.statusCode >= 400) {
+                    try {
+                        const json = JSON.parse(data || '{}');
+                        const message = json?.error?.message ?? json?.error ?? (data.slice(0, 400) || 'empty response');
+                        return reject(new Error(`GitHub Models error (${res.statusCode}): ${message}`));
+                    }
+                    catch {
+                        return reject(new Error(`GitHub Models error (${res.statusCode}): ${data.slice(0, 400) || 'empty response'}`));
+                    }
+                }
+                try {
+                    const parsed = JSON.parse(data || '{}');
+                    if (parsed.error) {
+                        return reject(new Error(String(parsed.error.message ?? parsed.error)));
+                    }
+                    const content = parsed.choices?.[0]?.message?.content;
+                    if (typeof content === 'string' && content.trim()) {
+                        return resolve(content);
+                    }
+                    return reject(new Error(`GitHub Models returned no usable content. Response: ${data.slice(0, 400) || 'empty response'}`));
+                }
+                catch {
+                    const match = data.match(/\{[\s\S]*\}/);
+                    if (match) {
+                        try {
+                            const parsed = JSON.parse(match[0]);
+                            const content = parsed.choices?.[0]?.message?.content;
+                            if (typeof content === 'string' && content.trim()) {
+                                return resolve(content);
+                            }
+                        }
+                        catch {
+                            // fall through to the final error message below
+                        }
+                    }
+                    reject(new Error(`GitHub Models returned an unexpected response: ${data.slice(0, 400) || 'empty response'}`));
+                }
+            });
         });
+        req.on('error', (e) => reject(new Error(`GitHub Models request failed: ${e.message}`)));
+        req.on('timeout', () => {
+            req.destroy();
+            reject(new Error('GitHub Models request timed out'));
+        });
+        req.write(payload);
+        req.end();
     });
 }
 /** Call Ollama local LLM — no auth, no internet, runs at localhost:11434 */
