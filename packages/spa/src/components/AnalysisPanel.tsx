@@ -1204,14 +1204,23 @@ type FollowUpHistoryEntry = {
   at: string;
 };
 
+type AiStatus = {
+  ollama: boolean;
+  ollamaModels: string[];
+  githubReady: boolean;
+  openaiReady: boolean;
+  anyBackendReady: boolean;
+};
+
 function AiAssessmentPanel({ session }: { session: TriageSession }) {
-  const { openaiKey, githubPat, hasGithubPat } = useSettingsStore();
+  const { openaiKey, githubPat } = useSettingsStore();
   const [running, setRunning]   = useState(false);
   const [result, setResult]     = useState<string | null>(null);
   const [error, setError]       = useState<string | null>(null);
   const [copied, setCopied]     = useState(false);
   const [aiSource, setAiSource] = useState<string | null>(null);
   const [ollamaOk, setOllamaOk] = useState<boolean | null>(null);
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
   const [followUpQuestion, setFollowUpQuestion] = useState('');
   const [followUpRunning, setFollowUpRunning] = useState(false);
   const [followUpResult, setFollowUpResult] = useState<string | null>(null);
@@ -1241,11 +1250,18 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
   useEffect(() => {
     fetch(`${BRIDGE}/api/ai-analyze/status`, { signal: AbortSignal.timeout(2000) })
       .then(r => r.ok ? r.json() : null)
-      .then((d: { ollama?: boolean; ollamaModels?: string[] } | null) => setOllamaOk(d?.ollama ?? false))
-      .catch(() => setOllamaOk(false));
+      .then((d: AiStatus | null) => {
+        setAiStatus(d);
+        setOllamaOk(d?.ollama ?? false);
+      })
+      .catch(() => {
+        setAiStatus(null);
+        setOllamaOk(false);
+      });
   }, [BRIDGE]);
 
-  const canRun = ollamaOk || !!(openaiKey || githubPat || hasGithubPat);
+  const hasAnyToken = Boolean(openaiKey || githubPat);
+  const canRun = Boolean(aiStatus?.anyBackendReady || hasAnyToken || ollamaOk);
 
   const runAi = async () => {
     if (!session.adoItem) return;
@@ -1284,7 +1300,9 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(120_000),
       });
-      const data = await res.json() as { assessment?: string; error?: string; source?: string };
+      const raw = await res.text();
+      let data: { assessment?: string; error?: string; source?: string } = {};
+      try { data = raw ? JSON.parse(raw) : {}; } catch { data = { error: `Invalid AI response (HTTP ${res.status}).` }; }
       if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
       setResult(data.assessment ?? '');
       setAiSource(data.source ?? null);
@@ -1341,7 +1359,9 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(120_000),
       });
-      const data = await res.json() as { assessment?: string; error?: string; source?: string };
+      const raw = await res.text();
+      let data: { assessment?: string; error?: string; source?: string } = {};
+      try { data = raw ? JSON.parse(raw) : {}; } catch { data = { error: `Invalid AI response (HTTP ${res.status}).` }; }
       if (!res.ok || data.error) {
         const message = data?.error ?? `HTTP ${res.status}`;
         const isStaleBridgeRoute = /Unknown API route/i.test(message) || /Bridge may be outdated/i.test(message) || /outdated.*AI route/i.test(message);
@@ -1384,6 +1404,12 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
           {ollamaOk === false && !openaiKey && (
             <span className="text-xs text-yellow-600 border border-yellow-900 rounded px-1.5 py-0.5">No local AI</span>
           )}
+          {aiStatus?.githubReady && (
+            <span className="text-xs text-emerald-300 border border-emerald-800 rounded px-1.5 py-0.5">GitHub model ready</span>
+          )}
+          {aiStatus?.openaiReady && (
+            <span className="text-xs text-cyan-300 border border-cyan-800 rounded px-1.5 py-0.5">OpenAI env ready</span>
+          )}
           {aiSource && <span className="text-xs text-gray-500">{sourceLabel[aiSource] ?? aiSource}</span>}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -1405,8 +1431,8 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
       {!canRun && (
         <div className="text-xs text-yellow-600 space-y-1">
           <p>No AI backend is configured for this session.</p>
-          <p>• <strong className="text-yellow-400">Preferred</strong>: use the VS Code / GitHub-managed model route already available in this environment.</p>
-          <p>• <strong className="text-yellow-400">If needed</strong>: add a GitHub PAT or valid OpenAI key in <a href={`${import.meta.env.BASE_URL}settings`} className="underline text-yellow-400">Settings</a>.</p>
+          <p>• <strong className="text-yellow-400">Preferred</strong>: add GitHub PAT in <a href={`${import.meta.env.BASE_URL}settings`} className="underline text-yellow-400">Settings</a> so bridge can use GitHub Models.</p>
+          <p>• <strong className="text-yellow-400">Fallback</strong>: add OpenAI key or run local Ollama at <code>http://localhost:11434</code>.</p>
         </div>
       )}
       {error && <p className="text-xs text-red-400 font-mono whitespace-pre-wrap">Error: {error}</p>}

@@ -286,6 +286,54 @@ function normalizeOcrText(rawText: string): string {
     .trim();
 }
 
+function normalizedForSeedMatch(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function extractKeywordHitsFromText(text: string, fileName: string): LogHit[] {
+  const hits: LogHit[] = [];
+  if (!text.trim()) return hits;
+
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? '';
+    const lower = line.toLowerCase();
+    if (!lower.trim()) continue;
+
+    for (const seed of GREP_SEEDS) {
+      if (lower.includes(seed.toLowerCase())) {
+        hits.push({
+          file: fileName,
+          line: i + 1,
+          text: line.trim().slice(0, 300),
+          seed,
+          category: SEED_CATEGORY[seed] ?? 'other',
+        });
+        break;
+      }
+    }
+  }
+
+  // Fallback for OCR text where spaces/punctuation split key phrases unpredictably.
+  const normalizedText = normalizedForSeedMatch(text);
+  for (const seed of GREP_SEEDS) {
+    const normalizedSeed = normalizedForSeedMatch(seed);
+    if (!normalizedSeed || normalizedSeed.length < 6) continue;
+    if (!normalizedText.includes(normalizedSeed)) continue;
+    if (hits.some((h) => h.seed === seed)) continue;
+
+    hits.push({
+      file: fileName,
+      line: 1,
+      text: `OCR normalized-match: ${seed}`,
+      seed,
+      category: SEED_CATEGORY[seed] ?? 'other',
+    });
+  }
+
+  return hits.slice(0, 120);
+}
+
 async function analyzeImage(filePath: string, fileName: string): Promise<{ hits: LogHit[]; summary: ImageSummary }> {
   const worker = await getOcrWorker();
   const ocrVariants = [
@@ -330,7 +378,14 @@ async function analyzeImage(filePath: string, fileName: string): Promise<{ hits:
     findings.push('No OCR text detected');
   }
 
-  const hits = text ? parseHwsLog(text, fileName) : [];
+  const lineHits = text ? parseHwsLog(text, fileName) : [];
+  const ocrHits = extractKeywordHitsFromText(text, fileName);
+  const hitKey = (hit: LogHit) => `${hit.file}|${hit.line}|${hit.seed}|${hit.text}`;
+  const mergedMap = new Map<string, LogHit>();
+  for (const hit of [...lineHits, ...ocrHits]) {
+    mergedMap.set(hitKey(hit), hit);
+  }
+  const hits = Array.from(mergedMap.values());
   return {
     hits,
     summary: {
