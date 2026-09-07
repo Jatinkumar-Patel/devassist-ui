@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
+import readXlsxFile, { readSheetNames } from 'read-excel-file/node';
 import { execPowerShell } from '../utils/powershell';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import * as XLSX from 'xlsx';
 
 export const logAnalysisRouter = Router();
 
@@ -490,10 +490,24 @@ function dedupeStackTraces(traces: StackTraceSummary[], maxCount: number): Stack
   return out;
 }
 
-function parseSpreadsheet(filePath: string, fileName: string): { hits: LogHit[]; summaries: SpreadsheetSummary[] } {
+async function parseSpreadsheet(filePath: string, fileName: string): Promise<{ hits: LogHit[]; summaries: SpreadsheetSummary[] }> {
   const hits: LogHit[] = [];
   const summaries: SpreadsheetSummary[] = [];
-  const wb = XLSX.readFile(filePath, { dense: true, cellDates: false });
+  const ext = extensionOf(fileName);
+  if (ext === '.xls') {
+    summaries.push({
+      file: fileName,
+      sheet: 'N/A',
+      rowCount: 0,
+      columnCount: 0,
+      headers: [],
+      sampleRows: [],
+      findings: ['Legacy .xls format detected. Convert to .xlsx for deep spreadsheet analysis.'],
+    });
+    return { hits, summaries };
+  }
+
+  const sheets = await readSheetNames(filePath);
 
   const norm = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]/g, '');
   const parseBoolish = (value: string): boolean | undefined => {
@@ -504,14 +518,11 @@ function parseSpreadsheet(filePath: string, fileName: string): { hits: LogHit[];
     return undefined;
   };
 
-  for (const sheetName of wb.SheetNames.slice(0, 10)) {
-    const ws = wb.Sheets[sheetName];
-    if (!ws) continue;
-
-    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' }) as unknown[];
-    const visibleRows = rows
-      .map((row) => Array.isArray(row) ? row.map((v) => String(v ?? '').trim()) : [String(row ?? '').trim()])
-      .filter((cells) => cells.some((c) => c.length > 0));
+  for (const sheetName of sheets.slice(0, 10)) {
+    const rowsFromSheet = await readXlsxFile(filePath, { sheet: sheetName });
+    const visibleRows = rowsFromSheet
+      .map((row) => row.map((v) => String(v ?? '').trim()))
+      .filter((cells: string[]) => cells.some((c) => c.length > 0));
 
     if (visibleRows.length > 0) {
       const headers = visibleRows[0]
@@ -544,14 +555,14 @@ function parseSpreadsheet(filePath: string, fileName: string): { hits: LogHit[];
       const idxActive = indexOfAny(['Active']);
       const idxStatus = indexOfAny(['Status']);
 
-      const rows = visibleRows.slice(1).filter((row) => {
+      const dataRows = visibleRows.slice(1).filter((row) => {
         if (!row.length) return false;
         const joined = row.slice(0, Math.min(row.length, 10)).map((x) => String(x ?? '').trim().toLowerCase()).join('|');
         // Skip repeated header lines embedded in exports.
         return !(joined.includes('siteid') && joined.includes('repflags') && (joined.includes('firstname') || joined.includes('displayname')));
       });
 
-      const conversionInsight = analyzeConversionRows(fileName, sheetName, headerRow, rows);
+      const conversionInsight = analyzeConversionRows(fileName, sheetName, headerRow, dataRows);
 
       const displayNameCounts = new Map<string, number>();
       const personGuidSet = new Set<string>();
@@ -563,7 +574,7 @@ function parseSpreadsheet(filePath: string, fileName: string): { hits: LogHit[];
       let statusActive = 0;
       let statusInactive = 0;
 
-      for (const row of rows) {
+      for (const row of dataRows) {
         const val = (idx: number): string => (idx >= 0 ? String(row[idx] ?? '').trim() : '');
         const first = val(idxFirstName);
         const last = val(idxLastName);
@@ -605,7 +616,7 @@ function parseSpreadsheet(filePath: string, fileName: string): { hits: LogHit[];
         .map(([pg, types]) => `${pg}: ${Array.from(types).join('/')}`);
 
       const findings: string[] = [];
-      findings.push(`Rows analyzed: ${rows.length}; unique GUIDs: ${guidSet.size}; unique PersonGUIDs: ${personGuidSet.size}`);
+      findings.push(`Rows analyzed: ${dataRows.length}; unique GUIDs: ${guidSet.size}; unique PersonGUIDs: ${personGuidSet.size}`);
       if (duplicateDisplayNames.length) {
         findings.push(`Duplicate display names: ${duplicateDisplayNames.slice(0, 3).map(([name, count]) => `${name} (${count})`).join(', ')}`);
       }
@@ -636,10 +647,10 @@ function parseSpreadsheet(filePath: string, fileName: string): { hits: LogHit[];
       hits.push(...conversionInsight.syntheticHits);
     }
 
-    const maxRows = Math.min(rows.length, 20000);
+    const maxRows = Math.min(visibleRows.length, 20000);
 
     for (let i = 0; i < maxRows; i++) {
-      const row = rows[i];
+      const row = visibleRows[i];
       const rowText = Array.isArray(row)
         ? row.map((v) => String(v ?? '')).join(' | ')
         : String(row ?? '');
@@ -969,7 +980,7 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
                 skipped.push(`${fileName}/${relativeName} (spreadsheet too large: ${Math.round(innerStat.size / 1024 / 1024)}MB)`);
                 continue;
               }
-              const parsed = parseSpreadsheet(innerPath, `${fileName}/${relativeName}`);
+              const parsed = await parseSpreadsheet(innerPath, `${fileName}/${relativeName}`);
               hits = parsed.hits;
               spreadsheetSummaries.push(...parsed.summaries);
               analyzed.push(`${fileName}/${relativeName} (spreadsheet parsed: ${parsed.summaries.length} sheet(s), ${hits.length} log-pattern hit(s))`);
@@ -1011,7 +1022,7 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
               skipped.push(`${fileName} (spreadsheet too large: ${Math.round(rawStat.size / 1024 / 1024)}MB)`);
               continue;
             }
-            const parsed = parseSpreadsheet(outPath, fileName);
+            const parsed = await parseSpreadsheet(outPath, fileName);
             hits = parsed.hits;
             spreadsheetSummaries.push(...parsed.summaries);
             analyzed.push(

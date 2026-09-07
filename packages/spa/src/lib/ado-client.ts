@@ -322,7 +322,14 @@ export async function findWorkItemByCase(caseNumber: string, pat: string) {
   return fetchWorkItem(ids[0], pat);
 }
 
-export function filterVersionEvidenceItems<T extends { title?: string; supportVersion?: string; reportedRelease?: string; state?: string; type?: string }>(
+export function filterVersionEvidenceItems<T extends {
+  id?: string | number;
+  title?: string;
+  supportVersion?: string;
+  reportedRelease?: string;
+  state?: string;
+  type?: string;
+}>(
   items: T[],
   versionHints: string[],
   searchTerms: string[]
