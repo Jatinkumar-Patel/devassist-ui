@@ -119,3 +119,24 @@ export function snowTaskUrl(number: string): string {
 export function snowIncidentUrl(number: string): string {
   return `https://servicenowviewer.allscripts.com/incident?number=${number}`;
 }
+
+export function filterKbEvidenceRows<T extends { number?: string; short_description?: string; description?: string; workflow_state?: string }>(
+  rows: T[],
+  searchTerms: string[],
+  versionHints: string[] = []
+): T[] {
+  const hints = versionHints
+    .map((hint) => String(hint ?? '').trim().toLowerCase())
+    .filter(Boolean);
+  const terms = searchTerms
+    .map((term) => String(term ?? '').trim().toLowerCase())
+    .filter(Boolean);
+
+  return rows.filter((row) => {
+    const hay = `${row.short_description ?? ''} ${row.description ?? ''} ${row.workflow_state ?? ''} ${row.number ?? ''}`.toLowerCase();
+    const versionSource = String((row as Record<string, unknown>)['version'] ?? (row as Record<string, unknown>)['release'] ?? '').trim().toLowerCase();
+    const versionMatches = hints.length === 0 || !versionSource || hints.some((hint) => versionSource.includes(hint));
+    const termMatches = terms.length === 0 || terms.some((term) => hay.includes(term));
+    return versionMatches && termMatches;
+  });
+}

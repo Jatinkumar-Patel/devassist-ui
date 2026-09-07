@@ -321,3 +321,30 @@ export async function findWorkItemByCase(caseNumber: string, pat: string) {
   if (!ids.length) return null;
   return fetchWorkItem(ids[0], pat);
 }
+
+export function filterVersionEvidenceItems<T extends { title?: string; supportVersion?: string; reportedRelease?: string; state?: string; type?: string }>(
+  items: T[],
+  versionHints: string[],
+  searchTerms: string[]
+): T[] {
+  const hints = versionHints
+    .map((hint) => String(hint ?? '').trim().toLowerCase())
+    .filter(Boolean);
+  const terms = searchTerms
+    .map((term) => String(term ?? '').trim().toLowerCase())
+    .filter(Boolean);
+
+  if (!items.length) return [];
+
+  return items.filter((item) => {
+    const hay = `${item.title ?? ''} ${item.state ?? ''} ${item.type ?? ''} ${item.supportVersion ?? ''} ${item.reportedRelease ?? ''}`.toLowerCase();
+    const versionText = `${item.supportVersion ?? ''} ${item.reportedRelease ?? ''}`.trim().toLowerCase();
+
+    const versionMatches = hints.length === 0 ||
+      !versionText ||
+      hints.some((hint) => versionText.includes(hint));
+
+    const termMatches = terms.length === 0 || terms.some((term) => hay.includes(term));
+    return versionMatches && termMatches;
+  });
+}
