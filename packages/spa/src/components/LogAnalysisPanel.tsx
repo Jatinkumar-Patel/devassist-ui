@@ -176,6 +176,11 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
   const autoSysId = snowTask ? snowVal(snowTask.sys_id) : '';
   const sysId = autoSysId || manualSysId.trim();
   const waitingForSnowCheck = blockedReason?.includes('still being verified') ?? false;
+  const sparseResultMode =
+    (result?.totalHits ?? 0) <= 2 &&
+    (result?.analyzed?.length ?? 0) <= 3 &&
+    (result?.spreadsheetSummaries?.length ?? 0) <= 1 &&
+    (result?.imageSummaries?.length ?? 0) <= 1;
 
   const readSysId = (record: any): string => {
     if (!record) return '';
@@ -456,7 +461,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
           </div>
 
           {result.spreadsheetSummaries && result.spreadsheetSummaries.length > 0 && (
-            <details className="rounded-lg border border-cyan-900/60 bg-cyan-950/20 p-3 group" open>
+            <details className="rounded-lg border border-cyan-900/60 bg-cyan-950/20 p-3 group" open={!sparseResultMode}>
               <summary className="flex items-center justify-between cursor-pointer list-none select-none">
                 <span className="text-xs font-medium text-cyan-200">Spreadsheet Data Extracted ({result.spreadsheetSummaries.length})</span>
                 <ChevronDown size={11} className="group-open:rotate-180 transition-transform text-cyan-300" />
@@ -486,7 +491,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
           )}
 
           {result.imageSummaries && result.imageSummaries.length > 0 && (
-            <details className="rounded-lg border border-emerald-900/60 bg-emerald-950/20 p-3 group" open>
+            <details className="rounded-lg border border-emerald-900/60 bg-emerald-950/20 p-3 group" open={!sparseResultMode}>
               <summary className="flex items-center justify-between cursor-pointer list-none select-none">
                 <span className="text-xs font-medium text-emerald-200">Image OCR Extracted ({result.imageSummaries.length})</span>
                 <ChevronDown size={11} className="group-open:rotate-180 transition-transform text-emerald-300" />
@@ -513,7 +518,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
           )}
 
           {result.stackTraces && result.stackTraces.length > 0 && (
-            <details className="rounded-lg border border-fuchsia-900/60 bg-fuchsia-950/20 p-3 group" open>
+            <details className="rounded-lg border border-fuchsia-900/60 bg-fuchsia-950/20 p-3 group" open={!sparseResultMode}>
               <summary className="flex items-center justify-between cursor-pointer list-none select-none">
                 <span className="text-xs font-medium text-fuchsia-200">Top exception stack traces ({result.stackTraces.length})</span>
                 <ChevronDown size={11} className="group-open:rotate-180 transition-transform text-fuchsia-300" />
@@ -531,7 +536,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
           )}
 
           {result.operationTimelineSummaries && result.operationTimelineSummaries.length > 0 && (
-            <details className="rounded-lg border border-sky-900/60 bg-sky-950/20 p-3 group" open>
+            <details className="rounded-lg border border-sky-900/60 bg-sky-950/20 p-3 group" open={!sparseResultMode}>
               <summary className="flex items-center justify-between cursor-pointer list-none select-none">
                 <span className="text-xs font-medium text-sky-200">Operation timeline analysis ({result.operationTimelineSummaries.length} file(s))</span>
                 <ChevronDown size={11} className="group-open:rotate-180 transition-transform text-sky-300" />

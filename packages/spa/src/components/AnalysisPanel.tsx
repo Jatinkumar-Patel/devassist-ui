@@ -657,6 +657,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
   const [running, setRunning] = useState(false);
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [showSupplementary, setShowSupplementary] = useState(false);
 
   const { adoItem, product, snowTask, analysis } = session;
 
@@ -748,6 +749,21 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
     session.versionEvidence?.length ||
     session.kbEvidence?.length
   );
+  const repoEvidenceCount =
+    (session.relatedItems?.length ?? 0) +
+    (session.testCases?.length ?? 0) +
+    (session.recentCommits?.length ?? 0) +
+    (session.areaEvidence?.length ?? 0) +
+    (session.versionEvidence?.length ?? 0) +
+    (session.kbEvidence?.length ?? 0);
+  const sparseEvidenceMode =
+    snowEvidenceRows.length <= 3 &&
+    codeAnalysisRows.length <= 4 &&
+    gapRows.length <= 4 &&
+    repoEvidenceCount <= 3 &&
+    analyzedArtifacts.length <= 2 &&
+    notAnalyzedArtifacts.length <= 2;
+  const shouldShowSupplementary = !sparseEvidenceMode || showSupplementary;
   const emailHref = buildAnalysisEmail(session, analysis, snowEvidenceRows);
 
   const copyL2 = () => {
@@ -925,13 +941,13 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
 
         <section className="space-y-2">
           <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Recommended Next Steps</p>
-          <div className="rounded border border-gray-800 bg-gray-950/70 p-2.5 space-y-1">
-            {recommendedSteps.length > 0 ? recommendedSteps.map((step, idx) => (
-              <p key={`next-step-${idx}`} className="text-xs text-gray-200 leading-relaxed">{idx + 1}. {step}</p>
-            )) : (
-              <p className="text-xs text-gray-400">No additional action list generated.</p>
-            )}
-          </div>
+          {recommendedSteps.length > 0 && (
+            <div className="rounded border border-gray-800 bg-gray-950/70 p-2.5 space-y-1">
+              {recommendedSteps.map((step, idx) => (
+                <p key={`next-step-${idx}`} className="text-xs text-gray-200 leading-relaxed">{idx + 1}. {step}</p>
+              ))}
+            </div>
+          )}
         </section>
 
         {analysis.blindSpots.length > 0 && (
@@ -981,18 +997,33 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           </section>
         )}
 
-        <section className="space-y-2">
-          <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Unique DevAssist Sections</p>
-          <div className="rounded border border-gray-800 bg-gray-950/70 p-2.5 space-y-1">
-            <p className="text-xs text-gray-200">- Analysis Framework Trace (skills): preflight checks, routing, and evidence quality.</p>
-            {hasRepoComparisonSections && <p className="text-xs text-gray-200">- Repo / MTM Comparison: cross-checks against related bugs, test coverage, commits, and release context.</p>}
-            <p className="text-xs text-gray-200">- AI Assessment Panel: optional secondary perspective for reviewer comparison.</p>
-          </div>
-        </section>
+        {!sparseEvidenceMode && (
+          <section className="space-y-2">
+            <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Unique DevAssist Sections</p>
+            <div className="rounded border border-gray-800 bg-gray-950/70 p-2.5 space-y-1">
+              <p className="text-xs text-gray-200">- Analysis Framework Trace (skills): preflight checks, routing, and evidence quality.</p>
+              {hasRepoComparisonSections && <p className="text-xs text-gray-200">- Repo / MTM Comparison: cross-checks against related bugs, test coverage, commits, and release context.</p>}
+              <p className="text-xs text-gray-200">- AI Assessment Panel: optional secondary perspective for reviewer comparison.</p>
+            </div>
+          </section>
+        )}
       </div>
 
+      {sparseEvidenceMode && !showSupplementary && (
+        <div className="rounded-lg border border-cyan-900/50 bg-cyan-950/10 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <p className="text-xs text-cyan-100/90">Compact view enabled because evidence is sparse. Optional sections are hidden to keep the UI lighter.</p>
+          <button
+            type="button"
+            onClick={() => setShowSupplementary(true)}
+            className="text-xs px-3 py-1.5 rounded border border-cyan-700/70 text-cyan-200 hover:bg-cyan-900/30"
+          >
+            Show optional sections
+          </button>
+        </div>
+      )}
+
       {/* Repo / MTM Comparison */}
-      {(session.relatedItems?.length || session.testCases?.length || session.recentCommits?.length || session.areaEvidence?.length || session.versionEvidence?.length || session.kbEvidence?.length) && (
+      {shouldShowSupplementary && (session.relatedItems?.length || session.testCases?.length || session.recentCommits?.length || session.areaEvidence?.length || session.versionEvidence?.length || session.kbEvidence?.length) && (
         <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-4">
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Repo / MTM Comparison</p>
 
@@ -1131,30 +1162,34 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
         </div>
       )}
 
-      <div className="rounded-lg border border-cyan-900/60 bg-cyan-950/20 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Report export</p>
-          <p className="text-xs text-gray-300">Print the full analysis report or save it as a PDF from the browser dialog.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => openPrintableReport(session, analysis, snowEvidenceRows)}
-            className="inline-flex items-center gap-2 rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs font-medium text-cyan-100 hover:bg-cyan-500/20"
-          >
-            <Printer size={12} /> Print / Save as PDF
-          </button>
-          <a
-            href={emailHref}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs font-medium text-gray-200 hover:bg-gray-700"
-          >
-            <Download size={12} /> Email draft
-          </a>
-        </div>
-      </div>
+      {shouldShowSupplementary && (
+        <>
+          <div className="rounded-lg border border-cyan-900/60 bg-cyan-950/20 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Report export</p>
+              <p className="text-xs text-gray-300">Print the full analysis report or save it as a PDF from the browser dialog.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => openPrintableReport(session, analysis, snowEvidenceRows)}
+                className="inline-flex items-center gap-2 rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs font-medium text-cyan-100 hover:bg-cyan-500/20"
+              >
+                <Printer size={12} /> Print / Save as PDF
+              </button>
+              <a
+                href={emailHref}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs font-medium text-gray-200 hover:bg-gray-700"
+              >
+                <Download size={12} /> Email draft
+              </a>
+            </div>
+          </div>
 
-      {/* AI Assessment — calls OpenAI via bridge, shows response inline */}
-      <AiAssessmentPanel session={session} />
+          {/* AI Assessment — calls OpenAI via bridge, shows response inline */}
+          <AiAssessmentPanel session={session} />
+        </>
+      )}
 
       {/* L2 draft — human-gated, never auto-posted */}
       {analysis.l2Draft && (
