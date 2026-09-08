@@ -75,3 +75,30 @@ test('spreadsheet findings interpret duplicate names as a likely duplicate-recor
 
   assert.ok(summary.some((line) => /duplicate.*person|same.*patient|multiple.*nametype|display names/i.test(line)));
 });
+
+test('need-more-info L2 draft includes findings when evidence exists', () => {
+  const adoItem = {
+    id: 9387316,
+    fields: {
+      'System.Title': 'SHM shows duplicate patient suggestions in To field',
+      'System.Description': 'Multiple recipients are shown for same patient in compose flow.',
+      'System.AreaPath': 'Sunrise > SHM',
+      'Allscripts.Field.CustomerName': 'Acme Health',
+      'Allscripts.Field.SupportVersion': '25.3.0',
+    },
+  } as any;
+
+  const assessment = buildAssessment(
+    adoItem,
+    null,
+    [],
+    'Support notes indicate duplicate suggestions in compose with reproducible steps provided.',
+    [{ seed: 'GetPatientList', text: 'GetPatientList returned duplicate display names for same patient', file: 'hws.log' }],
+    { GetPatientList: 3 }
+  );
+
+  assert.ok(assessment.l2Draft);
+  assert.match(assessment.l2Draft!, /Findings so far:/i);
+  assert.match(assessment.l2Draft!, /Recommended next step:/i);
+  assert.doesNotMatch(assessment.l2Draft!, /Current evidence is insufficient to confirm a code defect/i);
+});

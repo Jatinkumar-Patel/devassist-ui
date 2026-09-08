@@ -451,18 +451,33 @@ export function buildAssessment(
   const verdict = pattern?.verdict ?? 'NEED MORE INFO';
   let l2Draft: string | undefined;
   if (verdict === 'NEED MORE INFO') {
+    const evidenceHighlights = [...logEvidence, ...snowEvidence]
+      .map((line) => truncateEvidence(line, 220))
+      .filter(Boolean)
+      .slice(0, 4);
     const missingEvidence = [
       !logHits?.length ? 'HWS/log evidence covering the exact incident window' : 'Additional log context if the attached logs do not cover the full incident window',
       `Exact ${version} build version`,
       'Reproduction steps from a test/dev environment',
       'Scope: all users vs specific users/sites',
     ];
+    const hasDiagnosticDirection = evidenceHighlights.length > 0 || (topSeeds && Object.keys(topSeeds).length > 0);
 
-    l2Draft = `Current evidence is insufficient to confirm a code defect for DA ${adoItem.id}.\n\n` +
-      `Observed symptom: ${title}\n\n` +
-      `Priority evidence to collect:\n` +
-      `${missingEvidence.map((item, index) => `${index + 1}. ${item}`).join('\n')}\n\n` +
-      `The issue should stay in technical triage until the missing evidence confirms whether the failure is client-side, server-side, or configuration-driven.`;
+    if (hasDiagnosticDirection) {
+      l2Draft = `Technical assessment for DA ${adoItem.id}: additional confirmation is required, but current evidence already indicates a likely technical direction.\n\n` +
+        `Observed issue: ${title}\n\n` +
+        `Findings so far:\n` +
+        `${evidenceHighlights.map((item, index) => `${index + 1}. ${item}`).join('\n')}\n\n` +
+        `Required evidence to confirm root cause:\n` +
+        `${missingEvidence.map((item, index) => `${index + 1}. ${item}`).join('\n')}\n\n` +
+        `Recommended next step: collect the missing evidence in the same incident window, then re-run triage to confirm whether this is code, configuration, or workflow behavior.`;
+    } else {
+      l2Draft = `Current evidence is insufficient to confirm a code defect for DA ${adoItem.id}.\n\n` +
+        `Observed symptom: ${title}\n\n` +
+        `Priority evidence to collect:\n` +
+        `${missingEvidence.map((item, index) => `${index + 1}. ${item}`).join('\n')}\n\n` +
+        `The issue should stay in technical triage until the missing evidence confirms whether the failure is client-side, server-side, or configuration-driven.`;
+    }
   } else if (verdict === 'CODE BUG') {
     const evidenceSummary = [...snowEvidence, ...logEvidence].slice(0, 3).join(' | ') || gap;
     l2Draft = `Initial technical assessment for DA ${adoItem.id}: ${pattern?.name ?? title}\n\n` +
@@ -1312,13 +1327,25 @@ export async function buildSkillDrivenAssessment(
         `Current findings point to token validation / enterprise-directory / LDAP connectivity or service identity issues, not downstream delivery logic.\n\n` +
         `Required follow-up: validate FMH service identity and rights, confirm enterprise-directory + LDAP connectivity, and collect the same-window FMH/CryptoWebAPI logs and SMTP relay transaction evidence.`;
     } else {
-      l2Draft = `Current evidence is insufficient to conclude a root cause for DA ${adoItem.id}.\n\n` +
-        `Observed issue: ${title}\n\n` +
-        `Required evidence:\n${
-          clarityItems.length
-            ? clarityItems.slice(0, 5).map((c, i) => `${i + 1}. ${c}`).join('\n')
-            : `1. Log files covering the exact incident window\n2. Exact version (SCM / HWS / app build)\n3. Reproduction steps from test/dev\n4. Whether the issue is user-specific or environment-wide`
-        }`;
+      const evidenceHighlights = [...logEvidence, ...snowEvidence]
+        .map((line) => truncateEvidence(line, 220))
+        .filter(Boolean)
+        .slice(0, 5);
+      const requiredEvidence = clarityItems.length
+        ? clarityItems.slice(0, 5).map((c, i) => `${i + 1}. ${c}`).join('\n')
+        : `1. Log files covering the exact incident window\n2. Exact version (SCM / HWS / app build)\n3. Reproduction steps from test/dev\n4. Whether the issue is user-specific or environment-wide`;
+
+      if (evidenceHighlights.length > 0) {
+        l2Draft = `Technical assessment for DA ${adoItem.id}: root cause is not fully confirmed yet, but evidence already narrows the likely failure direction.\n\n` +
+          `Observed issue: ${title}\n\n` +
+          `Findings so far:\n${evidenceHighlights.map((item, i) => `${i + 1}. ${item}`).join('\n')}\n\n` +
+          `Evidence still required for final confirmation:\n${requiredEvidence}\n\n` +
+          `Recommended next step: gather the missing evidence in the same reproduction window and re-run technical triage for final verdict.`;
+      } else {
+        l2Draft = `Current evidence is insufficient to conclude a root cause for DA ${adoItem.id}.\n\n` +
+          `Observed issue: ${title}\n\n` +
+          `Required evidence:\n${requiredEvidence}`;
+      }
     }
   } else if (rawVerdict === 'CODE BUG') {
     const evidenceSummary = [...snowEvidence, ...logEvidence].slice(0, 3).join(' | ') || gap.slice(0, 300);
