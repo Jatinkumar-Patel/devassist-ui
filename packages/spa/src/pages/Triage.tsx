@@ -87,10 +87,13 @@ function newSession(
 }
 
 function getEvidenceAreaPaths(primaryAreaPath: string, product?: Product, userSelectedScope?: boolean): string[] {
-  // When user explicitly selected products, use only those paths — not the work item's own area path
+  // Always prioritize the DA/ADO area path; UI product scope is additive fallback context.
   if (userSelectedScope && product) {
-    const paths = [product.areaPathPrefix, ...(product.areaPathPrefixes ?? [])]
-      .map((p) => p.trim()).filter(Boolean);
+    const paths = [
+      primaryAreaPath,
+      product.areaPathPrefix,
+      ...(product.areaPathPrefixes ?? []),
+    ].map((p) => p.trim()).filter(Boolean);
     return Array.from(new Set(paths));
   }
   const paths = [
@@ -102,17 +105,7 @@ function getEvidenceAreaPaths(primaryAreaPath: string, product?: Product, userSe
   return Array.from(new Set(paths));
 }
 
-function buildReleaseHintsFromInputs(adoItem: any, selectedReportedReleases: string[] = []): string[] {
-  const fromUser = selectedReportedReleases.map((x) => x.trim()).filter(Boolean);
-  const reportedRelease = String(adoItem?.fields?.['Allscripts.Field.ReportedinRelease'] ?? '').trim();
-  const supportVersion = String(adoItem?.fields?.['Allscripts.Field.SupportVersion'] ?? '').trim();
-
-  const base = fromUser.length
-    ? fromUser
-    : reportedRelease
-      ? [reportedRelease]
-      : [supportVersion].filter(Boolean);
-
+function expandReleaseHints(base: string[]): string[] {
   const expanded = base.flatMap((v) => {
     const compact = v.replace(/\s+/g, ' ').trim();
     const normalized = compact
@@ -144,7 +137,65 @@ function buildReleaseHintsFromInputs(adoItem: any, selectedReportedReleases: str
   return hints;
 }
 
-function mapKbEvidenceRows(kbRows: any[], versionHints: string[]) {
+function extractSnowReleaseHints(task?: any, incident?: any, snowCase?: any): string[] {
+  const records = [task, incident, snowCase].filter(Boolean);
+  const directFieldCandidates: string[] = [];
+
+  for (const rec of records) {
+    directFieldCandidates.push(
+      snowVal(rec?.u_reported_release),
+      snowVal(rec?.reported_release),
+      snowVal(rec?.u_support_version),
+      snowVal(rec?.support_version),
+      snowVal(rec?.release),
+      snowVal(rec?.version),
+    );
+
+    const shortDesc = snowVal(rec?.short_description);
+    if (shortDesc) {
+      const matches = shortDesc.match(/\b\d+\.\d+(?:\s*PR\d*)?\b/gi) ?? [];
+      directFieldCandidates.push(...matches);
+    }
+  }
+
+  return Array.from(new Set(directFieldCandidates.map((v) => v.trim()).filter(Boolean)));
+}
+
+function buildReleaseHintsFromInputs(
+  adoItem: any,
+  selectedReportedReleases: string[] = [],
+  snowTask?: any,
+  snowIncident?: any,
+  snowCase?: any,
+): { authoritative: string[]; uiFallback: string[]; effective: string[] } {
+  const reportedRelease = String(adoItem?.fields?.['Allscripts.Field.ReportedinRelease'] ?? '').trim();
+  const supportVersion = String(adoItem?.fields?.['Allscripts.Field.SupportVersion'] ?? '').trim();
+  const fromSnow = extractSnowReleaseHints(snowTask, snowIncident, snowCase);
+  const fromUser = selectedReportedReleases.map((x) => x.trim()).filter(Boolean);
+
+  // Priority order: ADO Reported in Release -> SNOW release mentions -> ADO SupportVersion.
+  const authoritativeBase = [reportedRelease, ...fromSnow, supportVersion].filter(Boolean);
+  const authoritative = expandReleaseHints(authoritativeBase);
+  const uiFallback = expandReleaseHints(fromUser);
+  const effective = authoritative.length ? authoritative : uiFallback;
+
+  return { authoritative, uiFallback, effective };
+}
+
+function applyReleasePriority<T extends { supportVersion?: string; reportedRelease?: string }>(
+  items: T[],
+  hints: { authoritative: string[]; uiFallback: string[]; effective: string[] }
+): T[] {
+  if (!items.length) return items;
+  const strict = hints.authoritative.length
+    ? filterItemsByReleaseHints(items, hints.authoritative)
+    : [];
+  if (strict.length > 0) return strict;
+  if (hints.uiFallback.length > 0) return filterItemsByReleaseHints(items, hints.uiFallback);
+  return items;
+}
+
+function mapKbEvidenceRows(kbRows: any[], hints: { authoritative: string[]; uiFallback: string[]; effective: string[] }) {
   const mapped = kbRows.slice(0, 25).map((row: any) => ({
     number: String(row?.number?.display_value ?? row?.number ?? ''),
     shortDescription: String(row?.short_description?.display_value ?? row?.short_description ?? ''),
@@ -153,10 +204,19 @@ function mapKbEvidenceRows(kbRows: any[], versionHints: string[]) {
     release: String(row?.release?.display_value ?? row?.release ?? row?.version?.display_value ?? row?.version ?? ''),
   }));
 
-  if (!versionHints.length) return mapped.slice(0, 15);
+  if (!hints.effective.length) return mapped.slice(0, 15);
 
-  const filtered = mapped.filter((row) => matchesReleaseHints(`${row.release} ${row.shortDescription}`, versionHints));
-  return (filtered.length ? filtered : mapped).slice(0, 15);
+  const strict = hints.authoritative.length
+    ? mapped.filter((row) => matchesReleaseHints(`${row.release} ${row.shortDescription}`, hints.authoritative))
+    : [];
+
+  if (strict.length > 0) return strict.slice(0, 15);
+
+  const fallback = hints.uiFallback.length
+    ? mapped.filter((row) => matchesReleaseHints(`${row.release} ${row.shortDescription}`, hints.uiFallback))
+    : [];
+
+  return (fallback.length ? fallback : mapped).slice(0, 15);
 }
 
 function buildKbTerms(adoItem: any, product?: Product, userSelectedScope?: boolean): string[] {
@@ -688,26 +748,32 @@ export default function TriagePage() {
         const routedProduct = s.product;
         if (routedProduct) {
           const evidenceAreaPaths = getEvidenceAreaPaths(areaPath, routedProduct, !!selectedScope);
-          const versionHints = buildReleaseHintsFromInputs(adoItem, selectedReportedReleases);
+          const releaseHints = buildReleaseHintsFromInputs(
+            adoItem,
+            selectedReportedReleases,
+            s.snowTask,
+            s.snowIncident,
+            s.snowCase,
+          );
           const kbTerms = buildKbTerms(adoItem, routedProduct, !!selectedScope);
 
           const [relatedBugs, testCases, areaEvidence, versionEvidence, kbEvidence] = await Promise.allSettled([
             fetchRelatedBugs(evidenceAreaPaths.length ? evidenceAreaPaths : [areaPath], adoPat),
             fetchTestCases(evidenceAreaPaths.length ? evidenceAreaPaths : [areaPath], adoPat),
             fetchAreaItemsByPaths(evidenceAreaPaths, adoPat),
-            fetchAreaVersionEvidenceByPaths(evidenceAreaPaths, adoPat, versionHints),
-            fetchSnowKbSearch(kbTerms, versionHints),
+            fetchAreaVersionEvidenceByPaths(evidenceAreaPaths, adoPat, releaseHints.effective),
+            fetchSnowKbSearch(kbTerms, releaseHints.effective),
           ]);
           if (cancelledRef.current) return;
-          if (relatedBugs.status === 'fulfilled') s = { ...s, relatedItems: filterItemsByReleaseHints(relatedBugs.value, versionHints) };
-          if (testCases.status === 'fulfilled')   s = { ...s, testCases: filterItemsByReleaseHints(testCases.value, versionHints) };
-          if (areaEvidence.status === 'fulfilled') s = { ...s, areaEvidence: filterItemsByReleaseHints(areaEvidence.value, versionHints) };
-          if (versionEvidence.status === 'fulfilled') s = { ...s, versionEvidence: filterItemsByReleaseHints(versionEvidence.value, versionHints) };
+          if (relatedBugs.status === 'fulfilled') s = { ...s, relatedItems: applyReleasePriority(relatedBugs.value, releaseHints) };
+          if (testCases.status === 'fulfilled')   s = { ...s, testCases: applyReleasePriority(testCases.value, releaseHints) };
+          if (areaEvidence.status === 'fulfilled') s = { ...s, areaEvidence: applyReleasePriority(areaEvidence.value, releaseHints) };
+          if (versionEvidence.status === 'fulfilled') s = { ...s, versionEvidence: applyReleasePriority(versionEvidence.value, releaseHints) };
           if (kbEvidence.status === 'fulfilled') {
             const kbRows = Array.isArray(kbEvidence.value?.result) ? kbEvidence.value.result : [];
             s = {
               ...s,
-              kbEvidence: mapKbEvidenceRows(kbRows, versionHints),
+              kbEvidence: mapKbEvidenceRows(kbRows, releaseHints),
             };
           }
           // GitHub recent commits for primary repos
@@ -900,25 +966,31 @@ export default function TriagePage() {
           if (routedProduct) {
             const isUserScope = s.product?.id?.startsWith('selected-');
             const evidenceAreaPaths = getEvidenceAreaPaths(areaPath, routedProduct, isUserScope);
-            const versionHints = buildReleaseHintsFromInputs(adoItem, s.selectedReportedReleases ?? []);
+            const releaseHints = buildReleaseHintsFromInputs(
+              adoItem,
+              s.selectedReportedReleases ?? [],
+              s.snowTask,
+              s.snowIncident,
+              s.snowCase,
+            );
             const kbTerms = buildKbTerms(adoItem, routedProduct, isUserScope);
 
             const [relatedBugs, testCases, areaEvidence, versionEvidence, kbEvidence] = await Promise.allSettled([
               fetchRelatedBugs(evidenceAreaPaths.length ? evidenceAreaPaths : [areaPath], adoPat),
               fetchTestCases(evidenceAreaPaths.length ? evidenceAreaPaths : [areaPath], adoPat),
               fetchAreaItemsByPaths(evidenceAreaPaths, adoPat),
-              fetchAreaVersionEvidenceByPaths(evidenceAreaPaths, adoPat, versionHints),
-              fetchSnowKbSearch(kbTerms, versionHints),
+              fetchAreaVersionEvidenceByPaths(evidenceAreaPaths, adoPat, releaseHints.effective),
+              fetchSnowKbSearch(kbTerms, releaseHints.effective),
             ]);
-            if (relatedBugs.status === 'fulfilled') s = { ...s, relatedItems: filterItemsByReleaseHints(relatedBugs.value, versionHints) };
-            if (testCases.status === 'fulfilled') s = { ...s, testCases: filterItemsByReleaseHints(testCases.value, versionHints) };
-            if (areaEvidence.status === 'fulfilled') s = { ...s, areaEvidence: filterItemsByReleaseHints(areaEvidence.value, versionHints) };
-            if (versionEvidence.status === 'fulfilled') s = { ...s, versionEvidence: filterItemsByReleaseHints(versionEvidence.value, versionHints) };
+            if (relatedBugs.status === 'fulfilled') s = { ...s, relatedItems: applyReleasePriority(relatedBugs.value, releaseHints) };
+            if (testCases.status === 'fulfilled') s = { ...s, testCases: applyReleasePriority(testCases.value, releaseHints) };
+            if (areaEvidence.status === 'fulfilled') s = { ...s, areaEvidence: applyReleasePriority(areaEvidence.value, releaseHints) };
+            if (versionEvidence.status === 'fulfilled') s = { ...s, versionEvidence: applyReleasePriority(versionEvidence.value, releaseHints) };
             if (kbEvidence.status === 'fulfilled') {
               const kbRows = Array.isArray(kbEvidence.value?.result) ? kbEvidence.value.result : [];
               s = {
                 ...s,
-                kbEvidence: mapKbEvidenceRows(kbRows, versionHints),
+                kbEvidence: mapKbEvidenceRows(kbRows, releaseHints),
               };
             }
             if ((githubPat || hasGithubPat) && routedProduct.repos.length) {
