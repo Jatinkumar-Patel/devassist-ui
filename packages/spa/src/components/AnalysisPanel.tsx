@@ -675,7 +675,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           .split(/\s+/)
           .map((t) => t.trim())
           .filter((t) => t.length >= 4),
-      ])).slice(0, 8);
+      ]));
 
       const databaseEvidence = await runDatabaseRepoSearch(githubPat ?? '', product.databaseRepoPaths ?? [], dbTerms);
 
