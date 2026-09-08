@@ -121,16 +121,16 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
     const isAuthError = /\b401\b|Authentication failed/i.test(message);
 
     return (
-      <div className="rounded-lg border border-red-800 bg-red-950/30 p-4 space-y-3">
+      <div className="rounded-lg border border-gray-800 bg-gray-950/70 p-4 space-y-3">
         <div className="flex items-start gap-3">
-          <AlertTriangle size={16} className="text-red-400 mt-0.5 shrink-0" />
-          <p className="text-red-300 text-sm">{message}</p>
+          <AlertTriangle size={16} className="text-gray-400 mt-0.5 shrink-0" />
+          <p className="text-gray-200 text-sm">{message}</p>
         </div>
         <div className="flex flex-wrap gap-2 pl-7">
           {isAuthError ? (
             <a
               href="#/settings"
-              className="text-xs px-3 py-1.5 rounded-md border border-red-600/70 text-red-100 hover:bg-red-900/40"
+              className="text-xs px-3 py-1.5 rounded-md border border-gray-700 text-gray-200 hover:bg-gray-800"
             >
               Open Settings to update PAT
             </a>
@@ -161,18 +161,18 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
 
     return (
       <div className="space-y-3">
-        <div className="rounded-lg border border-cyan-800/60 bg-cyan-950/15 p-3 space-y-3">
-          <div className="flex items-center gap-2 text-xs text-cyan-200">
-            <div className="w-3 h-3 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+        <div className="rounded-lg border border-gray-800 bg-gray-950/70 p-3 space-y-3">
+          <div className="flex items-center gap-2 text-xs text-gray-300">
+            <div className="w-3 h-3 rounded-full border-2 border-gray-500 border-t-transparent animate-spin" />
             <span className="font-medium">{label}</span>
           </div>
           <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
-            <div className="h-1 bg-cyan-400 rounded-full w-1/3 transition-all animate-pulse" />
+            <div className="h-1 bg-gray-500 rounded-full w-1/3 transition-all animate-pulse" />
           </div>
           <div className="grid gap-2 sm:grid-cols-2 text-[11px] text-gray-300">
             {progress.map((step) => (
-              <div key={step.label} className={`flex items-center gap-2 rounded border px-2 py-1 ${step.done ? 'border-emerald-800 bg-emerald-950/20 text-emerald-200' : 'border-gray-700 bg-gray-950/40 text-gray-400'}`}>
-                <span className={`inline-block h-2 w-2 rounded-full ${step.done ? 'bg-emerald-400' : 'bg-gray-500'}`} />
+              <div key={step.label} className={`flex items-center gap-2 rounded border px-2 py-1 ${step.done ? 'border-gray-700 bg-gray-900 text-gray-200' : 'border-gray-700 bg-gray-950/40 text-gray-400'}`}>
+                <span className={`inline-block h-2 w-2 rounded-full ${step.done ? 'bg-gray-300' : 'bg-gray-500'}`} />
                 {step.label}
               </div>
             ))}
@@ -181,16 +181,16 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
         </div>
 
         {hasPartialEvidence && (
-          <div className="rounded-lg border border-gray-700 bg-gray-900 p-3 space-y-2">
+          <div className="rounded-lg border border-gray-800 bg-gray-950/70 p-3 space-y-2">
             <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Fetched so far</p>
             {session.adoItem && (
-              <div className="rounded border border-gray-700 bg-gray-950/40 p-2">
+              <div className="rounded border border-gray-800 bg-gray-950/40 p-2">
                 <div className="text-[10px] uppercase tracking-wide text-gray-500">DA / TFS</div>
                 <div className="text-xs text-gray-200 mt-1">{String(session.adoItem.fields['System.Title'] ?? 'Work item loaded')}</div>
               </div>
             )}
             {(session.snowTask || session.snowIncident || session.snowCase) && (
-              <div className="rounded border border-gray-700 bg-gray-950/40 p-2">
+              <div className="rounded border border-gray-800 bg-gray-950/40 p-2">
                 <div className="text-[10px] uppercase tracking-wide text-gray-500">SNOW</div>
                 <div className="text-xs text-gray-200 mt-1">
                   {session.snowTask && `Task: ${snowVal((session.snowTask as any).number) || 'loaded'} `}
@@ -200,7 +200,7 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
               </div>
             )}
             {session.attachments && session.attachments.length > 0 && (
-              <div className="rounded border border-gray-700 bg-gray-950/40 p-2">
+              <div className="rounded border border-gray-800 bg-gray-950/40 p-2">
                 <div className="text-[10px] uppercase tracking-wide text-gray-500">Attachments</div>
                 <div className="text-xs text-gray-200 mt-1">{session.attachments.slice(0, 3).map((a) => snowVal((a as any).file_name)).filter(Boolean).join(', ') || 'Loaded'}</div>
               </div>

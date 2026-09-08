@@ -513,12 +513,12 @@ function BridgeOfflineBanner({ installCmds, bridgeUrl }: { installCmds: ReturnTy
 
   if (!isLocal) {
     return (
-      <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-4 space-y-2">
-        <p className="text-sm text-amber-100 font-semibold">Bridge service unavailable</p>
-        <p className="text-xs text-amber-100/90">
+      <div className="rounded-xl border border-gray-800 bg-gray-950/70 p-4 space-y-2">
+        <p className="text-sm text-gray-200 font-semibold">Bridge service unavailable</p>
+        <p className="text-xs text-gray-400">
           DevAssist website is configured for managed enterprise bridge access. If this persists, contact support.
         </p>
-        <p className="text-xs text-amber-200/70">
+        <p className="text-xs text-gray-500">
           Local fallback activates automatically when localhost bridge is available.
         </p>
       </div>
@@ -526,25 +526,25 @@ function BridgeOfflineBanner({ installCmds, bridgeUrl }: { installCmds: ReturnTy
   }
 
   return (
-    <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-4 space-y-3">
-      <p className="text-sm text-amber-100 font-semibold">⚡ Bridge not running</p>
+    <div className="rounded-xl border border-gray-800 bg-gray-950/70 p-4 space-y-3">
+      <p className="text-sm text-gray-200 font-semibold">Bridge not running</p>
 
       {/* ── Recommended: register auto-start so this never happens again ── */}
-      <div className="rounded-lg border border-emerald-700/60 bg-emerald-950/40 p-3 space-y-2">
-        <p className="text-[11px] font-semibold text-emerald-300">Permanent fix — register bridge as Windows auto-start (do once, never see this again):</p>
+      <div className="rounded-lg border border-gray-800 bg-gray-950/60 p-3 space-y-2">
+        <p className="text-[11px] font-semibold text-gray-300">Permanent fix — register bridge as Windows auto-start (do once, never see this again):</p>
         <div className="bg-gray-950/80 rounded-lg p-2 space-y-2 text-xs font-mono">
           {/* First-time install */}
           <CopyableCommand label="Step 1 — Install bridge once (PowerShell)" value={installCmds.powershell} />
           <CopyableCommand label="Step 2 — Register auto-start (PowerShell, run after Step 1)" value={installCmds.autoStartPowershell} />
         </div>
-        <p className="text-[11px] text-gray-400">After Step 2: bridge auto-starts at Windows login. Just bookmark <span className="font-mono text-cyan-300">{installCmds.appUrl}</span></p>
+        <p className="text-[11px] text-gray-500">After Step 2: bridge auto-starts at Windows login. Just bookmark <span className="font-mono text-gray-300">{installCmds.appUrl}</span></p>
       </div>
 
       {/* ── Manual daily start fallback ── */}
       <button
         type="button"
         onClick={() => setShowManual(v => !v)}
-        className="text-[11px] text-amber-200/70 hover:text-amber-200 underline"
+        className="text-[11px] text-gray-500 hover:text-gray-300 underline"
       >
         {showManual ? 'Hide' : 'Already installed? Just start it for today instead'}
       </button>
@@ -557,10 +557,10 @@ function BridgeOfflineBanner({ installCmds, bridgeUrl }: { installCmds: ReturnTy
 
       {isHttps && (
         <div className="space-y-1">
-          <p className="text-[11px] text-amber-200/60">After bridge starts, open the app here (not GitHub Pages):</p>
+          <p className="text-[11px] text-gray-500">After bridge starts, open the app here (not GitHub Pages):</p>
           <a
             href={bridgeUrl}
-            className="inline-flex items-center gap-2 bg-amber-500/20 border border-amber-500/60 hover:bg-amber-500/30 text-amber-100 px-4 py-2 rounded-lg text-sm font-medium w-full justify-center"
+            className="inline-flex items-center gap-2 bg-gray-900 border border-gray-700 hover:bg-gray-800 text-gray-200 px-4 py-2 rounded-lg text-sm font-medium w-full justify-center"
           >
             <ExternalLink size={14} />
             Open app at {bridgeUrl}
@@ -1315,9 +1315,9 @@ export default function TriagePage() {
         <BridgeOfflineBanner installCmds={installCmds} bridgeUrl={bridgeUrl} />
       )}
       {bridgeVersionNotice && !bridgeHint && (
-        <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-100">
+        <div className="rounded-xl border border-gray-800 bg-gray-950/70 p-3 text-sm text-gray-200">
           <div className="font-semibold">New DevAssist update available</div>
-          <p className="mt-1 text-xs text-amber-100/90">{bridgeVersionNotice}</p>
+          <p className="mt-1 text-xs text-gray-500">{bridgeVersionNotice}</p>
         </div>
       )}
 
@@ -1325,7 +1325,7 @@ export default function TriagePage() {
         <button
           type="button"
           onClick={toggleLeftPane}
-          className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg border border-cyan-400/70 bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 font-medium"
+          className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg border border-gray-700 bg-gray-900 text-gray-200 hover:bg-gray-800 font-medium"
           aria-label={leftPaneHidden ? 'Show input pane' : 'Hide input pane'}
           title={leftPaneHidden ? 'Show input pane' : 'Hide input pane'}
         >
@@ -1343,7 +1343,7 @@ export default function TriagePage() {
             <button
               type="button"
               onClick={toggleQuickStart}
-              className="text-xs px-2.5 py-1 rounded-md border border-cyan-400/70 bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 font-medium"
+              className="text-xs px-2.5 py-1 rounded-md border border-gray-700 bg-gray-900 text-gray-200 hover:bg-gray-800 font-medium"
               aria-label={quickStartOpen ? 'Collapse quick start card' : 'Expand quick start card'}
             >
               <ChevronDown size={14} className={`transition-transform ${quickStartOpen ? '' : '-rotate-90'}`} />
@@ -1358,7 +1358,7 @@ export default function TriagePage() {
                     <CopyableCommand label="Step 1 — Install (PowerShell)" value={installCmds.powershell} />
                     <CopyableCommand label="Step 2 — Register auto-start (PowerShell, after Step 1)" value={installCmds.autoStartPowershell} />
                   </div>
-                  <p className="text-[11px] text-emerald-300/80">After Step 2 — bridge starts automatically at every Windows login. No daily commands needed.</p>
+                  <p className="text-[11px] text-gray-500">After Step 2 — bridge starts automatically at every Windows login. No daily commands needed.</p>
                   <p className="text-[11px] text-gray-400">Bookmark this URL and share with your team:</p>
                 </>
               ) : (
@@ -1378,7 +1378,7 @@ export default function TriagePage() {
               <button
                 type="button"
                 onClick={toggleRecent}
-                className="text-xs px-2.5 py-1 rounded-md border border-cyan-400/70 bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 font-medium"
+                className="text-xs px-2.5 py-1 rounded-md border border-gray-700 bg-gray-900 text-gray-200 hover:bg-gray-800 font-medium"
                 aria-label={recentOpen ? 'Collapse recent card' : 'Expand recent card'}
               >
                 <ChevronDown size={14} className={`transition-transform ${recentOpen ? '' : '-rotate-90'}`} />

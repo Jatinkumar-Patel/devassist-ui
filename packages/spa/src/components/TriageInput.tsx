@@ -249,7 +249,7 @@ export default function TriageInput({ onSubmit, onStop, loading }: Props) {
             <button
               type="button"
               onClick={toggleScopeOpen}
-              className="text-xs px-2.5 py-1 rounded-md border border-cyan-400/70 bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 font-medium"
+              className="text-xs px-2.5 py-1 rounded-md border border-gray-700 bg-gray-900 text-gray-200 hover:bg-gray-800 font-medium"
               aria-label={scopeOpen ? 'Collapse product scope card' : 'Expand product scope card'}
             >
               <ChevronDown size={14} className={`transition-transform ${scopeOpen ? '' : '-rotate-90'}`} />
@@ -277,28 +277,28 @@ export default function TriageInput({ onSubmit, onStop, loading }: Props) {
                     <button
                       type="button"
                       onClick={() => setProductsOpen((v) => !v)}
-                      className="w-full bg-slate-950/70 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-gray-100 text-left flex items-center justify-between gap-3"
+                      className="w-full bg-gray-950/70 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-100 text-left flex items-center justify-between gap-3"
                     >
                       <span className="truncate">{selectedProductLabel}</span>
-                      <span className="text-xs text-cyan-200 shrink-0">{selectedProductIds.length} selected</span>
+                      <span className="text-xs text-gray-400 shrink-0">{selectedProductIds.length} selected</span>
                     </button>
 
                     {productsOpen && (
-                      <div className="mt-2 w-full rounded-xl border border-white/15 bg-slate-950/95 shadow-2xl shadow-black/40 max-h-64 overflow-auto p-2 space-y-1">
+                      <div className="mt-2 w-full rounded-xl border border-gray-700 bg-gray-950/95 shadow-2xl shadow-black/40 max-h-64 overflow-auto p-2 space-y-1">
                         {availableProducts.map((p) => {
                           const checked = selectedProductIds.includes(p.id);
                           return (
                             <label
                               key={p.id}
                               className={`flex items-center gap-2 rounded-lg px-2 py-2 cursor-pointer ${
-                                checked ? 'bg-cyan-500/15' : 'hover:bg-white/5'
+                                checked ? 'bg-gray-800' : 'hover:bg-white/5'
                               }`}
                             >
                               <input
                                 type="checkbox"
                                 checked={checked}
                                 onChange={() => toggleProduct(p.id)}
-                                className="h-4 w-4 accent-cyan-400"
+                                className="h-4 w-4 accent-gray-400"
                               />
                               <span className="text-sm text-gray-100 truncate flex-1">{p.displayName}</span>
                               <span className="text-[10px] text-gray-400 font-mono">{p.id}</span>
@@ -315,28 +315,28 @@ export default function TriageInput({ onSubmit, onStop, loading }: Props) {
                     <button
                       type="button"
                       onClick={() => setReleasesOpen((v) => !v)}
-                      className="w-full bg-slate-950/70 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-gray-100 text-left flex items-center justify-between gap-3"
+                      className="w-full bg-gray-950/70 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-100 text-left flex items-center justify-between gap-3"
                     >
                       <span className="truncate">{selectedReleaseLabel}</span>
-                      <span className="text-xs text-cyan-200 shrink-0">{selectedReportedReleases.length} selected</span>
+                      <span className="text-xs text-gray-400 shrink-0">{selectedReportedReleases.length} selected</span>
                     </button>
 
                     {releasesOpen && (
-                      <div className="mt-2 w-full rounded-xl border border-white/15 bg-slate-950/95 shadow-2xl shadow-black/40 max-h-56 overflow-auto p-2 space-y-1">
+                      <div className="mt-2 w-full rounded-xl border border-gray-700 bg-gray-950/95 shadow-2xl shadow-black/40 max-h-56 overflow-auto p-2 space-y-1">
                         {releaseOptions.map((release) => {
                           const checked = selectedReportedReleases.includes(release);
                           return (
                             <label
                               key={release}
                               className={`flex items-center gap-2 rounded-lg px-2 py-2 cursor-pointer ${
-                                checked ? 'bg-cyan-500/15' : 'hover:bg-white/5'
+                                checked ? 'bg-gray-800' : 'hover:bg-white/5'
                               }`}
                             >
                               <input
                                 type="checkbox"
                                 checked={checked}
                                 onChange={() => toggleRelease(release)}
-                                className="h-4 w-4 accent-cyan-400"
+                                className="h-4 w-4 accent-gray-400"
                               />
                               <span className="text-sm text-gray-100 truncate flex-1">{release}</span>
                             </label>
@@ -367,7 +367,7 @@ export default function TriageInput({ onSubmit, onStop, loading }: Props) {
                       setSelectedProductIds(availableProducts.map((p) => p.id));
                       setProductsOpen(false);
                     }}
-                    className="text-cyan-300 hover:text-white"
+                    className="text-gray-300 hover:text-gray-100"
                   >
                     Select all
                   </button>
