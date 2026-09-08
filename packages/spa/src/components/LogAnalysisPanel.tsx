@@ -447,9 +447,17 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
                       <div key={entry.domain} className="rounded border border-cyan-900/30 bg-cyan-950/15 p-2">
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-xs text-cyan-100 font-medium">#{entry.rank} {entry.label}</p>
-                          <p className="text-[11px] text-cyan-200 font-mono">+{entry.points}</p>
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${entry.verdict === 'pass' ? 'border-emerald-600/60 text-emerald-300' : 'border-rose-700/70 text-rose-300'}`}>
+                              {entry.verdict}
+                            </span>
+                            <p className="text-[11px] text-cyan-200 font-mono">+{entry.points}</p>
+                          </div>
                         </div>
                         <p className="text-[11px] text-gray-300">{entry.count} signal(s) captured</p>
+                        <p className="text-[11px] text-gray-400 font-mono">
+                          Baseline {entry.baselinePoints} | Gap {entry.gap >= 0 ? `+${entry.gap}` : entry.gap}
+                        </p>
                       </div>
                     ))}
                   </div>

@@ -39,6 +39,9 @@ export interface LogComparisonSummary {
     label: string;
     count: number;
     points: number;
+    baselinePoints: number;
+    gap: number;
+    verdict: 'pass' | 'fail';
     rank: number;
   }>;
   whyBetter: string[];
@@ -99,6 +102,17 @@ export function buildLogComparisonSummary(result: LogComparisonSource): LogCompa
     explanationDepth,
   };
 
+  const baselineCoverageFloor: Record<string, number> = {
+    errors: 6,
+    warnings: 6,
+    locks: 2,
+    operations: 2,
+    stackTraces: 0,
+    timelineDelayRows: 0,
+    spreadsheetSignals: 0,
+    imageSignals: 0,
+  };
+
   const coverageCard = [
     { domain: 'errors', label: 'Errors', count: coverage?.errors ?? 0, points: scale(coverage?.errors ?? 0, 2, 18) },
     { domain: 'warnings', label: 'Warnings', count: coverage?.warnings ?? 0, points: scale(coverage?.warnings ?? 0, 3, 14) },
@@ -109,8 +123,17 @@ export function buildLogComparisonSummary(result: LogComparisonSource): LogCompa
     { domain: 'spreadsheetSignals', label: 'Spreadsheet signals', count: coverage?.spreadsheetSignals ?? 0, points: scale(coverage?.spreadsheetSignals ?? 0, 3, 12) },
     { domain: 'imageSignals', label: 'Image OCR signals', count: coverage?.imageSignals ?? 0, points: scale(coverage?.imageSignals ?? 0, 2, 10) },
   ]
-    .filter((entry) => entry.count > 0)
-    .sort((a, b) => b.points - a.points || b.count - a.count || a.domain.localeCompare(b.domain))
+    .map((entry) => {
+      const baselinePoints = baselineCoverageFloor[entry.domain] ?? 0;
+      const gap = entry.points - baselinePoints;
+      return {
+        ...entry,
+        baselinePoints,
+        gap,
+        verdict: entry.count > 0 ? 'pass' as const : 'fail' as const,
+      };
+    })
+    .sort((a, b) => b.gap - a.gap || b.points - a.points || b.count - a.count || a.domain.localeCompare(b.domain))
     .map((entry, index) => ({ ...entry, rank: index + 1 }));
 
   const baselineScore =
@@ -137,9 +160,9 @@ export function buildLogComparisonSummary(result: LogComparisonSource): LogCompa
   if ((result.explanation?.length ?? 0) > 0) {
     whyBetter.push(`Explains the result with ${result.explanation?.length ?? 0} reasoning lines instead of a generic summary.`);
   }
-  if (coverageCard.length > 0) {
-    const top = coverageCard[0];
-    whyBetter.push(`Top improved evidence domain: ${top.label} (${top.count} hit(s), ${top.points} point(s)).`);
+  const topImproved = coverageCard.find((entry) => entry.gap > 0);
+  if (topImproved) {
+    whyBetter.push(`Top improved evidence domain: ${topImproved.label} (${topImproved.count} hit(s), +${topImproved.gap} vs baseline).`);
   }
 
   return {

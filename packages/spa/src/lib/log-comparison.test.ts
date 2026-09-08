@@ -42,6 +42,9 @@ test('log comparison summary scores DevAssist above a seed-only baseline when ri
   assert.equal(summary.devassistMetrics.evidenceDomains, 5);
   assert.equal(summary.coverageCard[0]?.domain, 'errors');
   assert.equal(summary.coverageCard[0]?.rank, 1);
+  assert.equal(summary.coverageCard[0]?.verdict, 'pass');
+  assert.ok((summary.coverageCard[0]?.gap ?? 0) > 0);
+  assert.ok(summary.coverageCard.some((entry) => entry.verdict === 'fail'));
   assert.ok(summary.coverageCard.some((entry) => entry.domain === 'stackTraces'));
   assert.ok(summary.whyBetter.some((line) => /evidence domains/i.test(line)));
   assert.ok(summary.whyBetter.some((line) => /confidence/i.test(line)));
@@ -69,5 +72,6 @@ test('log comparison summary stays low when only coarse seed signals exist', () 
   assert.equal(summary.devassistScore, 2);
   assert.ok(summary.delta < 0);
   assert.ok(summary.baselineScore > summary.devassistScore);
-  assert.equal(summary.coverageCard.length, 0);
+  assert.equal(summary.coverageCard.length, 8);
+  assert.ok(summary.coverageCard.every((entry) => entry.verdict === 'fail'));
 });
