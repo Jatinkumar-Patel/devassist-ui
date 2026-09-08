@@ -1243,10 +1243,17 @@ type FollowUpHistoryEntry = {
 type AiStatus = {
   ollama: boolean;
   ollamaModels: string[];
+  defaultModels?: {
+    'github-models'?: string;
+    openai?: string;
+    ollama?: string;
+  };
   githubReady: boolean;
   openaiReady: boolean;
   anyBackendReady: boolean;
 };
+
+type AiProviderSelection = 'auto' | 'github-models' | 'openai' | 'ollama';
 
 function AiAssessmentPanel({ session }: { session: TriageSession }) {
   const { openaiKey, githubPat } = useSettingsStore();
@@ -1257,6 +1264,8 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
   const [aiSource, setAiSource] = useState<string | null>(null);
   const [ollamaOk, setOllamaOk] = useState<boolean | null>(null);
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+  const [providerSelection, setProviderSelection] = useState<AiProviderSelection>('auto');
+  const [modelInput, setModelInput] = useState('');
   const [followUpQuestion, setFollowUpQuestion] = useState('');
   const [followUpRunning, setFollowUpRunning] = useState(false);
   const [followUpResult, setFollowUpResult] = useState<string | null>(null);
@@ -1298,6 +1307,18 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
 
   const hasAnyToken = Boolean(openaiKey || githubPat);
   const canRun = Boolean(aiStatus?.anyBackendReady || hasAnyToken || ollamaOk);
+  const providerOptions: Array<{ value: AiProviderSelection; label: string; enabled: boolean }> = [
+    { value: 'auto', label: 'Auto (best available)', enabled: true },
+    { value: 'github-models', label: 'GitHub Models', enabled: Boolean(githubPat || aiStatus?.githubReady) },
+    { value: 'openai', label: 'OpenAI', enabled: Boolean(openaiKey || aiStatus?.openaiReady) },
+    { value: 'ollama', label: 'Ollama (local)', enabled: Boolean(aiStatus?.ollama) },
+  ];
+  const selectedProviderEnabled = providerOptions.find((opt) => opt.value === providerSelection)?.enabled ?? true;
+  const fallbackModel =
+    providerSelection === 'github-models' ? (aiStatus?.defaultModels?.['github-models'] ?? 'gpt-4o-mini') :
+    providerSelection === 'openai' ? (aiStatus?.defaultModels?.openai ?? 'gpt-4o-mini') :
+    providerSelection === 'ollama' ? (aiStatus?.defaultModels?.ollama ?? aiStatus?.ollamaModels?.[0] ?? 'llama3.2') :
+    'provider default';
 
   const runAi = async () => {
     if (!session.adoItem) return;
@@ -1309,6 +1330,8 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
       const body = {
         openaiKey: openaiKey || undefined,
         githubPat: githubPat || undefined,
+        aiProvider: providerSelection,
+        aiModel: modelInput.trim() || undefined,
         da: {
           id: session.adoItem.id,
           title: f['System.Title'],
@@ -1364,6 +1387,8 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
       const body = {
         openaiKey: openaiKey || undefined,
         githubPat: githubPat || undefined,
+        aiProvider: providerSelection,
+        aiModel: modelInput.trim() || undefined,
         question: followUpQuestion.trim(),
         history,
         priorAssessment: result ?? session.analysis?.codeAnalysis ?? session.analysis?.gap ?? session.analysis?.l2Draft ?? '',
@@ -1455,7 +1480,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
               {copied ? <><CheckCircle2 size={11} className="text-emerald-400"/> Copied</> : <><ClipboardCopy size={11}/> Copy</>}
             </button>
           )}
-          <button onClick={runAi} disabled={running || !canRun}
+          <button onClick={runAi} disabled={running || !canRun || (providerSelection !== 'auto' && !selectedProviderEnabled)}
             className="flex items-center justify-center gap-1.5 text-xs bg-purple-900/60 hover:bg-purple-900/90 disabled:opacity-40 border border-purple-600 text-purple-100 px-3 py-1.5 rounded font-medium w-full sm:w-auto">
             {running ? <><Loader2 size={11} className="animate-spin"/> Asking AI...</>
             : result  ? <><Sparkles size={11}/> Re-run</>
@@ -1463,6 +1488,37 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
           </button>
         </div>
       </div>
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="text-[11px] text-gray-400 space-y-1">
+          <span className="uppercase tracking-wide">LLM provider</span>
+          <select
+            value={providerSelection}
+            onChange={(e) => setProviderSelection(e.target.value as AiProviderSelection)}
+            className="w-full bg-gray-950 border border-gray-700 rounded px-2.5 py-2 text-xs text-gray-200 focus:outline-none focus:border-cyan-500"
+          >
+            {providerOptions.map((opt) => (
+              <option key={opt.value} value={opt.value} disabled={!opt.enabled && opt.value !== 'auto'}>
+                {opt.label}{!opt.enabled && opt.value !== 'auto' ? ' (not ready)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="text-[11px] text-gray-400 space-y-1">
+          <span className="uppercase tracking-wide">Model (optional override)</span>
+          <input
+            value={modelInput}
+            onChange={(e) => setModelInput(e.target.value)}
+            placeholder={fallbackModel}
+            className="w-full bg-gray-950 border border-gray-700 rounded px-2.5 py-2 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-cyan-500"
+          />
+        </label>
+      </div>
+
+      {providerSelection !== 'auto' && !selectedProviderEnabled && (
+        <p className="text-xs text-yellow-400">Selected provider is not ready. Configure credentials/runtime or switch provider.</p>
+      )}
 
       {!canRun && (
         <div className="text-xs text-yellow-600 space-y-1">
@@ -1523,7 +1579,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
           <button
             type="button"
             onClick={runFollowUp}
-            disabled={followUpRunning || !canRun || !followUpQuestion.trim()}
+            disabled={followUpRunning || !canRun || !followUpQuestion.trim() || (providerSelection !== 'auto' && !selectedProviderEnabled)}
             className="flex items-center justify-center gap-1.5 text-xs bg-cyan-900/50 hover:bg-cyan-900/80 disabled:opacity-40 border border-cyan-600 text-cyan-100 px-3 py-1.5 rounded font-medium"
           >
             {followUpRunning ? <><Loader2 size={11} className="animate-spin" /> Continuing...</> : <><Sparkles size={11} /> Continue</>}
