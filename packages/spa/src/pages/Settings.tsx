@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Eye, EyeOff, Check, AlertCircle, Terminal, RefreshCw, ChevronDown } from 'lucide-react';
-import { useSettingsStore, ORG_DEFAULTS } from '../store/settings';
+import { useSettingsStore, ORG_DEFAULTS, type SqlProfile } from '../store/settings';
 import { getBridgeInstallCommands } from '../lib/bridge-install';
 import { clearBridgeSecrets, fetchSecretStatus, saveBridgeSecrets } from '../lib/secret-store';
 
@@ -18,6 +18,24 @@ interface SqlTestResult {
   server?: string;
   database?: string;
   elapsedMs?: number;
+}
+
+interface SqlQueryResult {
+  ok: boolean;
+  columns?: string[];
+  rows?: Array<Record<string, unknown>>;
+  rowCount?: number;
+  truncated?: boolean;
+  elapsedMs?: number;
+  error?: string;
+}
+
+interface SqlMetadataResult {
+  ok: boolean;
+  items?: Array<Record<string, unknown>>;
+  count?: number;
+  elapsedMs?: number;
+  error?: string;
 }
 
 function isLocalBridgeUrl(url: string): boolean {
@@ -49,6 +67,8 @@ export default function SettingsPage() {
     sqlUser,
     sqlEncrypt,
     sqlTrustServerCertificate,
+    sqlProfiles,
+    activeSqlProfileId,
     setOpenaiKey,
     setBridgeUrl,
     setSqlServer,
@@ -58,6 +78,8 @@ export default function SettingsPage() {
     setSqlUser,
     setSqlEncrypt,
     setSqlTrustServerCertificate,
+    setSqlProfiles,
+    setActiveSqlProfileId,
     hasAdoPat,
     hasGithubPat,
     setSecretStatus,
@@ -72,6 +94,14 @@ export default function SettingsPage() {
   const [showSqlPassword, setShowSqlPassword] = useState(false);
   const [sqlTesting, setSqlTesting] = useState(false);
   const [sqlTestResult, setSqlTestResult] = useState<SqlTestResult | null>(null);
+  const [sqlProfileName, setSqlProfileName] = useState('');
+  const [sqlQueryText, setSqlQueryText] = useState('SELECT TOP 25 name, create_date, modify_date FROM sys.tables ORDER BY modify_date DESC');
+  const [sqlQueryRunning, setSqlQueryRunning] = useState(false);
+  const [sqlQueryResult, setSqlQueryResult] = useState<SqlQueryResult | null>(null);
+  const [sqlMetadataSearch, setSqlMetadataSearch] = useState('');
+  const [sqlMetadataRunning, setSqlMetadataRunning] = useState(false);
+  const [sqlMetadataKinds, setSqlMetadataKinds] = useState<Array<'table' | 'view' | 'procedure'>>(['table', 'view', 'procedure']);
+  const [sqlMetadataResult, setSqlMetadataResult] = useState<SqlMetadataResult | null>(null);
   const [supportModeEnabled, setSupportModeEnabled] = useState<boolean>(() => localStorage.getItem('devassist-support-mode') === '1');
   const localBridgeMode = isLocalBridgeUrl(bridgeUrl);
   const localHostPage = isLocalHostPage();
@@ -128,6 +158,153 @@ export default function SettingsPage() {
       const next = !prev;
       localStorage.setItem('devassist-support-mode', next ? '1' : '0');
       return next;
+    });
+  };
+
+  const currentSqlProfilePayload = (): Omit<SqlProfile, 'id' | 'name'> => ({
+    server: sqlServer.trim(),
+    database: sqlDatabase.trim(),
+    port: Number(sqlPort) || 1433,
+    authMode: sqlAuthMode,
+    user: sqlAuthMode === 'sql-login' ? sqlUser.trim() : '',
+    encrypt: sqlEncrypt,
+    trustServerCertificate: sqlTrustServerCertificate,
+  });
+
+  const saveSqlProfile = () => {
+    const name = sqlProfileName.trim();
+    const payload = currentSqlProfilePayload();
+    if (!name || !payload.server) return;
+
+    const existing = sqlProfiles.find((p) => p.id === activeSqlProfileId);
+    const id = existing?.id ?? `sql-profile-${Date.now()}`;
+    const nextProfile: SqlProfile = { id, name, ...payload };
+    const nextProfiles = existing
+      ? sqlProfiles.map((p) => (p.id === id ? nextProfile : p))
+      : [...sqlProfiles, nextProfile];
+
+    setSqlProfiles(nextProfiles);
+    setActiveSqlProfileId(id);
+  };
+
+  const loadSqlProfile = (profileId: string) => {
+    setActiveSqlProfileId(profileId);
+    const profile = sqlProfiles.find((p) => p.id === profileId);
+    if (!profile) return;
+    setSqlProfileName(profile.name);
+    setSqlServer(profile.server);
+    setSqlDatabase(profile.database);
+    setSqlPort(profile.port);
+    setSqlAuthMode(profile.authMode);
+    setSqlUser(profile.user);
+    setSqlEncrypt(profile.encrypt);
+    setSqlTrustServerCertificate(profile.trustServerCertificate);
+    setSqlPassword('');
+    setSqlTestResult(null);
+    setSqlQueryResult(null);
+    setSqlMetadataResult(null);
+  };
+
+  const deleteSqlProfile = () => {
+    if (!activeSqlProfileId) return;
+    const next = sqlProfiles.filter((p) => p.id !== activeSqlProfileId);
+    setSqlProfiles(next);
+    setActiveSqlProfileId('');
+    setSqlProfileName('');
+  };
+
+  const runSqlConnectionTest = async () => {
+    setSqlTesting(true);
+    setSqlTestResult(null);
+    try {
+      const response = await fetch(`${bridgeUrl}/api/sql/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          server: sqlServer,
+          database: sqlDatabase,
+          port: sqlPort,
+          authMode: sqlAuthMode,
+          user: sqlAuthMode === 'sql-login' ? sqlUser : undefined,
+          password: sqlAuthMode === 'sql-login' ? sqlPassword : undefined,
+          encrypt: sqlEncrypt,
+          trustServerCertificate: sqlTrustServerCertificate,
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      const data = await response.json() as SqlTestResult;
+      setSqlTestResult(data);
+    } catch (error: any) {
+      setSqlTestResult({ ok: false, error: String(error?.message ?? 'SQL connection test failed') });
+    } finally {
+      setSqlTesting(false);
+    }
+  };
+
+  const runSqlQuery = async () => {
+    setSqlQueryRunning(true);
+    setSqlQueryResult(null);
+    try {
+      const response = await fetch(`${bridgeUrl}/api/sql/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          server: sqlServer,
+          database: sqlDatabase,
+          port: sqlPort,
+          authMode: sqlAuthMode,
+          user: sqlAuthMode === 'sql-login' ? sqlUser : undefined,
+          password: sqlAuthMode === 'sql-login' ? sqlPassword : undefined,
+          encrypt: sqlEncrypt,
+          trustServerCertificate: sqlTrustServerCertificate,
+          query: sqlQueryText,
+        }),
+        signal: AbortSignal.timeout(20000),
+      });
+      const data = await response.json() as SqlQueryResult;
+      setSqlQueryResult(data);
+    } catch (error: any) {
+      setSqlQueryResult({ ok: false, error: String(error?.message ?? 'SQL query failed') });
+    } finally {
+      setSqlQueryRunning(false);
+    }
+  };
+
+  const runSqlMetadataSearch = async () => {
+    setSqlMetadataRunning(true);
+    setSqlMetadataResult(null);
+    try {
+      const response = await fetch(`${bridgeUrl}/api/sql/metadata`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          server: sqlServer,
+          database: sqlDatabase,
+          port: sqlPort,
+          authMode: sqlAuthMode,
+          user: sqlAuthMode === 'sql-login' ? sqlUser : undefined,
+          password: sqlAuthMode === 'sql-login' ? sqlPassword : undefined,
+          encrypt: sqlEncrypt,
+          trustServerCertificate: sqlTrustServerCertificate,
+          search: sqlMetadataSearch,
+          kinds: sqlMetadataKinds,
+        }),
+        signal: AbortSignal.timeout(20000),
+      });
+      const data = await response.json() as SqlMetadataResult;
+      setSqlMetadataResult(data);
+    } catch (error: any) {
+      setSqlMetadataResult({ ok: false, error: String(error?.message ?? 'SQL metadata search failed') });
+    } finally {
+      setSqlMetadataRunning(false);
+    }
+  };
+
+  const toggleMetadataKind = (kind: 'table' | 'view' | 'procedure') => {
+    setSqlMetadataKinds((prev) => {
+      const has = prev.includes(kind);
+      if (has && prev.length === 1) return prev;
+      return has ? prev.filter((k) => k !== kind) : [...prev, kind];
     });
   };
 
@@ -209,10 +386,49 @@ export default function SettingsPage() {
       <section className="space-y-4">
         <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">SQL Connection</h2>
         <p className="text-xs text-gray-600">
-          VS Code SQL style connection profile for ticket-level DB verification. Password is used only for test connection and is not persisted in browser storage.
+          VS Code SQL style connection profiles for ticket-level DB verification. Password is used for live connection actions only and is not persisted.
         </p>
 
         <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-3">
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+            <select
+              value={activeSqlProfileId}
+              onChange={(e) => loadSqlProfile(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-altera-teal"
+            >
+              <option value="">Select saved SQL profile...</option>
+              {sqlProfiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>{profile.name}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={deleteSqlProfile}
+              disabled={!activeSqlProfileId}
+              className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500 disabled:opacity-50"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              onClick={saveSqlProfile}
+              disabled={!sqlProfileName.trim() || !sqlServer.trim()}
+              className="text-xs px-3 py-1.5 rounded-lg border border-cyan-700 text-cyan-200 hover:border-cyan-500 disabled:opacity-50"
+            >
+              Save profile
+            </button>
+          </div>
+
+          <label className="text-xs text-gray-400 space-y-1 block">
+            <span>Profile Name</span>
+            <input
+              value={sqlProfileName}
+              onChange={(e) => setSqlProfileName(e.target.value)}
+              placeholder="Example: AMB_AUT_271 - SCM"
+              className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-altera-teal"
+            />
+          </label>
+
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-xs text-gray-400 space-y-1">
               <span>Authentication Type</span>
@@ -311,38 +527,12 @@ export default function SettingsPage() {
             <button
               type="button"
               disabled={sqlTesting || !sqlServer.trim() || (sqlAuthMode === 'sql-login' && (!sqlUser.trim() || !sqlPassword.trim()))}
-              onClick={async () => {
-                setSqlTesting(true);
-                setSqlTestResult(null);
-                try {
-                  const response = await fetch(`${bridgeUrl}/api/sql/test`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      server: sqlServer,
-                      database: sqlDatabase,
-                      port: sqlPort,
-                      authMode: sqlAuthMode,
-                      user: sqlAuthMode === 'sql-login' ? sqlUser : undefined,
-                      password: sqlAuthMode === 'sql-login' ? sqlPassword : undefined,
-                      encrypt: sqlEncrypt,
-                      trustServerCertificate: sqlTrustServerCertificate,
-                    }),
-                    signal: AbortSignal.timeout(15000),
-                  });
-                  const data = await response.json() as SqlTestResult;
-                  setSqlTestResult(data);
-                } catch (error: any) {
-                  setSqlTestResult({ ok: false, error: String(error?.message ?? 'SQL connection test failed') });
-                } finally {
-                  setSqlTesting(false);
-                }
-              }}
+              onClick={() => { void runSqlConnectionTest(); }}
               className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500 disabled:opacity-50"
             >
               {sqlTesting ? 'Testing...' : 'Test connection'}
             </button>
-            <p className="text-xs text-gray-600">Tip: for SQL Login, credentials are used for this test request only.</p>
+            <p className="text-xs text-gray-600">Tip: SQL password is never saved in profile storage.</p>
           </div>
 
           {sqlTestResult && (
@@ -350,6 +540,119 @@ export default function SettingsPage() {
               {sqlTestResult.ok
                 ? `${sqlTestResult.message ?? 'Connection successful'} ${sqlTestResult.server ? `| Server: ${sqlTestResult.server}` : ''} ${sqlTestResult.database ? `| DB: ${sqlTestResult.database}` : ''} ${typeof sqlTestResult.elapsedMs === 'number' ? `| ${sqlTestResult.elapsedMs} ms` : ''}`
                 : `Connection failed: ${sqlTestResult.error ?? 'Unknown error'}`}
+            </div>
+          )}
+
+          {sqlTestResult?.ok && (
+            <div className="space-y-3 border-t border-gray-800 pt-3">
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-gray-300">Run test query</p>
+                <textarea
+                  value={sqlQueryText}
+                  onChange={(e) => setSqlQueryText(e.target.value)}
+                  rows={4}
+                  className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-xs text-gray-200 font-mono focus:outline-none focus:border-altera-teal"
+                />
+                <button
+                  type="button"
+                  onClick={() => { void runSqlQuery(); }}
+                  disabled={sqlQueryRunning || !sqlQueryText.trim() || (sqlAuthMode === 'sql-login' && !sqlPassword.trim())}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500 disabled:opacity-50"
+                >
+                  {sqlQueryRunning ? 'Running query...' : 'Run query'}
+                </button>
+
+                {sqlQueryResult && (
+                  <div className={`rounded border px-3 py-2 text-xs ${sqlQueryResult.ok ? 'border-emerald-800 bg-emerald-950/20 text-emerald-200' : 'border-red-800 bg-red-950/20 text-red-300'}`}>
+                    {sqlQueryResult.ok ? (
+                      <>
+                        <p>Rows: {sqlQueryResult.rowCount ?? 0}{sqlQueryResult.truncated ? ' (showing first 200)' : ''} | {sqlQueryResult.elapsedMs ?? 0} ms</p>
+                        <div className="overflow-auto mt-2 border border-gray-800 rounded">
+                          <table className="w-full text-left text-[11px]">
+                            <thead className="bg-gray-950 text-gray-400">
+                              <tr>
+                                {(sqlQueryResult.columns ?? []).map((column) => (
+                                  <th key={column} className="px-2 py-1 border-b border-gray-800">{column}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(sqlQueryResult.rows ?? []).slice(0, 50).map((row, idx) => (
+                                <tr key={idx} className="odd:bg-gray-950/30">
+                                  {(sqlQueryResult.columns ?? []).map((column) => (
+                                    <td key={`${idx}-${column}`} className="px-2 py-1 border-b border-gray-900 text-gray-300">{String((row as any)[column] ?? '')}</td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    ) : (
+                      <p>Query failed: {sqlQueryResult.error ?? 'Unknown error'}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-gray-300">Metadata explorer</p>
+                <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <input
+                    value={sqlMetadataSearch}
+                    onChange={(e) => setSqlMetadataSearch(e.target.value)}
+                    placeholder="Search object name (table/view/procedure)"
+                    className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-altera-teal"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { void runSqlMetadataSearch(); }}
+                    disabled={sqlMetadataRunning || (sqlAuthMode === 'sql-login' && !sqlPassword.trim())}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500 disabled:opacity-50"
+                  >
+                    {sqlMetadataRunning ? 'Searching...' : 'Search metadata'}
+                  </button>
+                </div>
+                <div className="flex items-center gap-4 text-xs text-gray-400">
+                  <label className="flex items-center gap-1.5"><input type="checkbox" checked={sqlMetadataKinds.includes('table')} onChange={() => toggleMetadataKind('table')} />Tables</label>
+                  <label className="flex items-center gap-1.5"><input type="checkbox" checked={sqlMetadataKinds.includes('view')} onChange={() => toggleMetadataKind('view')} />Views</label>
+                  <label className="flex items-center gap-1.5"><input type="checkbox" checked={sqlMetadataKinds.includes('procedure')} onChange={() => toggleMetadataKind('procedure')} />Stored procedures</label>
+                </div>
+
+                {sqlMetadataResult && (
+                  <div className={`rounded border px-3 py-2 text-xs ${sqlMetadataResult.ok ? 'border-cyan-800 bg-cyan-950/20 text-cyan-100' : 'border-red-800 bg-red-950/20 text-red-300'}`}>
+                    {sqlMetadataResult.ok ? (
+                      <>
+                        <p>Objects: {sqlMetadataResult.count ?? 0} | {sqlMetadataResult.elapsedMs ?? 0} ms</p>
+                        <div className="mt-2 max-h-56 overflow-auto border border-gray-800 rounded">
+                          <table className="w-full text-left text-[11px]">
+                            <thead className="bg-gray-950 text-gray-400">
+                              <tr>
+                                <th className="px-2 py-1 border-b border-gray-800">Schema</th>
+                                <th className="px-2 py-1 border-b border-gray-800">Object</th>
+                                <th className="px-2 py-1 border-b border-gray-800">Type</th>
+                                <th className="px-2 py-1 border-b border-gray-800">Modified</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(sqlMetadataResult.items ?? []).map((item, idx) => (
+                                <tr key={idx} className="odd:bg-gray-950/30">
+                                  <td className="px-2 py-1 border-b border-gray-900 text-gray-300">{String((item as any).schemaName ?? '')}</td>
+                                  <td className="px-2 py-1 border-b border-gray-900 text-gray-300">{String((item as any).objectName ?? '')}</td>
+                                  <td className="px-2 py-1 border-b border-gray-900 text-gray-300">{String((item as any).objectType ?? '')}</td>
+                                  <td className="px-2 py-1 border-b border-gray-900 text-gray-300">{String((item as any).modifiedAt ?? '')}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    ) : (
+                      <p>Metadata search failed: {sqlMetadataResult.error ?? 'Unknown error'}</p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

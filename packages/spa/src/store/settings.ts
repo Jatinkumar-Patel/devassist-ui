@@ -9,6 +9,18 @@ export const ORG_DEFAULTS = {
   registryUrl: '/config/product-registry.json',
 } as const;
 
+export interface SqlProfile {
+  id: string;
+  name: string;
+  server: string;
+  database: string;
+  port: number;
+  authMode: 'sql-login' | 'windows';
+  user: string;
+  encrypt: boolean;
+  trustServerCertificate: boolean;
+}
+
 interface SettingsState {
   adoPat: string;
   githubPat: string;
@@ -21,6 +33,8 @@ interface SettingsState {
   sqlUser: string;
   sqlEncrypt: boolean;
   sqlTrustServerCertificate: boolean;
+  sqlProfiles: SqlProfile[];
+  activeSqlProfileId: string;
   hasAdoPat: boolean;
   hasGithubPat: boolean;
   setAdoPat: (pat: string) => void;
@@ -34,6 +48,8 @@ interface SettingsState {
   setSqlUser: (value: string) => void;
   setSqlEncrypt: (value: boolean) => void;
   setSqlTrustServerCertificate: (value: boolean) => void;
+  setSqlProfiles: (profiles: SqlProfile[]) => void;
+  setActiveSqlProfileId: (id: string) => void;
   setSecretStatus: (status: { hasAdoPat?: boolean; hasGithubPat?: boolean }) => void;
   clearPats: () => void;
 }
@@ -52,6 +68,8 @@ export const useSettingsStore = create<SettingsState>()(
       sqlUser: '',
       sqlEncrypt: true,
       sqlTrustServerCertificate: true,
+      sqlProfiles: [],
+      activeSqlProfileId: '',
       hasAdoPat: false,
       hasGithubPat: false,
       setAdoPat:     (adoPat) => set({ adoPat }),
@@ -65,6 +83,8 @@ export const useSettingsStore = create<SettingsState>()(
       setSqlUser:    (sqlUser) => set({ sqlUser }),
       setSqlEncrypt: (sqlEncrypt) => set({ sqlEncrypt }),
       setSqlTrustServerCertificate: (sqlTrustServerCertificate) => set({ sqlTrustServerCertificate }),
+      setSqlProfiles: (sqlProfiles) => set({ sqlProfiles }),
+      setActiveSqlProfileId: (activeSqlProfileId) => set({ activeSqlProfileId }),
       setSecretStatus: (status) => set((current) => ({
         hasAdoPat: status.hasAdoPat ?? current.hasAdoPat,
         hasGithubPat: status.hasGithubPat ?? current.hasGithubPat,
@@ -91,6 +111,8 @@ export const useSettingsStore = create<SettingsState>()(
         sqlUser: persistedState?.sqlUser ?? '',
         sqlEncrypt: persistedState?.sqlEncrypt ?? true,
         sqlTrustServerCertificate: persistedState?.sqlTrustServerCertificate ?? true,
+        sqlProfiles: Array.isArray(persistedState?.sqlProfiles) ? persistedState.sqlProfiles : [],
+        activeSqlProfileId: persistedState?.activeSqlProfileId ?? '',
       }),
       partialize: (s) => ({
         adoPat: '',
@@ -106,6 +128,8 @@ export const useSettingsStore = create<SettingsState>()(
         sqlUser: s.sqlUser,
         sqlEncrypt: s.sqlEncrypt,
         sqlTrustServerCertificate: s.sqlTrustServerCertificate,
+        sqlProfiles: s.sqlProfiles,
+        activeSqlProfileId: s.activeSqlProfileId,
       }),
     }
   )
