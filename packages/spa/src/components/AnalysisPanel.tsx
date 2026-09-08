@@ -12,11 +12,11 @@ interface Props {
 }
 
 const VERDICT_STYLE: Record<string, { icon: React.ReactNode; color: string }> = {
-  'CODE BUG':         { icon: <Wrench size={14} />,       color: 'text-red-400 border-red-800 bg-red-950/30' },
-  'CONFIG / INSTALL': { icon: <Wrench size={14} />,       color: 'text-yellow-400 border-yellow-800 bg-yellow-950/30' },
-  'INTENDED BEHAVIOR':{ icon: <CheckCircle2 size={14} />, color: 'text-blue-400 border-blue-800 bg-blue-950/30' },
-  'ENHANCEMENT':      { icon: <Lightbulb size={14} />,    color: 'text-purple-400 border-purple-800 bg-purple-950/30' },
-  'NEED MORE INFO':   { icon: <HelpCircle size={14} />,   color: 'text-gray-400 border-gray-700 bg-gray-800' },
+  'CODE BUG':         { icon: <Wrench size={14} />,       color: 'text-gray-300 border-gray-800 bg-gray-950/70' },
+  'CONFIG / INSTALL': { icon: <Wrench size={14} />,       color: 'text-gray-300 border-gray-800 bg-gray-950/70' },
+  'INTENDED BEHAVIOR':{ icon: <CheckCircle2 size={14} />, color: 'text-gray-300 border-gray-800 bg-gray-950/70' },
+  'ENHANCEMENT':      { icon: <Lightbulb size={14} />,    color: 'text-gray-300 border-gray-800 bg-gray-950/70' },
+  'NEED MORE INFO':   { icon: <HelpCircle size={14} />,   color: 'text-gray-300 border-gray-800 bg-gray-950/70' },
 };
 
 function normalizeEvidenceValue(v?: string): string {
@@ -385,6 +385,7 @@ function buildPrintableHtml(session: TriageSession, analysis: TriageAnalysis, sn
       <div class="grid two">
         <div>
           <h4>Analyzed</h4>
+
           <ul>${listToHtml(artifactLedger.analyzed.map((item) => `${item.source} | ${item.file} | ${item.finding}`))}</ul>
         </div>
         <div>
@@ -807,8 +808,8 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           </div>
           <div className="flex items-center gap-2">
             <span className={`text-xs px-2 py-0.5 rounded-full border ${
-              analysis.confidence === 'High'   ? 'border-emerald-700 text-emerald-400' :
-              analysis.confidence === 'Medium' ? 'border-yellow-700 text-yellow-400' :
+              analysis.confidence === 'High'   ? 'border-gray-700 text-gray-300' :
+              analysis.confidence === 'Medium' ? 'border-gray-700 text-gray-300' :
                                                  'border-gray-700 text-gray-400'
             }`}>
               Confidence: {analysis.confidence}
@@ -842,6 +843,13 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
 
       <div className="rounded-lg border border-gray-800 bg-gray-950/70 p-3.5 space-y-2 text-sm">
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Problem Statement</p>
+        <p className="text-xs text-gray-300 leading-relaxed">
+          {analysis.clientReported}
+        </p>
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide pt-2">Diagnostic Evidence</p>
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Evidence rows and comparison details are summarized in the tables below.
+        </p>
         <div className="overflow-hidden rounded border border-gray-800 bg-gray-950/80">
           <table className="w-full border-collapse text-left text-xs text-gray-200">
             <thead>
@@ -1058,8 +1066,8 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
       </div>
 
       {!showSupplementary && (
-        <div className="rounded-lg border border-cyan-900/50 bg-cyan-950/10 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <p className="text-xs text-cyan-100/90">
+        <div className="rounded-lg border border-gray-800 bg-gray-950/70 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <p className="text-xs text-gray-400">
             {simpleView
               ? 'Simple view is active. Optional sections are hidden to keep the UI lighter.'
               : 'Detailed view is active. Use this only when you need deeper evidence sections.'}
@@ -1067,7 +1075,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           <button
             type="button"
             onClick={() => setShowSupplementary(true)}
-            className="text-xs px-3 py-1.5 rounded border border-cyan-700/70 text-cyan-200 hover:bg-cyan-900/30"
+            className="text-xs px-3 py-1.5 rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
           >
             Show optional sections
           </button>
@@ -1082,7 +1090,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           {(session.kbEvidence?.length ?? 0) > 0 && (
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
-                <Bug size={11} className="text-cyan-300" />
+                <Bug size={11} className="text-gray-500" />
                 SNOW KB related articles · {session.kbEvidence!.length} found
               </p>
               {session.kbEvidence!.map((kb, idx) => (
@@ -1100,7 +1108,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           {(session.versionEvidence?.length ?? 0) > 0 && (
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
-                <Bug size={11} className="text-amber-400" />
+                <Bug size={11} className="text-gray-500" />
                 Similar historical items in same release context · {session.versionEvidence!.length} found
               </p>
               {session.versionEvidence!.map(item => (
@@ -1120,7 +1128,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           {(session.areaEvidence?.length ?? 0) > 0 && (
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
-                <Bug size={11} className="text-cyan-400" />
+                <Bug size={11} className="text-gray-500" />
                 Area evidence (defect/bug/task/story, 365d) · {session.areaEvidence!.length} found
               </p>
               {session.areaEvidence!.map(item => (
@@ -1139,7 +1147,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           {(session.relatedItems?.length ?? 0) > 0 && (
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
-                <Bug size={11} className="text-red-400" />
+                <Bug size={11} className="text-gray-500" />
                 Open bugs — same area (last 90 days) · {session.relatedItems!.length} found
               </p>
               {session.relatedItems!.map(item => (
@@ -1173,7 +1181,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           {(session.testCases?.length ?? 0) > 0 && (
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
-                <TestTube size={11} className="text-purple-400" />
+                <TestTube size={11} className="text-gray-500" />
                 MTM Test cases — same area · {session.testCases!.length} found
               </p>
               {session.testCases!.map(tc => (
@@ -1181,7 +1189,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                   <a href={tc.url} target="_blank" rel="noreferrer"
                      className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{tc.id}</a>
                   <span className="text-gray-300 break-words flex-1">{tc.title}</span>
-                  <span className="shrink-0 ml-2 px-1.5 py-0.5 rounded text-xs bg-purple-950 text-purple-400">{tc.state}</span>
+                  <span className="shrink-0 ml-2 px-1.5 py-0.5 rounded text-xs bg-gray-900 text-gray-300">{tc.state}</span>
                 </div>
               ))}
             </div>
@@ -1189,9 +1197,9 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           {(session.testCases?.length ?? 0) === 0 && session.testCases !== undefined && (
             <div className="space-y-1">
               <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
-                <TestTube size={11} className="text-purple-400" /> MTM Test cases — same area
+                <TestTube size={11} className="text-gray-500" /> MTM Test cases — same area
               </p>
-              <p className="text-xs text-yellow-600">⚠ No test cases found — coverage gap for this area</p>
+              <p className="text-xs text-gray-400">No test cases found — coverage gap for this area</p>
             </div>
           )}
 
@@ -1215,18 +1223,21 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
         </div>
       )}
 
+      {/* AI Assessment — always visible so provider/model/agent choices are discoverable */}
+      <AiAssessmentPanel session={session} />
+
       {shouldShowSupplementary && (
         <>
-          <div className="rounded-lg border border-cyan-900/60 bg-cyan-950/20 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="rounded-lg border border-gray-800 bg-gray-950/70 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Report export</p>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Report export</p>
               <p className="text-xs text-gray-300">Print the full analysis report or save it as a PDF from the browser dialog.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => openPrintableReport(session, analysis, snowEvidenceRows)}
-                className="inline-flex items-center gap-2 rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs font-medium text-cyan-100 hover:bg-cyan-500/20"
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-medium text-gray-200 hover:bg-gray-800"
               >
                 <Printer size={12} /> Print / Save as PDF
               </button>
@@ -1239,16 +1250,14 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
             </div>
           </div>
 
-          {/* AI Assessment — calls OpenAI via bridge, shows response inline */}
-          <AiAssessmentPanel session={session} />
         </>
       )}
 
       {/* L2 draft — human-gated, never auto-posted */}
       {analysis.l2Draft && (
-        <div className="rounded-lg border border-altera-blue/40 bg-altera-blue/10 p-4 space-y-2">
+        <div className="rounded-lg border border-gray-800 bg-gray-950/70 p-4 space-y-2">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <p className="text-xs font-medium text-altera-teal">Suggested L2 Commentary (review before posting)</p>
+            <p className="text-xs font-medium text-gray-300">Suggested L2 Commentary (review before posting)</p>
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -1265,7 +1274,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
               </a>
               <button onClick={copyL2}
                 className="flex items-center gap-1 text-xs text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 px-2 py-1 rounded">
-                {copied ? <><CheckCircle2 size={11} className="text-emerald-400" /> Copied</> : <><ClipboardCopy size={11} /> Copy</>}
+                {copied ? <><CheckCircle2 size={11} className="text-gray-300" /> Copied</> : <><ClipboardCopy size={11} /> Copy</>}
               </button>
             </div>
           </div>
@@ -1316,10 +1325,94 @@ type AiProviderSelection = 'auto' | 'github-models' | 'openai' | 'ollama';
 type AiAgentSelection = 'triage-l2' | 'root-cause' | 'log-forensics' | 'l2-commentary';
 type AiModelSelection = 'provider-default' | 'custom' | string;
 
+type FollowUpTemplate = {
+  label: string;
+  prompt: string;
+};
+
+type AgentComparisonResult = {
+  agent: AiAgentSelection;
+  label: string;
+  assessment: string;
+  source?: string | null;
+  warning?: string | null;
+  error?: string | null;
+};
+
 function clampText(value: unknown, maxChars: number): string {
   const text = normalizeDisplayText(String(value ?? ''));
   if (text.length <= maxChars) return text;
   return `${text.slice(0, maxChars)}...`;
+}
+
+function buildFollowUpTemplates(agent: AiAgentSelection): FollowUpTemplate[] {
+  const common: FollowUpTemplate[] = [
+    {
+      label: 'Strongest hypothesis',
+      prompt: 'What is the strongest root-cause hypothesis, and what evidence most supports it?',
+    },
+    {
+      label: 'Missing evidence',
+      prompt: 'List the top 3 missing evidence items that would most increase confidence.',
+    },
+    {
+      label: 'Next validation',
+      prompt: 'What is the single best validation step to run next?',
+    },
+    {
+      label: 'Customer summary',
+      prompt: 'Rewrite the result as a short customer-ready explanation with no jargon.',
+    },
+  ];
+
+  if (agent === 'root-cause') {
+    return [
+      {
+        label: 'Cause chain',
+        prompt: 'Map the observed behavior to the failure mechanism and final user impact.',
+      },
+      ...common,
+    ];
+  }
+
+  if (agent === 'log-forensics') {
+    return [
+      {
+        label: 'Timeline',
+        prompt: 'Extract the most important timeline from the logs and identify where the delay starts.',
+      },
+      {
+        label: 'Signal vs noise',
+        prompt: 'Separate the diagnostic log signals from the noise or unrelated messages.',
+      },
+      ...common,
+    ];
+  }
+
+  if (agent === 'l2-commentary') {
+    return [
+      {
+        label: 'Stakeholder note',
+        prompt: 'Draft a concise stakeholder note: what happened, why it matters, and what comes next.',
+      },
+      ...common,
+    ];
+  }
+
+  return common;
+}
+
+function agentLabel(agent: AiAgentSelection): string {
+  switch (agent) {
+    case 'root-cause':
+      return 'Root Cause Agent';
+    case 'log-forensics':
+      return 'Log Forensics Agent';
+    case 'l2-commentary':
+      return 'L2 Commentary Agent';
+    default:
+      return 'L2 Triage Agent';
+  }
 }
 
 function AiAssessmentPanel({ session }: { session: TriageSession }) {
@@ -1341,6 +1434,12 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
   const [followUpResult, setFollowUpResult] = useState<string | null>(null);
   const [followUpError, setFollowUpError] = useState<string | null>(null);
   const [chatHistory, setChatHistory] = useState<FollowUpHistoryEntry[]>([]);
+  const [templateSearch, setTemplateSearch] = useState('');
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareAgent, setCompareAgent] = useState<AiAgentSelection>('root-cause');
+  const [compareRunning, setCompareRunning] = useState(false);
+  const [compareError, setCompareError] = useState<string | null>(null);
+  const [compareResults, setCompareResults] = useState<AgentComparisonResult[] | null>(null);
 
   useEffect(() => {
     const key = `devassist-ai-followups-${session.id}`;
@@ -1410,59 +1509,92 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
     : modelSelection === 'custom'
       ? customModelInput.trim()
       : modelSelection;
+  const followUpTemplates = buildFollowUpTemplates(agentSelection);
+  const filteredTemplates = followUpTemplates.filter((template) => {
+    const haystack = `${template.label} ${template.prompt}`.toLowerCase();
+    return haystack.includes(templateSearch.trim().toLowerCase());
+  });
+
+  const applyFollowUpTemplate = (template: FollowUpTemplate) => {
+    setFollowUpQuestion(template.prompt);
+  };
+
+  const buildRequestBody = (question: string, agent: AiAgentSelection) => {
+    const f = session.adoItem?.fields;
+    if (!f || !session.adoItem) return null;
+    const logHits: Array<{file:string;line:number;seed:string;text:string}> = ((session.snowTask as any)?._logHits ?? [])
+      .slice(0, 25)
+      .map((h: any) => ({
+        file: String(h?.file ?? ''),
+        line: Number(h?.line ?? 0),
+        seed: String(h?.seed ?? ''),
+        text: clampText(h?.text ?? '', 220),
+      }));
+    const topSeeds: Record<string, number> = (session.snowTask as any)?._topSeeds ?? {};
+
+    return {
+      openaiKey: openaiKey || undefined,
+      githubPat: githubPat || undefined,
+      aiProvider: providerSelection,
+      aiModel: resolvedModelOverride || undefined,
+      aiAgent: agent,
+      question: clampText(question, 600),
+      history: chatHistory.slice(-6).map((entry) => ({ question: clampText(entry.question, 260), answer: clampText(entry.answer, 900) })),
+      priorAssessment: clampText(result ?? session.analysis?.codeAnalysis ?? session.analysis?.gap ?? session.analysis?.l2Draft ?? '', 1800),
+      priorVerdict: session.analysis?.verdict ?? '',
+      priorConfidence: session.analysis?.confidence ?? '',
+      priorGap: clampText(session.analysis?.gap ?? '', 1000),
+      da: {
+        id: session.adoItem.id,
+        title: f['System.Title'],
+        areaPath: f['System.AreaPath'],
+        customer: String(f['Allscripts.Field.CustomerName'] ?? ''),
+        release: String(f['Allscripts.Field.ReportedinRelease'] ?? f['Allscripts.Field.SupportVersion'] ?? ''),
+        severity: String(f['Microsoft.VSTS.Common.Severity'] ?? ''),
+        description: clampText(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '', 1000),
+      },
+      snowTask: session.snowTask ? {
+        number: String((session.snowTask as any).number?.display_value ?? (session.snowTask as any).number ?? ''),
+        shortDescription: String((session.snowTask as any).short_description?.display_value ?? ''),
+        state: String((session.snowTask as any).state?.display_value ?? ''),
+        workNotes: clampText(JSON.stringify((session.snowTask as any)._workNotes ?? ''), 1600),
+      } : null,
+      logHits,
+      topSeeds,
+      repos: session.product?.repos.map(r => `${r.owner}/${r.repo}`) ?? [],
+    };
+  };
+
+  const requestAssessment = async (question: string, agent: AiAgentSelection): Promise<{ assessment: string; source?: string; warning?: string }> => {
+    const body = buildRequestBody(question, agent);
+    if (!body) throw new Error('Missing ADO item context.');
+    const res = await fetch(`${BRIDGE}/api/ai-analyze/continue`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(120_000),
+    });
+    const raw = await res.text();
+    let data: { assessment?: string; error?: string; source?: string; warning?: string } = {};
+    try { data = raw ? JSON.parse(raw) : {}; } catch { data = { error: `Invalid AI response (HTTP ${res.status}).` }; }
+    if (!res.ok || data.error) {
+      const message = data?.error ?? `HTTP ${res.status}`;
+      throw new Error(message || 'AI request failed.');
+    }
+    return { assessment: data.assessment ?? '', source: data.source, warning: data.warning };
+  };
 
   const runAi = async () => {
     if (!session.adoItem) return;
     setRunning(true); setError(null); setResult(null); setAiSource(null); setAiWarning(null);
     try {
-      const f = session.adoItem.fields;
-      const logHits: Array<{file:string;line:number;seed:string;text:string}> = ((session.snowTask as any)?._logHits ?? [])
-        .slice(0, 35)
-        .map((h: any) => ({
-          file: String(h?.file ?? ''),
-          line: Number(h?.line ?? 0),
-          seed: String(h?.seed ?? ''),
-          text: clampText(h?.text ?? '', 240),
-        }));
-      const topSeeds: Record<string, number> = (session.snowTask as any)?._topSeeds ?? {};
-      const body = {
-        openaiKey: openaiKey || undefined,
-        githubPat: githubPat || undefined,
-        aiProvider: providerSelection,
-        aiModel: resolvedModelOverride || undefined,
-        aiAgent: agentSelection,
-        da: {
-          id: session.adoItem.id,
-          title: f['System.Title'],
-          areaPath: f['System.AreaPath'],
-          customer: String(f['Allscripts.Field.CustomerName'] ?? ''),
-          release: String(f['Allscripts.Field.ReportedinRelease'] ?? f['Allscripts.Field.SupportVersion'] ?? ''),
-          severity: String(f['Microsoft.VSTS.Common.Severity'] ?? ''),
-          description: clampText(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '', 1200),
-        },
-        snowTask: session.snowTask ? {
-          number: String((session.snowTask as any).number?.display_value ?? (session.snowTask as any).number ?? ''),
-          shortDescription: String((session.snowTask as any).short_description?.display_value ?? ''),
-          state: String((session.snowTask as any).state?.display_value ?? ''),
-          workNotes: clampText(JSON.stringify((session.snowTask as any)._workNotes ?? ''), 2400),
-        } : null,
-        logHits,
-        topSeeds,
-        repos: session.product?.repos.map(r => `${r.owner}/${r.repo}`) ?? [],
-        patternName: session.analysis?.codeAnalysis?.match(/Keyword pattern: "([^"]+)"/)?.[1],
-        patternFixDirection: normalizeDisplayText(session.analysis?.gap ?? ''),
-      };
-      const res = await fetch(`${BRIDGE}/api/ai-analyze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(120_000),
-      });
-      const raw = await res.text();
-      let data: { assessment?: string; error?: string; source?: string; warning?: string } = {};
-      try { data = raw ? JSON.parse(raw) : {}; } catch { data = { error: `Invalid AI response (HTTP ${res.status}).` }; }
-      if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
-      setResult(data.assessment ?? '');
+      const data = await requestAssessment(
+        session.analysis?.codeAnalysis?.match(/Keyword pattern: "([^"]+)"/)?.[1]
+          ? `${followUpQuestion.trim() || 'Summarize the current triage evidence.'}\n\nFocus on the most diagnostic signals and the strongest hypothesis.`
+          : (followUpQuestion.trim() || 'Summarize the current triage evidence.'),
+        agentSelection
+      );
+      setResult(data.assessment);
       setAiSource(data.source ?? null);
       setAiWarning(data.warning ?? null);
     } catch (e: any) {
@@ -1480,74 +1612,8 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
     if (!followUpQuestion.trim() || !session.adoItem) return;
     setFollowUpRunning(true); setFollowUpError(null); setFollowUpResult(null); setAiWarning(null);
     try {
-      const f = session.adoItem.fields;
-      const logHits: Array<{file:string;line:number;seed:string;text:string}> = ((session.snowTask as any)?._logHits ?? [])
-        .slice(0, 25)
-        .map((h: any) => ({
-          file: String(h?.file ?? ''),
-          line: Number(h?.line ?? 0),
-          seed: String(h?.seed ?? ''),
-          text: clampText(h?.text ?? '', 220),
-        }));
-      const topSeeds: Record<string, number> = (session.snowTask as any)?._topSeeds ?? {};
-      const history = chatHistory
-        .slice(-6)
-        .map((entry) => ({
-          question: clampText(entry.question, 260),
-          answer: clampText(entry.answer, 900),
-        }));
-      const body = {
-        openaiKey: openaiKey || undefined,
-        githubPat: githubPat || undefined,
-        aiProvider: providerSelection,
-        aiModel: resolvedModelOverride || undefined,
-        aiAgent: agentSelection,
-        question: clampText(followUpQuestion.trim(), 600),
-        history,
-        priorAssessment: clampText(result ?? session.analysis?.codeAnalysis ?? session.analysis?.gap ?? session.analysis?.l2Draft ?? '', 1800),
-        priorVerdict: session.analysis?.verdict ?? '',
-        priorConfidence: session.analysis?.confidence ?? '',
-        priorGap: clampText(session.analysis?.gap ?? '', 1000),
-        da: {
-          id: session.adoItem.id,
-          title: f['System.Title'],
-          areaPath: f['System.AreaPath'],
-          customer: String(f['Allscripts.Field.CustomerName'] ?? ''),
-          release: String(f['Allscripts.Field.ReportedinRelease'] ?? f['Allscripts.Field.SupportVersion'] ?? ''),
-          severity: String(f['Microsoft.VSTS.Common.Severity'] ?? ''),
-          description: clampText(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '', 1000),
-        },
-        snowTask: session.snowTask ? {
-          number: String((session.snowTask as any).number?.display_value ?? (session.snowTask as any).number ?? ''),
-          shortDescription: String((session.snowTask as any).short_description?.display_value ?? ''),
-          state: String((session.snowTask as any).state?.display_value ?? ''),
-          workNotes: clampText(JSON.stringify((session.snowTask as any)._workNotes ?? ''), 1600),
-        } : null,
-        logHits,
-        topSeeds,
-        repos: session.product?.repos.map(r => `${r.owner}/${r.repo}`) ?? [],
-      };
-      const res = await fetch(`${BRIDGE}/api/ai-analyze/continue`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(120_000),
-      });
-      const raw = await res.text();
-      let data: { assessment?: string; error?: string; source?: string; warning?: string } = {};
-      try { data = raw ? JSON.parse(raw) : {}; } catch { data = { error: `Invalid AI response (HTTP ${res.status}).` }; }
-      if (!res.ok || data.error) {
-        const message = data?.error ?? `HTTP ${res.status}`;
-        const isStaleBridgeRoute = /Unknown API route/i.test(message) || /Bridge may be outdated/i.test(message) || /outdated.*AI route/i.test(message);
-        const isTooLarge = res.status === 413 || /entity too large|payload too large|request too large/i.test(message);
-        const detail = isStaleBridgeRoute
-          ? 'Bridge is out of date for the new AI route. Restart or rebuild the bridge, then retry.'
-          : isTooLarge
-          ? 'Follow-up request is too large. Try a shorter question or clear old follow-up history and retry.'
-          : message || 'AI request failed. Check the bridge and AI backend configuration.';
-        throw new Error(detail);
-      }
-      const answer = data.assessment ?? '';
+      const data = await requestAssessment(followUpQuestion.trim(), agentSelection);
+      const answer = data.assessment;
       setFollowUpResult(answer);
       setChatHistory((prev) => [
         ...prev,
@@ -1560,6 +1626,46 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
       setFollowUpError(e.message);
     } finally {
       setFollowUpRunning(false);
+    }
+  };
+
+  const runCompareAgents = async () => {
+    if (!session.adoItem || !followUpQuestion.trim()) return;
+    setCompareRunning(true);
+    setCompareError(null);
+    setCompareResults(null);
+    try {
+      const question = followUpQuestion.trim();
+      const comparisonAgents: AiAgentSelection[] = [agentSelection, compareAgent];
+      const responses = await Promise.all(
+        comparisonAgents.map(async (agent) => {
+          try {
+            const data = await requestAssessment(question, agent);
+            return {
+              agent,
+              label: agentLabel(agent),
+              assessment: data.assessment,
+              source: data.source ?? null,
+              warning: data.warning ?? null,
+              error: null,
+            } satisfies AgentComparisonResult;
+          } catch (err: any) {
+            return {
+              agent,
+              label: agentLabel(agent),
+              assessment: '',
+              source: null,
+              warning: null,
+              error: err?.message ?? 'AI request failed',
+            } satisfies AgentComparisonResult;
+          }
+        })
+      );
+      setCompareResults(responses);
+    } catch (err: any) {
+      setCompareError(err?.message ?? 'Compare failed');
+    } finally {
+      setCompareRunning(false);
     }
   };
 
@@ -1671,6 +1777,91 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
         {agentOptions.find((a) => a.id === agentSelection)?.description ?? 'Select an agent mode tuned for your triage objective.'}
       </p>
 
+      <div className="rounded-lg border border-gray-800 bg-gray-950/60 p-3 space-y-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Prompt presets</p>
+          <label className="text-[11px] text-gray-500 flex items-center gap-2">
+            <span>Search</span>
+            <input
+              value={templateSearch}
+              onChange={(e) => setTemplateSearch(e.target.value)}
+              placeholder="filter presets"
+              className="w-36 bg-gray-950 border border-gray-700 rounded px-2 py-1 text-[11px] text-gray-200 focus:outline-none focus:border-gray-500"
+            />
+          </label>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {filteredTemplates.map((template) => (
+            <button
+              key={template.label}
+              type="button"
+              onClick={() => applyFollowUpTemplate(template)}
+              className="text-[10px] px-2.5 py-1 rounded border border-gray-700 bg-gray-950/60 text-gray-300 hover:border-gray-500 hover:text-white"
+            >
+              {template.label}
+            </button>
+          ))}
+          {filteredTemplates.length === 0 && (
+            <span className="text-[11px] text-gray-500">No presets match that search.</span>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-gray-800 bg-gray-950/60 p-3 space-y-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Compare agents</p>
+          <label className="text-[11px] text-gray-500 flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={compareMode}
+              onChange={(e) => setCompareMode(e.target.checked)}
+              className="accent-gray-300"
+            />
+            Side-by-side mode
+          </label>
+        </div>
+        {compareMode && (
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+            <select
+              value={compareAgent}
+              onChange={(e) => setCompareAgent(e.target.value as AiAgentSelection)}
+              className="w-full bg-gray-950 border border-gray-700 rounded px-2.5 py-2 text-xs text-gray-200 focus:outline-none focus:border-gray-500"
+            >
+              {agentOptions.filter((opt) => opt.id !== agentSelection).map((opt) => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={runCompareAgents}
+              disabled={compareRunning || !followUpQuestion.trim() || !session.adoItem}
+              className="text-xs px-3 py-2 rounded border border-gray-700 bg-gray-900 text-gray-200 hover:bg-gray-800 disabled:opacity-40"
+            >
+              {compareRunning ? 'Comparing...' : 'Compare agents'}
+            </button>
+          </div>
+        )}
+        {compareError && <p className="text-xs text-red-400 font-mono whitespace-pre-wrap">Error: {compareError}</p>}
+        {compareResults && compareResults.length > 0 && (
+          <div className="grid gap-2 lg:grid-cols-2">
+            {compareResults.map((item) => (
+              <div key={item.agent} className="rounded border border-gray-700 bg-gray-950/60 p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <p className="text-xs font-semibold text-gray-300">{item.label}</p>
+                  {item.source && <span className="text-[10px] text-gray-500 uppercase tracking-wide">{item.source}</span>}
+                </div>
+                {item.error ? (
+                  <p className="text-xs text-red-400 whitespace-pre-wrap">{item.error}</p>
+                ) : (
+                  <pre className="text-xs text-gray-200 whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-auto">{item.assessment}</pre>
+                )}
+                {item.warning && <p className="text-[11px] text-yellow-300 whitespace-pre-wrap">{item.warning}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {providerSelection !== 'auto' && !selectedProviderEnabled && (
         <p className="text-xs text-yellow-400">Selected provider is not ready. Configure credentials/runtime or switch provider.</p>
       )}
@@ -1737,7 +1928,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
           value={followUpQuestion}
           onChange={(e) => setFollowUpQuestion(e.target.value)}
           rows={3}
-          placeholder="Ask a follow-up: What should I validate next? Why is this likely not a product defect? What logs are most important?"
+          placeholder="Ask a follow-up or use the presets above to drive the analysis."
           className="w-full bg-gray-950 border border-gray-700 rounded px-3 py-2 text-xs text-gray-200 resize-y focus:outline-none focus:border-altera-teal/60"
         />
         <div className="flex justify-end">

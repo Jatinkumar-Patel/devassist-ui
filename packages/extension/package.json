@@ -1,0 +1,68 @@
+{
+  "name": "devassist",
+  "publisher": "jatinkumar-patel",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/extension.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json --watch",
+    "test": "echo \"No extension tests yet\""
+  },
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "activationEvents": [
+    "onUri",
+    "onChatParticipant:devassist.triage",
+    "onCommand:devassist.openChat",
+    "onCommand:devassist.selectModel",
+    "onCommand:devassist.selectAgent",
+    "onCommand:devassist.showStatus"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "devassist.openChat",
+        "title": "DevAssist: Open Triage Chat"
+      },
+      {
+        "command": "devassist.selectModel",
+        "title": "DevAssist: Select AI Model"
+      },
+      {
+        "command": "devassist.selectAgent",
+        "title": "DevAssist: Select AI Agent"
+      },
+      {
+        "command": "devassist.showStatus",
+        "title": "DevAssist: Show AI Status"
+      }
+    ],
+    "configuration": {
+      "title": "DevAssist",
+      "properties": {
+        "devassist.defaultAgent": {
+          "type": "string",
+          "default": "triage-l2",
+          "enum": [
+            "triage-l2",
+            "root-cause",
+            "log-forensics",
+            "l2-commentary"
+          ],
+          "description": "Default DevAssist agent mode used by the VS Code chat participant."
+        }
+      }
+    }
+  },
+  "files": [
+    "dist/"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.96.0",
+    "typescript": "^5.3.3"
+  }
+}

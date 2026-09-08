@@ -1,5 +1,23 @@
 # DevAssist UI
 
+## VS Code Host Mode
+
+DevAssist can now run as a VS Code extension that inherits the editor's available language models and exposes DevAssist as a chat participant.
+
+Commands:
+1. `DevAssist: Open Triage Chat`
+2. `DevAssist: Select AI Model`
+3. `DevAssist: Select AI Agent`
+4. `DevAssist: Show AI Status`
+
+Build the extension workspace with:
+
+```powershell
+npm run build:extension
+```
+
+In VS Code chat, use `@devassist.triage` and the extension will use the model currently selected in VS Code.
+
 DevAssist UI supports two deployment modes:
 1. Static end-user app with a managed bridge server (recommended for enterprise rollout)
 2. Local developer mode with local bridge + local SPA

@@ -260,8 +260,8 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
               {session.cacheMeta?.source === 'cache' && <Badge label="Analysis" value="cached reuse" />}
               {clarityGaps !== undefined && (
                 clarityGaps.length === 0
-                  ? <span className="bg-emerald-950 border border-emerald-800 rounded px-2 py-0.5 text-emerald-300">Clarity OK</span>
-                  : <span className="bg-yellow-950 border border-yellow-800 rounded px-2 py-0.5 text-yellow-300">Gaps: {clarityGaps.length}</span>
+                  ? <span className="bg-gray-900 border border-gray-700 rounded px-2 py-0.5 text-gray-300">Clarity OK</span>
+                  : <span className="bg-gray-900 border border-gray-700 rounded px-2 py-0.5 text-gray-300">Gaps: {clarityGaps.length}</span>
               )}
             </div>
             {(() => {
@@ -272,7 +272,7 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
                 <div className="flex flex-wrap gap-1 text-xs mt-1.5">
                   <span className="text-gray-500">Linked:</span>
                   {ids.map(id => (
-                    <span key={id} className="bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 font-mono text-altera-teal">{id}</span>
+                    <span key={id} className="bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 font-mono text-gray-300">{id}</span>
                   ))}
                 </div>
               );
@@ -281,7 +281,7 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
               <div className="flex flex-wrap gap-1 text-xs mt-1.5">
                 <span className="text-gray-500">Release Filter:</span>
                 {session.selectedReportedReleases.map((release) => (
-                  <span key={release} className="bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 font-mono text-cyan-300">{release}</span>
+                  <span key={release} className="bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 font-mono text-gray-300">{release}</span>
                 ))}
               </div>
             )}
@@ -291,7 +291,7 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
                   <div className="flex flex-wrap gap-1 text-xs">
                     <span className="text-gray-500">Evidence Product Scope:</span>
                     {mappedSnowProducts.map((value) => (
-                      <span key={`snow-product-${value}`} className="bg-cyan-950/40 border border-cyan-800/70 rounded px-1.5 py-0.5 text-cyan-200">
+                      <span key={`snow-product-${value}`} className="bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-300">
                         {value}
                       </span>
                     ))}
@@ -301,7 +301,7 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
                   <div className="flex flex-wrap gap-1 text-xs">
                     <span className="text-gray-500">Evidence Assignment Group Scope:</span>
                     {mappedAssignmentGroups.map((value) => (
-                      <span key={`snow-group-${value}`} className="bg-indigo-950/40 border border-indigo-800/70 rounded px-1.5 py-0.5 text-indigo-200">
+                      <span key={`snow-group-${value}`} className="bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-gray-300">
                         {value}
                       </span>
                     ))}
@@ -368,13 +368,13 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
       )}
 
       {session.status === 'ready' && snowBlockedReason && (
-        <div className="rounded-lg border border-amber-800/60 bg-amber-950/20 p-4 space-y-2">
-          <div className="flex items-center gap-2 text-sm text-amber-300">
+        <div className="rounded-lg border border-gray-800 bg-gray-950/70 p-4 space-y-2">
+          <div className="flex items-center gap-2 text-sm text-gray-300">
             <AlertTriangle size={14} className="shrink-0" />
             <span className="font-medium">SNOW artifacts unavailable</span>
           </div>
-          <p className="text-xs text-amber-100/90">{snowBlockedReason}</p>
-          <p className="text-xs text-amber-200/70">Expected impact: attachment list stays empty and log scan cannot run until SNOW access is restored.</p>
+          <p className="text-xs text-gray-400">{snowBlockedReason}</p>
+          <p className="text-xs text-gray-500">Expected impact: attachment list stays empty and log scan cannot run until SNOW access is restored.</p>
         </div>
       )}
 
@@ -398,14 +398,12 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
 
       {/* Clarity gaps (if any) */}
       {clarityGaps !== undefined && clarityGaps.length > 0 && (
-        <div className="rounded-lg border border-yellow-800/60 bg-yellow-950/20 p-3">
+        <div className="rounded-lg border border-gray-800 bg-gray-950/70 p-3">
           <div className="flex items-center gap-1.5 font-medium mb-1.5 text-sm">
-            <AlertTriangle size={13} className="text-yellow-400" />
-            <span className="text-yellow-300">Info gaps ({clarityGaps.length}) — ask customer</span>
+            <AlertTriangle size={13} className="text-gray-400" />
+            <span className="text-gray-300">Info gaps ({clarityGaps.length}) — ask customer</span>
           </div>
-          {clarityGaps.map((g, i) => (
-            <p key={i} className="text-xs text-yellow-200 ml-5">• {g}</p>
-          ))}
+          {clarityGaps.map((g, i) => <p key={i} className="text-xs text-gray-500 ml-5">• {g}</p>)}
         </div>
       )}
 

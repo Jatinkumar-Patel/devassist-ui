@@ -94,23 +94,23 @@ interface Props {
 }
 
 const CATEGORY_CONFIG = {
-  error:   { label: 'Errors & Fatals',       icon: <AlertCircle size={13} />, color: 'text-red-400 border-red-800 bg-red-950/20' },
-  warning: { label: 'Warnings & Timeouts',   icon: <AlertTriangle size={13} />, color: 'text-yellow-400 border-yellow-800 bg-yellow-950/20' },
-  lock:    { label: 'Lock Contention',        icon: <Lock size={13} />, color: 'text-orange-400 border-orange-800 bg-orange-950/20' },
-  ops:     { label: 'Patient Operations',     icon: <Activity size={13} />, color: 'text-blue-400 border-blue-800 bg-blue-950/20' },
-  other:   { label: 'Other',                 icon: <FileSearch size={13} />, color: 'text-gray-400 border-gray-700 bg-gray-800' },
+  error:   { label: 'Errors & Fatals',       icon: <AlertCircle size={13} />, color: 'text-gray-300 border-gray-800 bg-gray-950/70' },
+  warning: { label: 'Warnings & Timeouts',   icon: <AlertTriangle size={13} />, color: 'text-gray-300 border-gray-800 bg-gray-950/70' },
+  lock:    { label: 'Lock Contention',        icon: <Lock size={13} />, color: 'text-gray-300 border-gray-800 bg-gray-950/70' },
+  ops:     { label: 'Patient Operations',     icon: <Activity size={13} />, color: 'text-gray-300 border-gray-800 bg-gray-950/70' },
+  other:   { label: 'Other',                 icon: <FileSearch size={13} />, color: 'text-gray-300 border-gray-800 bg-gray-950/70' },
 };
 
 const SEVERITY_COLOR = {
-  critical: 'border-red-700 bg-red-950/30 text-red-300',
-  high:     'border-orange-700 bg-orange-950/20 text-orange-300',
-  medium:   'border-yellow-700 bg-yellow-950/20 text-yellow-300',
+  critical: 'border-gray-800 bg-gray-950/70 text-gray-300',
+  high:     'border-gray-800 bg-gray-950/70 text-gray-300',
+  medium:   'border-gray-800 bg-gray-950/70 text-gray-300',
 };
 
 const DIAGNOSTIC_CONFIDENCE_COLOR = {
-  high: 'border-emerald-700/60 bg-emerald-950/30 text-emerald-200',
-  medium: 'border-yellow-700/60 bg-yellow-950/30 text-yellow-200',
-  low: 'border-gray-700 bg-gray-900/70 text-gray-200',
+  high: 'border-gray-800 bg-gray-950/70 text-gray-200',
+  medium: 'border-gray-800 bg-gray-950/70 text-gray-200',
+  low: 'border-gray-800 bg-gray-950/70 text-gray-200',
 };
 
 interface FileAnalysisCard {

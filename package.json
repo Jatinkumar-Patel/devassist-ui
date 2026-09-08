@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "concurrently -n bridge,spa -c cyan,magenta \"npm run dev --workspace=packages/bridge\" \"npm run dev --workspace=packages/spa\"",
     "build": "npm run build --workspace=packages/spa",
+    "build:extension": "npm run build --workspace=packages/extension",
+    "dev:extension": "npm run watch --workspace=packages/extension",
     "test": "npm run test --workspace=packages/bridge && npm run test --workspace=packages/spa && npm run verify:sections",
     "test:bridge": "npm run test --workspace=packages/bridge",
     "test:spa": "npm run test --workspace=packages/spa",
