@@ -1243,6 +1243,12 @@ type FollowUpHistoryEntry = {
 type AiStatus = {
   ollama: boolean;
   ollamaModels: string[];
+  modelCatalog?: {
+    'github-models'?: string[];
+    openai?: string[];
+    ollama?: string[];
+  };
+  agentModes?: Array<{ id: AiAgentSelection; label: string; description: string }>;
   defaultModels?: {
     'github-models'?: string;
     openai?: string;
@@ -1254,6 +1260,8 @@ type AiStatus = {
 };
 
 type AiProviderSelection = 'auto' | 'github-models' | 'openai' | 'ollama';
+type AiAgentSelection = 'triage-l2' | 'root-cause' | 'log-forensics' | 'l2-commentary';
+type AiModelSelection = 'provider-default' | 'custom' | string;
 
 function clampText(value: unknown, maxChars: number): string {
   const text = normalizeDisplayText(String(value ?? ''));
@@ -1271,7 +1279,9 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
   const [ollamaOk, setOllamaOk] = useState<boolean | null>(null);
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
   const [providerSelection, setProviderSelection] = useState<AiProviderSelection>('auto');
-  const [modelInput, setModelInput] = useState('');
+  const [agentSelection, setAgentSelection] = useState<AiAgentSelection>('triage-l2');
+  const [modelSelection, setModelSelection] = useState<AiModelSelection>('provider-default');
+  const [customModelInput, setCustomModelInput] = useState('');
   const [followUpQuestion, setFollowUpQuestion] = useState('');
   const [followUpRunning, setFollowUpRunning] = useState(false);
   const [followUpResult, setFollowUpResult] = useState<string | null>(null);
@@ -1320,11 +1330,32 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
     { value: 'ollama', label: 'Ollama (local)', enabled: Boolean(aiStatus?.ollama) },
   ];
   const selectedProviderEnabled = providerOptions.find((opt) => opt.value === providerSelection)?.enabled ?? true;
+  const agentOptions = aiStatus?.agentModes?.length
+    ? aiStatus.agentModes
+    : [
+        { id: 'triage-l2' as AiAgentSelection, label: 'L2 Triage Agent', description: 'Balanced triage mode' },
+        { id: 'root-cause' as AiAgentSelection, label: 'Root Cause Agent', description: 'Cause-chain mode' },
+        { id: 'log-forensics' as AiAgentSelection, label: 'Log Forensics Agent', description: 'Stack trace and timeline mode' },
+        { id: 'l2-commentary' as AiAgentSelection, label: 'L2 Commentary Agent', description: 'Stakeholder-ready summary mode' },
+      ];
   const fallbackModel =
     providerSelection === 'github-models' ? (aiStatus?.defaultModels?.['github-models'] ?? 'gpt-4o-mini') :
     providerSelection === 'openai' ? (aiStatus?.defaultModels?.openai ?? 'gpt-4o-mini') :
     providerSelection === 'ollama' ? (aiStatus?.defaultModels?.ollama ?? aiStatus?.ollamaModels?.[0] ?? 'llama3.2') :
     'provider default';
+  const providerCatalog = providerSelection === 'github-models'
+    ? (aiStatus?.modelCatalog?.['github-models'] ?? [])
+    : providerSelection === 'openai'
+      ? (aiStatus?.modelCatalog?.openai ?? [])
+      : providerSelection === 'ollama'
+        ? (aiStatus?.modelCatalog?.ollama ?? aiStatus?.ollamaModels ?? [])
+        : [];
+  const modelOptions = ['provider-default', ...providerCatalog, 'custom'];
+  const resolvedModelOverride = modelSelection === 'provider-default'
+    ? ''
+    : modelSelection === 'custom'
+      ? customModelInput.trim()
+      : modelSelection;
 
   const runAi = async () => {
     if (!session.adoItem) return;
@@ -1344,7 +1375,8 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
         openaiKey: openaiKey || undefined,
         githubPat: githubPat || undefined,
         aiProvider: providerSelection,
-        aiModel: modelInput.trim() || undefined,
+        aiModel: resolvedModelOverride || undefined,
+        aiAgent: agentSelection,
         da: {
           id: session.adoItem.id,
           title: f['System.Title'],
@@ -1413,7 +1445,8 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
         openaiKey: openaiKey || undefined,
         githubPat: githubPat || undefined,
         aiProvider: providerSelection,
-        aiModel: modelInput.trim() || undefined,
+        aiModel: resolvedModelOverride || undefined,
+        aiAgent: agentSelection,
         question: clampText(followUpQuestion.trim(), 600),
         history,
         priorAssessment: clampText(result ?? session.analysis?.codeAnalysis ?? session.analysis?.gap ?? session.analysis?.l2Draft ?? '', 1800),
@@ -1517,12 +1550,15 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
         </div>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className="grid gap-2 sm:grid-cols-3">
         <label className="text-[11px] text-gray-400 space-y-1">
           <span className="uppercase tracking-wide">LLM provider</span>
           <select
             value={providerSelection}
-            onChange={(e) => setProviderSelection(e.target.value as AiProviderSelection)}
+            onChange={(e) => {
+              setProviderSelection(e.target.value as AiProviderSelection);
+              setModelSelection('provider-default');
+            }}
             className="w-full bg-gray-950 border border-gray-700 rounded px-2.5 py-2 text-xs text-gray-200 focus:outline-none focus:border-cyan-500"
           >
             {providerOptions.map((opt) => (
@@ -1534,15 +1570,49 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
         </label>
 
         <label className="text-[11px] text-gray-400 space-y-1">
-          <span className="uppercase tracking-wide">Model (optional override)</span>
+          <span className="uppercase tracking-wide">LLM model</span>
+          <select
+            value={modelSelection}
+            onChange={(e) => setModelSelection(e.target.value as AiModelSelection)}
+            className="w-full bg-gray-950 border border-gray-700 rounded px-2.5 py-2 text-xs text-gray-200 focus:outline-none focus:border-cyan-500"
+          >
+            {modelOptions.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt === 'provider-default' ? `Provider default (${fallbackModel})` : opt === 'custom' ? 'Custom model...' : opt}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="text-[11px] text-gray-400 space-y-1">
+          <span className="uppercase tracking-wide">Agent mode</span>
+          <select
+            value={agentSelection}
+            onChange={(e) => setAgentSelection(e.target.value as AiAgentSelection)}
+            className="w-full bg-gray-950 border border-gray-700 rounded px-2.5 py-2 text-xs text-gray-200 focus:outline-none focus:border-cyan-500"
+          >
+            {agentOptions.map((opt) => (
+              <option key={opt.id} value={opt.id}>{opt.label}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {modelSelection === 'custom' && (
+        <label className="text-[11px] text-gray-400 space-y-1 block">
+          <span className="uppercase tracking-wide">Custom model name</span>
           <input
-            value={modelInput}
-            onChange={(e) => setModelInput(e.target.value)}
+            value={customModelInput}
+            onChange={(e) => setCustomModelInput(e.target.value)}
             placeholder={fallbackModel}
             className="w-full bg-gray-950 border border-gray-700 rounded px-2.5 py-2 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-cyan-500"
           />
         </label>
-      </div>
+      )}
+
+      <p className="text-[11px] text-gray-500">
+        {agentOptions.find((a) => a.id === agentSelection)?.description ?? 'Select an agent mode tuned for your triage objective.'}
+      </p>
 
       {providerSelection !== 'auto' && !selectedProviderEnabled && (
         <p className="text-xs text-yellow-400">Selected provider is not ready. Configure credentials/runtime or switch provider.</p>

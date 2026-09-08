@@ -18,6 +18,7 @@ interface AnalysisRequest {
   openaiKey?: string;   // user's personal OpenAI API key
   aiProvider?: 'auto' | 'github-models' | 'openai' | 'ollama';
   aiModel?: string;
+  aiAgent?: AiAgentSelection;
   da: {
     id: number;
     title: string;
@@ -50,9 +51,22 @@ interface FollowUpRequest extends AnalysisRequest {
 }
 
 type ProviderSelection = 'auto' | 'github-models' | 'openai' | 'ollama';
+type AiAgentSelection = 'triage-l2' | 'root-cause' | 'log-forensics' | 'l2-commentary';
+
+const AGENT_MODE_CATALOG: Array<{ id: AiAgentSelection; label: string; description: string }> = [
+  { id: 'triage-l2', label: 'L2 Triage Agent', description: 'Balanced triage with verdict, confidence, and next step.' },
+  { id: 'root-cause', label: 'Root Cause Agent', description: 'Prioritizes causality chain and failure path isolation.' },
+  { id: 'log-forensics', label: 'Log Forensics Agent', description: 'Prioritizes stack traces, timelines, and repeated signatures.' },
+  { id: 'l2-commentary', label: 'L2 Commentary Agent', description: 'Generates concise stakeholder-ready L2 summary text.' },
+];
+
+const MODEL_CATALOG: Record<'github-models' | 'openai', string[]> = {
+  'github-models': ['gpt-4o-mini', 'gpt-4.1-mini', 'gpt-4.1'],
+  openai: ['gpt-4o-mini', 'gpt-4.1-mini', 'gpt-4.1'],
+};
 
 // System prompt built from references/reasoning-framework.md
-const SYSTEM_PROMPT = `You are a Sunrise product support engineer performing Level-2 triage on a DevAssist work item.
+const BASE_SYSTEM_PROMPT = `You are a Sunrise product support engineer performing Level-2 triage on a DevAssist work item.
 Use the provided DA fields, SNOW evidence, and HWS log evidence to produce a structured assessment.
 
 Follow this exact output format:
@@ -86,6 +100,27 @@ Rules:
 - No PHI. Patient scope: all/specific/random/unknown only.
 - If log timing shows server completed quickly, the hang is CLIENT-SIDE, not server.
 - If LockWithTimeout appears with long hold times, focus on IIS web-garden worker count.`;
+
+function requestedAgent(value: unknown): AiAgentSelection {
+  const normalized = String(value ?? 'triage-l2').trim().toLowerCase();
+  if (normalized === 'root-cause') return 'root-cause';
+  if (normalized === 'log-forensics') return 'log-forensics';
+  if (normalized === 'l2-commentary') return 'l2-commentary';
+  return 'triage-l2';
+}
+
+function buildSystemPromptForAgent(agent: AiAgentSelection): string {
+  if (agent === 'root-cause') {
+    return `${BASE_SYSTEM_PROMPT}\n\nAgent mode: Root Cause Agent\nPriority:\n- Build explicit observed -> component -> cause chain.\n- Separate trigger, failure mechanism, and user-visible impact.\n- Prefer one strongest hypothesis and two falsification checks.`;
+  }
+  if (agent === 'log-forensics') {
+    return `${BASE_SYSTEM_PROMPT}\n\nAgent mode: Log Forensics Agent\nPriority:\n- Weight stack traces, repeated signatures, and timeline delays over narrative assumptions.\n- Quote exact seed names and exception signatures.\n- Call out missing timestamps, correlation IDs, or window gaps explicitly.`;
+  }
+  if (agent === 'l2-commentary') {
+    return `${BASE_SYSTEM_PROMPT}\n\nAgent mode: L2 Commentary Agent\nPriority:\n- Produce concise stakeholder-ready language with evidence-backed statements only.\n- Always include observed vs expected and one owner-ready next action.\n- Avoid generic filler (e.g., "insufficient evidence") when any concrete signal exists.`;
+  }
+  return `${BASE_SYSTEM_PROMPT}\n\nAgent mode: L2 Triage Agent\nPriority:\n- Balanced technical triage with clear verdict, confidence, blind spots, and next step.`;
+}
 
 function buildUserPrompt(req: AnalysisRequest): string {
   const logSample = req.logHits
@@ -332,6 +367,12 @@ aiAnalysisRouter.get('/status', async (_req: Request, res: Response) => {
   res.json({
     ollama,
     ollamaModels: models,
+    modelCatalog: {
+      'github-models': MODEL_CATALOG['github-models'],
+      openai: MODEL_CATALOG.openai,
+      ollama: models,
+    },
+    agentModes: AGENT_MODE_CATALOG,
     defaultModels: {
       'github-models': MODEL_GH,
       openai: MODEL_OAPI,
@@ -395,9 +436,10 @@ async function runAiProviderSelection(
 // POST /api/ai-analyze — auto-selects: Ollama (local) → OpenAI → GitHub Models
 aiAnalysisRouter.post('/', async (req: Request, res: Response) => {
   const body = req.body as AnalysisRequest;
+  const agent = requestedAgent(body.aiAgent);
 
   const messages = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: buildSystemPromptForAgent(agent) },
     { role: 'user',   content: buildUserPrompt(body) },
   ];
 
@@ -417,11 +459,12 @@ aiAnalysisRouter.post('/continue', async (req: Request, res: Response) => {
   if (!body.question || !body.question.trim()) {
     return res.status(400).json({ error: 'Question is required.' });
   }
+  const agent = requestedAgent(body.aiAgent);
 
   const messages = [
     {
       role: 'system',
-      content: 'You are continuing a DevAssist investigation for the same work item. Use the prior assessment, evidence, and user question. Answer directly, stay grounded in facts, and clearly state uncertainty or missing evidence when needed.',
+      content: `${buildSystemPromptForAgent(agent)}\n\nYou are continuing a DevAssist investigation for the same work item. Use the prior assessment, evidence, and user question. Answer directly, stay grounded in facts, and clearly state uncertainty or missing evidence when needed.`,
     },
     { role: 'user', content: buildFollowUpPrompt(body) },
   ];
