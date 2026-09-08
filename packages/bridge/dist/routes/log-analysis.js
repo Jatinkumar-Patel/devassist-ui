@@ -83,6 +83,17 @@ const GREP_SEEDS = [
     'StackOverflow',
     'NullReferenceException',
     'ArgumentException',
+    'SecurityTokenExpiredException',
+    'token expired',
+    'LDAP bind failed',
+    'enterprise directory',
+    'SendNotification',
+    'EncryptData',
+    'duplicate recipient',
+    'duplicate display name',
+    'missing target',
+    'unmapped',
+    'SMTP',
 ];
 const SEED_CATEGORY = {
     'ERROR': 'error',
@@ -102,6 +113,17 @@ const SEED_CATEGORY = {
     'StackOverflow': 'error',
     'NullReferenceException': 'error',
     'ArgumentException': 'error',
+    'SecurityTokenExpiredException': 'error',
+    'token expired': 'warning',
+    'LDAP bind failed': 'error',
+    'enterprise directory': 'ops',
+    'SendNotification': 'ops',
+    'EncryptData': 'ops',
+    'duplicate recipient': 'warning',
+    'duplicate display name': 'warning',
+    'missing target': 'warning',
+    'unmapped': 'warning',
+    'SMTP': 'ops',
     'WARNING': 'warning',
     'warn': 'warning',
     'progress indicator has timed out': 'warning',
@@ -249,11 +271,31 @@ function normalizeOcrText(rawText) {
 function normalizedForSeedMatch(value) {
     return value.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
+function normalizeDiagnosticText(value) {
+    return value
+        .replace(/\bexcepfion\b/gi, 'exception')
+        .replace(/\bsecurit[yv]token(?:expi?red|expire[d]?)\b/gi, 'securitytokenexpired')
+        .replace(/\bunauthori[sz]ed\b/gi, 'unauthorized')
+        .replace(/\bldap\s*bind\s*fa[i1]led\b/gi, 'ldap bind failed')
+        .replace(/\bti\s*me\s*out\b/gi, 'timeout')
+        .replace(/\berr[o0]r\b/gi, 'error')
+        .replace(/\bdup[li1]cate\b/gi, 'duplicate');
+}
+const REGEX_SIGNAL_SEEDS = [
+    { seed: 'SecurityTokenExpiredException', regex: /security\s*token\s*expired|securitytokenexpired|token\s*expired/i, category: 'error' },
+    { seed: 'LDAP bind failed', regex: /ldap\s*bind\s*failed|enterprise\s*directory\s*(auth|bind|failure|error)/i, category: 'error' },
+    { seed: 'duplicate recipient', regex: /duplicate\s*(recipient|patient|person)|same\s*patient\s*multiple/i, category: 'warning' },
+    { seed: 'missing target', regex: /missing\s*target|unmapped|mapping\s*gap/i, category: 'warning' },
+    { seed: 'SendNotification', regex: /send\s*notification/i, category: 'ops' },
+    { seed: 'EncryptData', regex: /encrypt\s*(data|aes)|crypto/i, category: 'ops' },
+    { seed: 'SMTP', regex: /smtp|mail\s*relay/i, category: 'ops' },
+];
 function extractKeywordHitsFromText(text, fileName) {
     const hits = [];
     if (!text.trim())
         return hits;
-    const lines = text.split('\n');
+    const normalizedText = normalizeDiagnosticText(text);
+    const lines = normalizedText.split('\n');
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i] ?? '';
         const lower = line.toLowerCase();
@@ -271,14 +313,26 @@ function extractKeywordHitsFromText(text, fileName) {
                 break;
             }
         }
+        for (const signal of REGEX_SIGNAL_SEEDS) {
+            if (!signal.regex.test(line))
+                continue;
+            hits.push({
+                file: fileName,
+                line: i + 1,
+                text: line.trim().slice(0, 300),
+                seed: signal.seed,
+                category: signal.category,
+            });
+            break;
+        }
     }
     // Fallback for OCR text where spaces/punctuation split key phrases unpredictably.
-    const normalizedText = normalizedForSeedMatch(text);
+    const normalizedSeedText = normalizedForSeedMatch(normalizedText);
     for (const seed of GREP_SEEDS) {
         const normalizedSeed = normalizedForSeedMatch(seed);
         if (!normalizedSeed || normalizedSeed.length < 6)
             continue;
-        if (!normalizedText.includes(normalizedSeed))
+        if (!normalizedSeedText.includes(normalizedSeed))
             continue;
         if (hits.some((h) => h.seed === seed))
             continue;
@@ -317,11 +371,17 @@ async function analyzeImage(filePath, fileName) {
             // ignore and try next OCR mode
         }
     }
-    const text = bestText || '';
+    const text = normalizeDiagnosticText(bestText || '');
     const findings = [];
     const preview = text.slice(0, 240);
     if (text) {
         findings.push(`OCR extracted ${text.length} characters`);
+        const signalHits = REGEX_SIGNAL_SEEDS
+            .filter((signal) => signal.regex.test(text))
+            .map((signal) => signal.seed);
+        if (signalHits.length) {
+            findings.push(`OCR high-signal matches: ${Array.from(new Set(signalHits)).slice(0, 5).join(', ')}`);
+        }
         if (/duplicate|same patient|already exists|multiple records|not found|error|exception|timeout|failed|missing|invalid|denied|cannot|unable|schedule|patient|record|expiration/i.test(text)) {
             findings.push('Image text contains strong workflow- or error-signaling keywords');
         }
@@ -490,6 +550,24 @@ function dedupeStackTraces(traces, maxCount) {
     }
     return out;
 }
+function detectHeaderRowIndex(rows) {
+    const aliases = ['displayname', 'firstname', 'lastname', 'personguid', 'guid', 'nametypecode', 'status', 'active', 'oldvalue', 'newvalue'];
+    const scoreRow = (row) => {
+        const normalized = row.map((c) => String(c ?? '').toLowerCase().replace(/[^a-z0-9]/g, ''));
+        return aliases.reduce((score, alias) => score + (normalized.includes(alias) ? 1 : 0), 0);
+    };
+    let bestIndex = 0;
+    let bestScore = -1;
+    const maxProbe = Math.min(rows.length, 12);
+    for (let i = 0; i < maxProbe; i++) {
+        const score = scoreRow(rows[i] ?? []);
+        if (score > bestScore) {
+            bestScore = score;
+            bestIndex = i;
+        }
+    }
+    return bestScore >= 2 ? bestIndex : 0;
+}
 async function parseSpreadsheet(filePath, fileName) {
     const hits = [];
     const summaries = [];
@@ -524,17 +602,18 @@ async function parseSpreadsheet(filePath, fileName) {
             .map((row) => row.map((v) => String(v ?? '').trim()))
             .filter((cells) => cells.some((c) => c.length > 0));
         if (visibleRows.length > 0) {
-            const headers = visibleRows[0]
+            const headerRowIndex = detectHeaderRowIndex(visibleRows);
+            const headerRow = visibleRows[headerRowIndex] ?? visibleRows[0] ?? [];
+            const headers = headerRow
                 .map((x) => String(x ?? '').trim())
                 .filter(Boolean)
                 .slice(0, 20);
             const columnCount = Math.max(...visibleRows.map((r) => r.length));
             const sampleRows = visibleRows
-                .slice(1, 6)
+                .slice(Math.min(headerRowIndex + 1, visibleRows.length), Math.min(headerRowIndex + 6, visibleRows.length))
                 .map((r) => r.slice(0, 20).join(' | ').slice(0, 300));
-            const headerRow = visibleRows[0].map((x) => String(x ?? '').trim());
             const headerMap = new Map();
-            headerRow.forEach((h, idx) => {
+            headerRow.map((x) => String(x ?? '').trim()).forEach((h, idx) => {
                 if (h)
                     headerMap.set(norm(h), idx);
             });
@@ -554,14 +633,14 @@ async function parseSpreadsheet(filePath, fileName) {
             const idxNameType = indexOfAny(['NameTypeCode']);
             const idxActive = indexOfAny(['Active']);
             const idxStatus = indexOfAny(['Status']);
-            const dataRows = visibleRows.slice(1).filter((row) => {
+            const dataRows = visibleRows.slice(headerRowIndex + 1).filter((row) => {
                 if (!row.length)
                     return false;
                 const joined = row.slice(0, Math.min(row.length, 10)).map((x) => String(x ?? '').trim().toLowerCase()).join('|');
                 // Skip repeated header lines embedded in exports.
                 return !(joined.includes('siteid') && joined.includes('repflags') && (joined.includes('firstname') || joined.includes('displayname')));
             });
-            const conversionInsight = analyzeConversionRows(fileName, sheetName, headerRow, dataRows);
+            const conversionInsight = analyzeConversionRows(fileName, sheetName, headerRow.map((x) => String(x ?? '').trim()), dataRows);
             const displayNameCounts = new Map();
             const personGuidSet = new Set();
             const guidSet = new Set();
@@ -618,6 +697,14 @@ async function parseSpreadsheet(filePath, fileName) {
             findings.push(`Rows analyzed: ${dataRows.length}; unique GUIDs: ${guidSet.size}; unique PersonGUIDs: ${personGuidSet.size}`);
             if (duplicateDisplayNames.length) {
                 findings.push(`Duplicate display names: ${duplicateDisplayNames.slice(0, 3).map(([name, count]) => `${name} (${count})`).join(', ')}`);
+                hits.push({
+                    file: `${fileName}#${sheetName}`,
+                    line: headerRowIndex + 2,
+                    text: `Duplicate display names detected (${duplicateDisplayNames.length} unique duplicates)`.
+                        slice(0, 300),
+                    seed: 'duplicate display name',
+                    category: 'warning',
+                });
             }
             if (nameTypeCounts.size) {
                 findings.push(`NameTypeCode distribution: ${Array.from(nameTypeCounts.entries()).map(([type, count]) => `${type}:${count}`).join(', ')}`);
@@ -630,6 +717,13 @@ async function parseSpreadsheet(filePath, fileName) {
             }
             if (multiTypePersons.length) {
                 findings.push(`PersonGUIDs with multiple NameTypeCode values: ${multiTypePersons.join(' | ')}`);
+                hits.push({
+                    file: `${fileName}#${sheetName}`,
+                    line: headerRowIndex + 2,
+                    text: `Multiple NameTypeCode values seen for same PersonGUID (${multiTypePersons.length} sample(s))`.slice(0, 300),
+                    seed: 'missing target',
+                    category: 'warning',
+                });
             }
             findings.push(...conversionInsight.findings);
             summaries.push({
@@ -784,10 +878,26 @@ function buildDiagnosticSummary(result) {
     const authCount = (result.topSeeds['Authentication failed'] ?? 0) + (result.topSeeds['Login failed'] ?? 0) + (result.topSeeds['UnauthorizedAccessException'] ?? 0);
     const networkCount = (result.topSeeds['HttpRequestException'] ?? 0) + (result.topSeeds['WebException'] ?? 0) + (result.topSeeds['connection refused'] ?? 0);
     const nullRefCount = result.topSeeds['NullReferenceException'] ?? 0;
+    const tokenExpiredCount = (result.topSeeds['SecurityTokenExpiredException'] ?? 0) + (result.topSeeds['token expired'] ?? 0);
+    const ldapFailureCount = result.topSeeds['LDAP bind failed'] ?? 0;
+    const duplicateDataCount = (result.topSeeds['duplicate display name'] ?? 0) + (result.topSeeds['duplicate recipient'] ?? 0);
+    const mappingGapCount = (result.topSeeds['missing target'] ?? 0) + (result.topSeeds['unmapped'] ?? 0);
     const rationale = [];
     let primaryFinding = 'No single dominant failure pattern detected in scanned evidence';
     let confidence = 'low';
-    if (errors > 0 && stackTraces > 0) {
+    if (tokenExpiredCount > 0 && ldapFailureCount > 0) {
+        primaryFinding = 'Token-expiry and directory-auth path is the dominant signal';
+        confidence = tokenExpiredCount + ldapFailureCount >= 3 ? 'high' : 'medium';
+        rationale.push(`Token-expiry hits=${tokenExpiredCount}, LDAP/directory failures=${ldapFailureCount}.`);
+        rationale.push('Validate runtime identity, token lifetime, and enterprise-directory bind/connectivity before treating this as a code defect.');
+    }
+    else if ((duplicateDataCount > 0 || mappingGapCount > 0 || spreadsheetSignals >= 2) && errors === 0) {
+        primaryFinding = 'Data-quality or mapping drift is the dominant signal';
+        confidence = duplicateDataCount + mappingGapCount >= 2 || spreadsheetSignals >= 4 ? 'high' : 'medium';
+        rationale.push(`Duplicate-data hits=${duplicateDataCount}, mapping-gap hits=${mappingGapCount}, spreadsheet signals=${spreadsheetSignals}.`);
+        rationale.push('Evidence points to duplicate/misaligned records rather than a pure service runtime failure.');
+    }
+    else if (errors > 0 && stackTraces > 0) {
         primaryFinding = 'Server-side exception path is the dominant signal';
         confidence = errors >= 5 || stackTraces >= 2 ? 'high' : 'medium';
         rationale.push(`${errors} error/fatal hit(s) with ${stackTraces} extracted stack trace(s).`);
@@ -1275,6 +1385,17 @@ function buildSuggestions(hits) {
             searchTerms: ['Authentication failed', 'Login failed', 'UnauthorizedAccessException', 'token'],
         });
     }
+    if ((counts['SecurityTokenExpiredException'] ?? 0) > 0 || (counts['token expired'] ?? 0) > 0 || (counts['LDAP bind failed'] ?? 0) > 0) {
+        suggestions.push({
+            title: 'Token lifecycle or directory identity mismatch',
+            severity: 'high',
+            observation: `Token/directory signals found (${(counts['SecurityTokenExpiredException'] ?? 0) + (counts['token expired'] ?? 0) + (counts['LDAP bind failed'] ?? 0)} hit(s)).` +
+                ' This commonly indicates expired tokens, incorrect service identity, or LDAP bind failures in the same window.',
+            codeDirection: 'Validate token lifetime/refresh, service identity rights, and enterprise-directory bind health before escalating as core product logic bug.',
+            repo: 'allscriptshealthcare/sunrise-mobilewebservices',
+            searchTerms: ['SecurityTokenExpiredException', 'token expired', 'LDAP bind failed', 'SendNotification', 'EncryptData'],
+        });
+    }
     if ((counts['HttpRequestException'] ?? 0) > 0 || (counts['WebException'] ?? 0) > 0 || (counts['connection refused'] ?? 0) > 0) {
         suggestions.push({
             title: 'Downstream service connectivity failure',
@@ -1293,6 +1414,17 @@ function buildSuggestions(hits) {
             codeDirection: 'Trace the exception to the first dereference site and add null guards or data validation where the object is optional.',
             repo: 'allscriptshealthcare/SunriseMobile',
             searchTerms: ['NullReferenceException', 'null', 'guard', '?.'],
+        });
+    }
+    if ((counts['duplicate recipient'] ?? 0) > 0 || (counts['duplicate display name'] ?? 0) > 0 || (counts['missing target'] ?? 0) > 0 || (counts['unmapped'] ?? 0) > 0) {
+        suggestions.push({
+            title: 'Data mapping drift or duplicate-record evidence',
+            severity: 'medium',
+            observation: `Duplicate/mapping signals found (${(counts['duplicate recipient'] ?? 0) + (counts['duplicate display name'] ?? 0) + (counts['missing target'] ?? 0) + (counts['unmapped'] ?? 0)} hit(s)).` +
+                ' This typically points to stale/duplicate conversion data rather than transport-level failures.',
+            codeDirection: 'Review conversion and recipient/person mapping pipelines; validate GUID uniqueness, NameType handling, and inactive-row filtering.',
+            repo: 'allscriptshealthcare/SunriseMobile',
+            searchTerms: ['duplicate display name', 'duplicate recipient', 'missing target', 'unmapped', 'NameTypeCode', 'PersonGUID'],
         });
     }
     // App pool recycle

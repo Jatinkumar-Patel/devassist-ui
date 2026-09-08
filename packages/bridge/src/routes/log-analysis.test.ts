@@ -192,6 +192,68 @@ test('diagnostic summary prefers deadlock, auth, and network failure modes when 
   assert.equal(networkSummary.confidence, 'high');
 });
 
+test('diagnostic summary prefers token-directory finding when token expiry and LDAP failures co-exist', () => {
+  const summary = buildDiagnosticSummary({
+    byCategory: {
+      error: [makeHit('error', 'SecurityTokenExpiredException', 20), makeHit('error', 'LDAP bind failed', 21)],
+      warning: [makeHit('warning', 'token expired', 22)],
+      lock: [],
+      ops: [makeHit('ops', 'SendNotification', 23)],
+      other: [],
+    },
+    topSeeds: {
+      SecurityTokenExpiredException: 2,
+      'token expired': 2,
+      'LDAP bind failed': 2,
+      SendNotification: 1,
+    },
+    stackTraces: [],
+    operationTimelineSummaries: [],
+    spreadsheetSummaries: [],
+    imageSummaries: [],
+  });
+
+  assert.match(summary.primaryFinding, /token|directory|auth/i);
+  assert.equal(summary.confidence, 'high');
+});
+
+test('diagnostic summary prefers mapping drift finding from spreadsheet-like duplicate and missing-target signals', () => {
+  const summary = buildDiagnosticSummary({
+    byCategory: {
+      error: [],
+      warning: [
+        makeHit('warning', 'duplicate display name', 4),
+        makeHit('warning', 'missing target', 5),
+      ],
+      lock: [],
+      ops: [makeHit('ops', 'GetPatientList', 6)],
+      other: [],
+    },
+    topSeeds: {
+      'duplicate display name': 2,
+      'missing target': 2,
+      GetPatientList: 1,
+    },
+    stackTraces: [],
+    operationTimelineSummaries: [],
+    spreadsheetSummaries: [
+      {
+        file: 'extract.xlsx',
+        sheet: 'Sheet1',
+        rowCount: 40,
+        columnCount: 8,
+        headers: [],
+        sampleRows: [],
+        findings: ['Duplicate display names: A, B', 'Potential mapping gaps: missing target for X'],
+      },
+    ],
+    imageSummaries: [],
+  });
+
+  assert.match(summary.primaryFinding, /data-quality|mapping drift/i);
+  assert.equal(summary.confidence, 'high');
+});
+
 test('suggestion builder emits deadlock, auth, network, and null-reference guidance', () => {
   const suggestions = buildSuggestions([
     makeHit('error', 'Deadlock', 3),
@@ -205,4 +267,17 @@ test('suggestion builder emits deadlock, auth, network, and null-reference guida
   assert.ok(suggestions.some((s) => /authentication|authorization/i.test(s.title)));
   assert.ok(suggestions.some((s) => /connectivity|downstream/i.test(s.title)));
   assert.ok(suggestions.some((s) => /null guard/i.test(s.title)));
+});
+
+test('suggestion builder emits token-directory and data-mapping guidance', () => {
+  const suggestions = buildSuggestions([
+    makeHit('error', 'SecurityTokenExpiredException', 1),
+    makeHit('warning', 'token expired', 2),
+    makeHit('error', 'LDAP bind failed', 3),
+    makeHit('warning', 'duplicate display name', 4),
+    makeHit('warning', 'missing target', 5),
+  ]);
+
+  assert.ok(suggestions.some((s) => /token lifecycle|directory identity/i.test(s.title)));
+  assert.ok(suggestions.some((s) => /mapping drift|duplicate-record/i.test(s.title)));
 });
