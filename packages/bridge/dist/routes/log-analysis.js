@@ -37,6 +37,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.logAnalysisRouter = void 0;
+exports.normalizeDiagnosticText = normalizeDiagnosticText;
+exports.extractKeywordHitsFromText = extractKeywordHitsFromText;
+exports.detectHeaderRowIndex = detectHeaderRowIndex;
 exports.buildDiagnosticSummary = buildDiagnosticSummary;
 exports.buildSuggestions = buildSuggestions;
 const express_1 = require("express");
@@ -275,7 +278,10 @@ function normalizeDiagnosticText(value) {
     return value
         .replace(/\bexcepfion\b/gi, 'exception')
         .replace(/\bsecurit[yv]token(?:expi?red|expire[d]?)\b/gi, 'securitytokenexpired')
+        .replace(/\bsecurit[yv]tokenexpi\s*red\b/gi, 'securitytokenexpired')
+        .replace(/\bsecurity\s*token\s*expi\s*red\b/gi, 'securitytokenexpired')
         .replace(/\bunauthori[sz]ed\b/gi, 'unauthorized')
+        .replace(/\bfai1ed\b/gi, 'failed')
         .replace(/\bldap\s*bind\s*fa[i1]led\b/gi, 'ldap bind failed')
         .replace(/\bti\s*me\s*out\b/gi, 'timeout')
         .replace(/\berr[o0]r\b/gi, 'error')
