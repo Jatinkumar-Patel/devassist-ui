@@ -1255,6 +1255,12 @@ type AiStatus = {
 
 type AiProviderSelection = 'auto' | 'github-models' | 'openai' | 'ollama';
 
+function clampText(value: unknown, maxChars: number): string {
+  const text = normalizeDisplayText(String(value ?? ''));
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}...`;
+}
+
 function AiAssessmentPanel({ session }: { session: TriageSession }) {
   const { openaiKey, githubPat } = useSettingsStore();
   const [running, setRunning]   = useState(false);
@@ -1325,7 +1331,14 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
     setRunning(true); setError(null); setResult(null); setAiSource(null);
     try {
       const f = session.adoItem.fields;
-      const logHits: Array<{file:string;line:number;seed:string;text:string}> = (session.snowTask as any)?._logHits ?? [];
+      const logHits: Array<{file:string;line:number;seed:string;text:string}> = ((session.snowTask as any)?._logHits ?? [])
+        .slice(0, 35)
+        .map((h: any) => ({
+          file: String(h?.file ?? ''),
+          line: Number(h?.line ?? 0),
+          seed: String(h?.seed ?? ''),
+          text: clampText(h?.text ?? '', 240),
+        }));
       const topSeeds: Record<string, number> = (session.snowTask as any)?._topSeeds ?? {};
       const body = {
         openaiKey: openaiKey || undefined,
@@ -1339,13 +1352,13 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
           customer: String(f['Allscripts.Field.CustomerName'] ?? ''),
           release: String(f['Allscripts.Field.SupportVersion'] ?? ''),
           severity: String(f['Microsoft.VSTS.Common.Severity'] ?? ''),
-          description: normalizeDisplayText(String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '')),
+          description: clampText(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '', 1200),
         },
         snowTask: session.snowTask ? {
           number: String((session.snowTask as any).number?.display_value ?? (session.snowTask as any).number ?? ''),
           shortDescription: String((session.snowTask as any).short_description?.display_value ?? ''),
           state: String((session.snowTask as any).state?.display_value ?? ''),
-          workNotes: normalizeDisplayText(JSON.stringify((session.snowTask as any)._workNotes ?? '')),
+          workNotes: clampText(JSON.stringify((session.snowTask as any)._workNotes ?? ''), 2400),
         } : null,
         logHits,
         topSeeds,
@@ -1381,20 +1394,32 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
     setFollowUpRunning(true); setFollowUpError(null); setFollowUpResult(null);
     try {
       const f = session.adoItem.fields;
-      const logHits: Array<{file:string;line:number;seed:string;text:string}> = (session.snowTask as any)?._logHits ?? [];
+      const logHits: Array<{file:string;line:number;seed:string;text:string}> = ((session.snowTask as any)?._logHits ?? [])
+        .slice(0, 25)
+        .map((h: any) => ({
+          file: String(h?.file ?? ''),
+          line: Number(h?.line ?? 0),
+          seed: String(h?.seed ?? ''),
+          text: clampText(h?.text ?? '', 220),
+        }));
       const topSeeds: Record<string, number> = (session.snowTask as any)?._topSeeds ?? {};
-      const history = chatHistory.map((entry) => ({ question: entry.question, answer: entry.answer }));
+      const history = chatHistory
+        .slice(-6)
+        .map((entry) => ({
+          question: clampText(entry.question, 260),
+          answer: clampText(entry.answer, 900),
+        }));
       const body = {
         openaiKey: openaiKey || undefined,
         githubPat: githubPat || undefined,
         aiProvider: providerSelection,
         aiModel: modelInput.trim() || undefined,
-        question: followUpQuestion.trim(),
+        question: clampText(followUpQuestion.trim(), 600),
         history,
-        priorAssessment: result ?? session.analysis?.codeAnalysis ?? session.analysis?.gap ?? session.analysis?.l2Draft ?? '',
+        priorAssessment: clampText(result ?? session.analysis?.codeAnalysis ?? session.analysis?.gap ?? session.analysis?.l2Draft ?? '', 1800),
         priorVerdict: session.analysis?.verdict ?? '',
         priorConfidence: session.analysis?.confidence ?? '',
-        priorGap: session.analysis?.gap ?? '',
+        priorGap: clampText(session.analysis?.gap ?? '', 1000),
         da: {
           id: session.adoItem.id,
           title: f['System.Title'],
@@ -1402,13 +1427,13 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
           customer: String(f['Allscripts.Field.CustomerName'] ?? ''),
           release: String(f['Allscripts.Field.SupportVersion'] ?? ''),
           severity: String(f['Microsoft.VSTS.Common.Severity'] ?? ''),
-          description: normalizeDisplayText(String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '')),
+          description: clampText(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '', 1000),
         },
         snowTask: session.snowTask ? {
           number: String((session.snowTask as any).number?.display_value ?? (session.snowTask as any).number ?? ''),
           shortDescription: String((session.snowTask as any).short_description?.display_value ?? ''),
           state: String((session.snowTask as any).state?.display_value ?? ''),
-          workNotes: normalizeDisplayText(JSON.stringify((session.snowTask as any)._workNotes ?? '')),
+          workNotes: clampText(JSON.stringify((session.snowTask as any)._workNotes ?? ''), 1600),
         } : null,
         logHits,
         topSeeds,
@@ -1426,8 +1451,11 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
       if (!res.ok || data.error) {
         const message = data?.error ?? `HTTP ${res.status}`;
         const isStaleBridgeRoute = /Unknown API route/i.test(message) || /Bridge may be outdated/i.test(message) || /outdated.*AI route/i.test(message);
+        const isTooLarge = res.status === 413 || /entity too large|payload too large|request too large/i.test(message);
         const detail = isStaleBridgeRoute
           ? 'Bridge is out of date for the new AI route. Restart or rebuild the bridge, then retry.'
+          : isTooLarge
+          ? 'Follow-up request is too large. Try a shorter question or clear old follow-up history and retry.'
           : message || 'AI request failed. Check the bridge and AI backend configuration.';
         throw new Error(detail);
       }

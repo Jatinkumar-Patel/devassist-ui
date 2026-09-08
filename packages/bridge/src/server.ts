@@ -38,7 +38,7 @@ export function createServer({ spaOrigin, pagesUrl, allowedOrigins }: ServerOpti
     },
     credentials: false,
   }));
-  app.use(express.json());
+  app.use(express.json({ limit: '8mb' }));
 
   // API routes
   app.use('/api/status', statusRouter);
@@ -95,6 +95,12 @@ export function createServer({ spaOrigin, pagesUrl, allowedOrigins }: ServerOpti
 
   // Global error handler
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+    const maybeBodyParserError = err as Error & { type?: string; status?: number };
+    if (maybeBodyParserError.type === 'entity.too.large' || maybeBodyParserError.status === 413) {
+      return res.status(413).json({
+        error: 'Request entity too large. Reduce follow-up history/context size and retry.',
+      });
+    }
     console.error(err.message);
     res.status(500).json({ error: err.message });
   });
