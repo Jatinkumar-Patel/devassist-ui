@@ -123,3 +123,76 @@ function makeHit(category, seed, line) {
     strict_1.default.equal(summary.confidence, 'medium');
     strict_1.default.equal(summary.evidenceCoverage.spreadsheetSignals, 3);
 });
+(0, node_test_1.default)('diagnostic summary prefers deadlock, auth, and network failure modes when those signals dominate', () => {
+    const deadlockSummary = (0, log_analysis_1.buildDiagnosticSummary)({
+        byCategory: {
+            error: [makeHit('error', 'Deadlock', 2)],
+            warning: [],
+            lock: Array.from({ length: 12 }, (_, i) => makeHit('lock', 'LockWithTimeout', i + 1)),
+            ops: [],
+            other: [],
+        },
+        topSeeds: {
+            Deadlock: 4,
+            'deadlock victim': 1,
+        },
+        stackTraces: [],
+        operationTimelineSummaries: [],
+        spreadsheetSummaries: [],
+        imageSummaries: [],
+    });
+    strict_1.default.match(deadlockSummary.primaryFinding, /deadlock/i);
+    strict_1.default.equal(deadlockSummary.confidence, 'high');
+    const authSummary = (0, log_analysis_1.buildDiagnosticSummary)({
+        byCategory: {
+            error: [makeHit('error', 'Authentication failed', 9)],
+            warning: [],
+            lock: [],
+            ops: [],
+            other: [],
+        },
+        topSeeds: {
+            'Authentication failed': 2,
+            UnauthorizedAccessException: 1,
+        },
+        stackTraces: [],
+        operationTimelineSummaries: [],
+        spreadsheetSummaries: [],
+        imageSummaries: [],
+    });
+    strict_1.default.match(authSummary.primaryFinding, /authentication|authorization/i);
+    strict_1.default.equal(authSummary.confidence, 'medium');
+    const networkSummary = (0, log_analysis_1.buildDiagnosticSummary)({
+        byCategory: {
+            error: [makeHit('error', 'HttpRequestException', 14)],
+            warning: [],
+            lock: [],
+            ops: [],
+            other: [],
+        },
+        topSeeds: {
+            HttpRequestException: 2,
+            WebException: 1,
+            'connection refused': 1,
+        },
+        stackTraces: [],
+        operationTimelineSummaries: [],
+        spreadsheetSummaries: [],
+        imageSummaries: [],
+    });
+    strict_1.default.match(networkSummary.primaryFinding, /network|downstream/i);
+    strict_1.default.equal(networkSummary.confidence, 'high');
+});
+(0, node_test_1.default)('suggestion builder emits deadlock, auth, network, and null-reference guidance', () => {
+    const suggestions = (0, log_analysis_1.buildSuggestions)([
+        makeHit('error', 'Deadlock', 3),
+        makeHit('error', 'Authentication failed', 8),
+        makeHit('error', 'HttpRequestException', 11),
+        makeHit('error', 'NullReferenceException', 15),
+        makeHit('warning', 'LogTraceInfo', 16),
+    ]);
+    strict_1.default.ok(suggestions.some((s) => /deadlock/i.test(s.title)));
+    strict_1.default.ok(suggestions.some((s) => /authentication|authorization/i.test(s.title)));
+    strict_1.default.ok(suggestions.some((s) => /connectivity|downstream/i.test(s.title)));
+    strict_1.default.ok(suggestions.some((s) => /null guard/i.test(s.title)));
+});

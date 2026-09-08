@@ -38,6 +38,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.logAnalysisRouter = void 0;
 exports.buildDiagnosticSummary = buildDiagnosticSummary;
+exports.buildSuggestions = buildSuggestions;
 const express_1 = require("express");
 const node_1 = __importStar(require("read-excel-file/node"));
 const powershell_1 = require("../utils/powershell");
@@ -69,6 +70,14 @@ const GREP_SEEDS = [
     'warn',
     'Timeout',
     'SqlException',
+    'Deadlock',
+    'deadlock victim',
+    'Authentication failed',
+    'Login failed',
+    'HttpRequestException',
+    'WebException',
+    'connection refused',
+    'Object reference not set to an instance of an object',
     'UnauthorizedAccessException',
     'OutOfMemoryException',
     'StackOverflow',
@@ -80,6 +89,14 @@ const SEED_CATEGORY = {
     'FATAL': 'error',
     'Exception': 'error',
     'SqlException': 'error',
+    'Deadlock': 'error',
+    'deadlock victim': 'error',
+    'Authentication failed': 'error',
+    'Login failed': 'error',
+    'HttpRequestException': 'error',
+    'WebException': 'error',
+    'connection refused': 'error',
+    'Object reference not set to an instance of an object': 'error',
     'UnauthorizedAccessException': 'error',
     'OutOfMemoryException': 'error',
     'StackOverflow': 'error',
@@ -432,7 +449,7 @@ function extractStackTraces(content, fileName, maxCount) {
     const lines = content.split('\n');
     for (let i = 0; i < lines.length && traces.length < maxCount; i++) {
         const line = lines[i]?.trim() ?? '';
-        if (!/(Exception|ERROR|FATAL|SqlException|NullReferenceException|UnauthorizedAccessException|ArgumentException)/i.test(line))
+        if (!/(Exception|ERROR|FATAL|SqlException|NullReferenceException|UnauthorizedAccessException|ArgumentException|HttpRequestException|WebException)/i.test(line))
             continue;
         const block = [line];
         let j = i + 1;
@@ -763,6 +780,10 @@ function buildDiagnosticSummary(result) {
     const lockTimeoutCount = result.topSeeds['LockWithTimeout'] ?? 0;
     const progressTimeoutCount = result.topSeeds['progress indicator has timed out'] ?? 0;
     const genericTimeoutCount = (result.topSeeds['timed out'] ?? 0) + (result.topSeeds['Timeout'] ?? 0);
+    const deadlockCount = (result.topSeeds['Deadlock'] ?? 0) + (result.topSeeds['deadlock victim'] ?? 0);
+    const authCount = (result.topSeeds['Authentication failed'] ?? 0) + (result.topSeeds['Login failed'] ?? 0) + (result.topSeeds['UnauthorizedAccessException'] ?? 0);
+    const networkCount = (result.topSeeds['HttpRequestException'] ?? 0) + (result.topSeeds['WebException'] ?? 0) + (result.topSeeds['connection refused'] ?? 0);
+    const nullRefCount = result.topSeeds['NullReferenceException'] ?? 0;
     const rationale = [];
     let primaryFinding = 'No single dominant failure pattern detected in scanned evidence';
     let confidence = 'low';
@@ -771,6 +792,30 @@ function buildDiagnosticSummary(result) {
         confidence = errors >= 5 || stackTraces >= 2 ? 'high' : 'medium';
         rationale.push(`${errors} error/fatal hit(s) with ${stackTraces} extracted stack trace(s).`);
         rationale.push('Start from the first exception stack trace and correlate with incident timestamps.');
+    }
+    else if (deadlockCount > 0) {
+        primaryFinding = 'Database deadlock is the dominant signal';
+        confidence = deadlockCount >= 3 || locks >= 10 ? 'high' : 'medium';
+        rationale.push(`Deadlock-related hits=${deadlockCount} with lock-category hits=${locks}.`);
+        rationale.push('Trace the first deadlock victim or deadlock exception back to the failing transaction and query path.');
+    }
+    else if (authCount > 0) {
+        primaryFinding = 'Authentication or authorization failure is the dominant signal';
+        confidence = authCount >= 3 ? 'high' : 'medium';
+        rationale.push(`Auth-related hits=${authCount}.`);
+        rationale.push('Check token, session, or impersonation flow before treating this as a product defect.');
+    }
+    else if (networkCount > 0) {
+        primaryFinding = 'Network or downstream service failure is the dominant signal';
+        confidence = networkCount >= 3 ? 'high' : 'medium';
+        rationale.push(`Network-related hits=${networkCount}.`);
+        rationale.push('Confirm the target service, DNS, proxy, or TLS path rather than the UI logic first.');
+    }
+    else if (nullRefCount > 0 && stackTraces > 0) {
+        primaryFinding = 'Null reference path is the dominant signal';
+        confidence = nullRefCount >= 2 ? 'high' : 'medium';
+        rationale.push(`NullReferenceException hits=${nullRefCount} with ${stackTraces} stack trace(s).`);
+        rationale.push('The error is likely in a data-guard or null-handling branch in the application code.');
     }
     else if (lockTimeoutCount >= 20 || locks >= 25 || timelineDelayRows >= 10) {
         primaryFinding = 'Lock contention and long-running operations are the dominant signal';
@@ -1208,6 +1253,46 @@ function buildSuggestions(hits) {
             codeDirection: 'Find the first ERROR/FATAL in the incident window and trace back the call stack. Match against known exception types (SqlException → DB, UnauthorizedException → auth, NullReferenceException → data model).',
             repo: 'allscriptshealthcare/sunrise-mobilewebservices',
             searchTerms: ['ERROR', 'FATAL', 'Exception', 'catch'],
+        });
+    }
+    if ((counts['Deadlock'] ?? 0) > 0 || (counts['deadlock victim'] ?? 0) > 0) {
+        suggestions.push({
+            title: 'Database deadlock or blocked transaction',
+            severity: 'high',
+            observation: `Deadlock evidence found (${(counts['Deadlock'] ?? 0) + (counts['deadlock victim'] ?? 0)} hit(s)). This usually points to database contention rather than a UI rendering issue.`,
+            codeDirection: 'Review transaction order, query indexes, and deadlock retry handling. Identify the victim query path and competing request flow.',
+            repo: 'allscriptshealthcare/sunrise-mobilewebservices',
+            searchTerms: ['deadlock', 'deadlock victim', 'SqlException', 'transaction'],
+        });
+    }
+    if ((counts['Authentication failed'] ?? 0) > 0 || (counts['Login failed'] ?? 0) > 0 || (counts['UnauthorizedAccessException'] ?? 0) > 0) {
+        suggestions.push({
+            title: 'Authentication or authorization path is failing',
+            severity: 'high',
+            observation: `Auth evidence found (${(counts['Authentication failed'] ?? 0) + (counts['Login failed'] ?? 0) + (counts['UnauthorizedAccessException'] ?? 0)} hit(s)). This often indicates token/session/permissions mismatch.`,
+            codeDirection: 'Verify identity provider integration, session renewal, and permission checks before changing UI code. Search for login, token, and impersonation flows.',
+            repo: 'allscriptshealthcare/SunriseMobile',
+            searchTerms: ['Authentication failed', 'Login failed', 'UnauthorizedAccessException', 'token'],
+        });
+    }
+    if ((counts['HttpRequestException'] ?? 0) > 0 || (counts['WebException'] ?? 0) > 0 || (counts['connection refused'] ?? 0) > 0) {
+        suggestions.push({
+            title: 'Downstream service connectivity failure',
+            severity: 'high',
+            observation: `Network evidence found (${(counts['HttpRequestException'] ?? 0) + (counts['WebException'] ?? 0) + (counts['connection refused'] ?? 0)} hit(s)). The UI may be healthy while a dependency is unavailable.`,
+            codeDirection: 'Check service endpoints, TLS/proxy settings, and retry policies. Search for HttpClient/WebException handling and endpoint URLs.',
+            repo: 'allscriptshealthcare/SunriseMobile',
+            searchTerms: ['HttpRequestException', 'WebException', 'connection refused', 'HttpClient'],
+        });
+    }
+    if ((counts['NullReferenceException'] ?? 0) > 0) {
+        suggestions.push({
+            title: 'Null guard missing in application logic',
+            severity: 'medium',
+            observation: `NullReferenceException evidence found (${counts['NullReferenceException']} hit(s)). This typically points to an unguarded null in business logic or data mapping.`,
+            codeDirection: 'Trace the exception to the first dereference site and add null guards or data validation where the object is optional.',
+            repo: 'allscriptshealthcare/SunriseMobile',
+            searchTerms: ['NullReferenceException', 'null', 'guard', '?.'],
         });
     }
     // App pool recycle

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDiagnosticSummary, type LogHit } from './log-analysis';
+import { buildDiagnosticSummary, buildSuggestions, type LogHit } from './log-analysis';
 
 function makeHit(category: LogHit['category'], seed: string, line: number): LogHit {
   return {
@@ -124,4 +124,85 @@ test('diagnostic summary prefers data-quality finding when spreadsheet signals d
   assert.match(summary.primaryFinding, /Data-quality|mapping drift/i);
   assert.equal(summary.confidence, 'medium');
   assert.equal(summary.evidenceCoverage.spreadsheetSignals, 3);
+});
+
+test('diagnostic summary prefers deadlock, auth, and network failure modes when those signals dominate', () => {
+  const deadlockSummary = buildDiagnosticSummary({
+    byCategory: {
+      error: [makeHit('error', 'Deadlock', 2)],
+      warning: [],
+      lock: Array.from({ length: 12 }, (_, i) => makeHit('lock', 'LockWithTimeout', i + 1)),
+      ops: [],
+      other: [],
+    },
+    topSeeds: {
+      Deadlock: 4,
+      'deadlock victim': 1,
+    },
+    stackTraces: [],
+    operationTimelineSummaries: [],
+    spreadsheetSummaries: [],
+    imageSummaries: [],
+  });
+
+  assert.match(deadlockSummary.primaryFinding, /deadlock/i);
+  assert.equal(deadlockSummary.confidence, 'high');
+
+  const authSummary = buildDiagnosticSummary({
+    byCategory: {
+      error: [makeHit('error', 'Authentication failed', 9)],
+      warning: [],
+      lock: [],
+      ops: [],
+      other: [],
+    },
+    topSeeds: {
+      'Authentication failed': 2,
+      UnauthorizedAccessException: 1,
+    },
+    stackTraces: [],
+    operationTimelineSummaries: [],
+    spreadsheetSummaries: [],
+    imageSummaries: [],
+  });
+
+  assert.match(authSummary.primaryFinding, /authentication|authorization/i);
+  assert.equal(authSummary.confidence, 'high');
+
+  const networkSummary = buildDiagnosticSummary({
+    byCategory: {
+      error: [makeHit('error', 'HttpRequestException', 14)],
+      warning: [],
+      lock: [],
+      ops: [],
+      other: [],
+    },
+    topSeeds: {
+      HttpRequestException: 2,
+      WebException: 1,
+      'connection refused': 1,
+    },
+    stackTraces: [],
+    operationTimelineSummaries: [],
+    spreadsheetSummaries: [],
+    imageSummaries: [],
+  });
+
+  assert.match(networkSummary.primaryFinding, /network|downstream/i);
+  assert.equal(networkSummary.confidence, 'high');
+});
+
+test('suggestion builder emits deadlock, auth, network, and null-reference guidance', () => {
+  const suggestions = buildSuggestions([
+    makeHit('error', 'Deadlock', 3),
+    makeHit('error', 'Authentication failed', 8),
+    makeHit('error', 'HttpRequestException', 11),
+    makeHit('error', 'NullReferenceException', 15),
+    makeHit('warning', 'LogTraceInfo', 16),
+  ]);
+
+  assert.ok(suggestions.some((s) => /deadlock/i.test(s.title)));
+  assert.ok(suggestions.some((s) => /authentication|authorization/i.test(s.title)));
+  assert.ok(suggestions.some((s) => /connectivity|downstream/i.test(s.title)));
+  assert.ok(suggestions.some((s) => /null guard/i.test(s.title)));
 });
