@@ -189,6 +189,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
   const [result, setResult] = useState<LogAnalysisResult | null>(autoResult ?? null);
   const [error, setError] = useState('');
   const [manualSysId, setManualSysId] = useState('');
+  const [showAllFileAnalysis, setShowAllFileAnalysis] = useState(false);
   const autoAttemptedForSysIdRef = useRef<string>('');
 
   useEffect(() => {
@@ -204,6 +205,10 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
     (result?.spreadsheetSummaries?.length ?? 0) <= 1 &&
     (result?.imageSummaries?.length ?? 0) <= 1;
   const comparison: LogComparisonSummary | null = result ? buildLogComparisonSummary(result) : null;
+  const analyzedCards = (result?.analyzed ?? []).map(parseAnalysisCard);
+  const skippedCards = (result?.skipped ?? []).map(parseSkippedCard);
+  const fileAnalysisCards = [...analyzedCards, ...skippedCards];
+  const visibleFileCards = showAllFileAnalysis ? fileAnalysisCards : fileAnalysisCards.slice(0, 3);
 
   const readSysId = (record: any): string => {
     if (!record) return '';
@@ -489,58 +494,47 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
 
           <div className="space-y-2">
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
-              <FileSearch size={11} /> File-level analysis
+              <FileSearch size={11} /> Evidence files
+            </p>
+            <p className="text-[11px] text-gray-500">
+              Showing {visibleFileCards.length} of {fileAnalysisCards.length} entries.
             </p>
             <div className="grid gap-2">
-              {result.analyzed.map((entry, i) => {
-                const card = parseAnalysisCard(entry);
+              {visibleFileCards.map((card, i) => {
+                const isSkipped = card.kind === 'skipped';
                 return (
-                  <div key={`analyzed-${i}`} className="rounded-lg border border-gray-800 bg-gray-950/50 p-3 space-y-1.5">
+                  <div key={`file-card-${i}`} className={`rounded-lg border p-3 space-y-1.5 ${isSkipped ? 'border-amber-900/60 bg-amber-950/20' : 'border-gray-800 bg-gray-950/50'}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-xs font-semibold text-gray-200 break-all">{card.file}</p>
-                        <p className="text-[11px] text-cyan-300 uppercase tracking-wide">{card.summary}</p>
+                        <p className={`text-xs font-semibold break-all ${isSkipped ? 'text-amber-100' : 'text-gray-200'}`}>{card.file}</p>
+                        <p className={`text-[11px] uppercase tracking-wide ${isSkipped ? 'text-amber-300' : 'text-cyan-300'}`}>{card.summary}</p>
                       </div>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded border border-gray-700 text-gray-400 uppercase">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded border uppercase ${isSkipped ? 'border-amber-700/70 text-amber-300' : 'border-gray-700 text-gray-400'}`}>
                         {card.kind}
                       </span>
                     </div>
                     {card.details.length > 0 && (
                       <div className="space-y-0.5">
                         {card.details.map((detail, idx) => (
-                          <p key={idx} className="text-xs text-gray-400">{detail}</p>
+                          <p key={idx} className={`text-xs ${isSkipped ? 'text-amber-200/80' : 'text-gray-400'}`}>{detail}</p>
                         ))}
                       </div>
                     )}
                   </div>
                 );
               })}
-              {!result.analyzed.length && (
+              {!fileAnalysisCards.length && (
                 <p className="text-xs text-gray-600">No applicable files were analyzed.</p>
               )}
-              {result.skipped.map((entry, i) => {
-                const card = parseSkippedCard(entry);
-                return (
-                  <div key={`skipped-${i}`} className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-3 space-y-1.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-amber-100 break-all">{card.file}</p>
-                        <p className="text-[11px] text-amber-300 uppercase tracking-wide">{card.summary}</p>
-                      </div>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded border border-amber-700/70 text-amber-300 uppercase">
-                        {card.kind}
-                      </span>
-                    </div>
-                    {card.details.length > 0 && (
-                      <div className="space-y-0.5">
-                        {card.details.map((detail, idx) => (
-                          <p key={idx} className="text-xs text-amber-200/80">{detail}</p>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {fileAnalysisCards.length > 3 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllFileAnalysis((prev) => !prev)}
+                  className="text-xs self-start px-2.5 py-1.5 rounded border border-gray-700 text-gray-300 hover:border-gray-500"
+                >
+                  {showAllFileAnalysis ? 'Show top 3 only' : `Show all ${fileAnalysisCards.length}`}
+                </button>
+              )}
             </div>
           </div>
 

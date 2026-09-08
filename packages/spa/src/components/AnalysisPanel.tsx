@@ -1276,6 +1276,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
   const [error, setError]       = useState<string | null>(null);
   const [copied, setCopied]     = useState(false);
   const [aiSource, setAiSource] = useState<string | null>(null);
+  const [aiWarning, setAiWarning] = useState<string | null>(null);
   const [ollamaOk, setOllamaOk] = useState<boolean | null>(null);
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
   const [providerSelection, setProviderSelection] = useState<AiProviderSelection>('github-models');
@@ -1359,7 +1360,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
 
   const runAi = async () => {
     if (!session.adoItem) return;
-    setRunning(true); setError(null); setResult(null); setAiSource(null);
+    setRunning(true); setError(null); setResult(null); setAiSource(null); setAiWarning(null);
     try {
       const f = session.adoItem.fields;
       const logHits: Array<{file:string;line:number;seed:string;text:string}> = ((session.snowTask as any)?._logHits ?? [])
@@ -1405,11 +1406,12 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
         signal: AbortSignal.timeout(120_000),
       });
       const raw = await res.text();
-      let data: { assessment?: string; error?: string; source?: string } = {};
+      let data: { assessment?: string; error?: string; source?: string; warning?: string } = {};
       try { data = raw ? JSON.parse(raw) : {}; } catch { data = { error: `Invalid AI response (HTTP ${res.status}).` }; }
       if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
       setResult(data.assessment ?? '');
       setAiSource(data.source ?? null);
+      setAiWarning(data.warning ?? null);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -1423,7 +1425,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
 
   const runFollowUp = async () => {
     if (!followUpQuestion.trim() || !session.adoItem) return;
-    setFollowUpRunning(true); setFollowUpError(null); setFollowUpResult(null);
+    setFollowUpRunning(true); setFollowUpError(null); setFollowUpResult(null); setAiWarning(null);
     try {
       const f = session.adoItem.fields;
       const logHits: Array<{file:string;line:number;seed:string;text:string}> = ((session.snowTask as any)?._logHits ?? [])
@@ -1479,7 +1481,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
         signal: AbortSignal.timeout(120_000),
       });
       const raw = await res.text();
-      let data: { assessment?: string; error?: string; source?: string } = {};
+      let data: { assessment?: string; error?: string; source?: string; warning?: string } = {};
       try { data = raw ? JSON.parse(raw) : {}; } catch { data = { error: `Invalid AI response (HTTP ${res.status}).` }; }
       if (!res.ok || data.error) {
         const message = data?.error ?? `HTTP ${res.status}`;
@@ -1500,6 +1502,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
       ]);
       setFollowUpQuestion('');
       setAiSource(data.source ?? aiSource ?? null);
+      setAiWarning(data.warning ?? null);
     } catch (e: any) {
       setFollowUpError(e.message);
     } finally {
@@ -1511,6 +1514,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
     'ollama': '🦙 Ollama (local)',
     'openai': '🤖 OpenAI',
     'github-models': '⚡ GitHub Models',
+    'deterministic-fallback': '🛡 Deterministic fallback',
   };
 
   return (
@@ -1616,6 +1620,16 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
 
       {providerSelection !== 'auto' && !selectedProviderEnabled && (
         <p className="text-xs text-yellow-400">Selected provider is not ready. Configure credentials/runtime or switch provider.</p>
+      )}
+
+      {aiSource === 'deterministic-fallback' && (
+        <div className="rounded border border-yellow-800/70 bg-yellow-950/20 px-2.5 py-2 text-xs text-yellow-200">
+          External AI route is unavailable in this environment. DevAssist switched to deterministic ticket-analysis mode so triage can continue.
+        </div>
+      )}
+
+      {aiWarning && (
+        <p className="text-xs text-yellow-300 whitespace-pre-wrap">Provider warning: {aiWarning}</p>
       )}
 
       {!canRun && (
