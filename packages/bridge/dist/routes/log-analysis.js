@@ -37,6 +37,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.logAnalysisRouter = void 0;
+exports.buildDiagnosticSummary = buildDiagnosticSummary;
 const express_1 = require("express");
 const node_1 = __importStar(require("read-excel-file/node"));
 const powershell_1 = require("../utils/powershell");

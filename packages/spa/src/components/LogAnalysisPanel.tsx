@@ -112,6 +112,63 @@ const DIAGNOSTIC_CONFIDENCE_COLOR = {
   low: 'border-gray-700 bg-gray-900/70 text-gray-200',
 };
 
+type ComparisonSummary = {
+  baselineLabel: string;
+  baselineFeatures: string[];
+  devassistFeatures: string[];
+  baselineScore: number;
+  devassistScore: number;
+  delta: number;
+};
+
+function scoreCoveragePart(actual: number, maxTarget: number, points: number): number {
+  if (maxTarget <= 0 || points <= 0) return 0;
+  const ratio = Math.max(0, Math.min(1, actual / maxTarget));
+  return Math.round(points * ratio);
+}
+
+function buildComparisonSummary(result: LogAnalysisResult): ComparisonSummary {
+  const coverage = result.diagnosticSummary?.evidenceCoverage;
+  const baselineLabel = 'VSCode + keyword-only baseline';
+
+  const baselineFeatures: string[] = [
+    'Top seed frequency',
+    'Basic error/warning buckets',
+    'Generic suggestion text',
+  ];
+
+  const devassistFeatures: string[] = [
+    'Primary finding with confidence',
+    'Per-section evidence coverage',
+    'Stack trace extraction + dedupe',
+    'Timeline delay analysis',
+    'Spreadsheet conversion signals',
+    'Image OCR diagnostic signals',
+  ];
+
+  const baselineScore =
+    (Object.keys(result.topSeeds ?? {}).length > 0 ? 20 : 0) +
+    ((result.byCategory?.error?.length ?? 0) > 0 || (result.byCategory?.warning?.length ?? 0) > 0 ? 20 : 0) +
+    ((result.suggestions?.length ?? 0) > 0 ? 20 : 0);
+
+  const devassistScore =
+    (result.diagnosticSummary ? 25 : 0) +
+    scoreCoveragePart(coverage?.stackTraces ?? 0, 2, 15) +
+    scoreCoveragePart(coverage?.timelineDelayRows ?? 0, 10, 15) +
+    scoreCoveragePart(coverage?.spreadsheetSignals ?? 0, 3, 15) +
+    scoreCoveragePart(coverage?.imageSignals ?? 0, 2, 15) +
+    scoreCoveragePart((result.explanation?.length ?? 0), 6, 15);
+
+  return {
+    baselineLabel,
+    baselineFeatures,
+    devassistFeatures,
+    baselineScore,
+    devassistScore,
+    delta: devassistScore - baselineScore,
+  };
+}
+
 interface FileAnalysisCard {
   file: string;
   kind: 'text' | 'spreadsheet' | 'image' | 'large-text' | 'zip-member' | 'skipped';
@@ -202,6 +259,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
     (result?.analyzed?.length ?? 0) <= 3 &&
     (result?.spreadsheetSummaries?.length ?? 0) <= 1 &&
     (result?.imageSummaries?.length ?? 0) <= 1;
+  const comparison = result ? buildComparisonSummary(result) : null;
 
   const readSysId = (record: any): string => {
     if (!record) return '';
@@ -400,6 +458,32 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
                 <p>Timeline delays: {result.diagnosticSummary.evidenceCoverage.timelineDelayRows}</p>
                 <p>Sheet signals: {result.diagnosticSummary.evidenceCoverage.spreadsheetSignals}</p>
                 <p>Image signals: {result.diagnosticSummary.evidenceCoverage.imageSignals}</p>
+              </div>
+            </div>
+          )}
+
+          {comparison && (
+            <div className="rounded-lg border border-cyan-900/60 bg-cyan-950/20 p-3 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-cyan-200">Analysis comparison</p>
+                <p className="text-xs text-cyan-100/90 font-mono">
+                  Delta: {comparison.delta >= 0 ? `+${comparison.delta}` : comparison.delta} (DevAssist {comparison.devassistScore} vs baseline {comparison.baselineScore})
+                </p>
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-2">
+                <div className="rounded border border-cyan-900/40 bg-black/20 p-2 space-y-1">
+                  <p className="text-[11px] text-cyan-300 uppercase tracking-wide">{comparison.baselineLabel}</p>
+                  {comparison.baselineFeatures.map((line, idx) => (
+                    <p key={idx} className="text-xs text-gray-300">- {line}</p>
+                  ))}
+                </div>
+                <div className="rounded border border-emerald-900/50 bg-black/20 p-2 space-y-1">
+                  <p className="text-[11px] text-emerald-300 uppercase tracking-wide">DevAssist enhanced analysis</p>
+                  {comparison.devassistFeatures.map((line, idx) => (
+                    <p key={idx} className="text-xs text-gray-300">- {line}</p>
+                  ))}
+                </div>
               </div>
             </div>
           )}

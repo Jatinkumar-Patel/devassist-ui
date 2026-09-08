@@ -68,7 +68,7 @@ const SEED_CATEGORY: Record<string, 'error' | 'warning' | 'lock' | 'ops' | 'othe
   'RecycleClient':                      'other',
 };
 
-interface LogHit {
+export interface LogHit {
   file: string;
   line: number;
   text: string;
@@ -76,7 +76,7 @@ interface LogHit {
   category: 'error' | 'warning' | 'lock' | 'ops' | 'other';
 }
 
-interface SpreadsheetSummary {
+export interface SpreadsheetSummary {
   file: string;
   sheet: string;
   rowCount: number;
@@ -86,7 +86,7 @@ interface SpreadsheetSummary {
   findings?: string[];
 }
 
-interface ImageSummary {
+export interface ImageSummary {
   file: string;
   textPreview: string;
   charCount: number;
@@ -120,7 +120,7 @@ interface LogAnalysisResult {
   cached?: boolean;
 }
 
-interface DiagnosticSummary {
+export interface DiagnosticSummary {
   primaryFinding: string;
   confidence: 'high' | 'medium' | 'low';
   rationale: string[];
@@ -136,7 +136,7 @@ interface DiagnosticSummary {
   };
 }
 
-interface StackTraceSummary {
+export interface StackTraceSummary {
   file: string;
   exception: string;
   signature: string;
@@ -144,7 +144,7 @@ interface StackTraceSummary {
   preview: string;
 }
 
-interface OperationTimelineSummary {
+export interface OperationTimelineSummary {
   file: string;
   rowsParsed: number;
   delayedCount: number;
@@ -850,7 +850,7 @@ function formatTopSeeds(topSeeds: Record<string, number>): string[] {
     .map(([seed, count]) => `${seed} (${count})`);
 }
 
-function buildDiagnosticSummary(result: {
+export function buildDiagnosticSummary(result: {
   byCategory: Record<string, LogHit[]>;
   topSeeds: Record<string, number>;
   stackTraces: StackTraceSummary[];
