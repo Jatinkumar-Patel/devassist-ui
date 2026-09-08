@@ -776,30 +776,30 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
   };
 
   const panelShell = expanded
-    ? 'fixed inset-3 z-50 overflow-auto rounded-2xl border border-cyan-500/40 bg-slate-950 shadow-2xl shadow-black/60'
-    : 'space-y-3';
+    ? 'fixed inset-3 z-50 overflow-auto rounded-2xl border border-gray-700 bg-gray-950 shadow-2xl shadow-black/60'
+    : 'space-y-2.5';
 
   return (
     <div className={panelShell}>
       {expanded && (
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-white/10 bg-slate-950/95 px-4 py-3 backdrop-blur">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-gray-800 bg-gray-950/95 px-3 py-2.5 backdrop-blur">
           <div>
-            <p className="text-xs uppercase tracking-wide text-cyan-300">Expanded comment view</p>
+            <p className="text-xs uppercase tracking-wide text-gray-400">Expanded comment view</p>
             <p className="text-sm text-gray-300">Use this when you want the analysis and commentary draft in a larger page.</p>
           </div>
           <button
             type="button"
             onClick={() => setExpanded(false)}
-            className="text-xs px-3 py-1.5 rounded-lg border border-cyan-400/40 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20"
+            className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 bg-gray-900 text-gray-200 hover:bg-gray-800"
           >
             Collapse view
           </button>
         </div>
       )}
 
-      <div className="space-y-3 p-0" style={expanded ? { padding: '1rem' } : undefined}>
+      <div className="space-y-2.5 p-0" style={expanded ? { padding: '0.75rem' } : undefined}>
       {/* Verdict */}
-      <div className={`rounded-lg border p-4 space-y-3 ${verdictStyle.color}`}>
+      <div className={`rounded-lg border p-3.5 space-y-2.5 ${simpleView ? 'border-gray-800 bg-gray-950/80 text-gray-100' : verdictStyle.color}`}>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div className="flex items-center gap-2 font-bold text-sm">
             {verdictStyle.icon}
@@ -833,19 +833,19 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           </div>
         </div>
         {simpleView && (
-          <p className="text-[11px] text-gray-300">
+          <p className="text-[11px] text-gray-400">
             Simple view is enabled. Core findings are shown first; advanced evidence and AI sections are hidden until expanded.
           </p>
         )}
         <pre className="text-xs opacity-80 whitespace-pre-wrap font-sans">{analysis.clientReported}</pre>
       </div>
 
-      <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-2 text-sm">
-        <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Problem Statement</p>
-        <div className="overflow-hidden rounded border border-gray-800 bg-gray-950/70">
+      <div className="rounded-lg border border-gray-800 bg-gray-950/70 p-3.5 space-y-2 text-sm">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Problem Statement</p>
+        <div className="overflow-hidden rounded border border-gray-800 bg-gray-950/80">
           <table className="w-full border-collapse text-left text-xs text-gray-200">
             <thead>
-              <tr className="bg-gray-800/80 text-gray-300 uppercase tracking-wide">
+              <tr className="bg-gray-900 text-gray-300 uppercase tracking-wide">
                 <th className="border border-gray-800 px-2.5 py-2 font-medium">Attribute</th>
                 <th className="border border-gray-800 px-2.5 py-2 font-medium">Evidence</th>
               </tr>
@@ -863,11 +863,11 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
       </div>
 
       {/* Diagnostic evidence and assessment */}
-      <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-4 text-sm">
+      <div className="rounded-lg border border-gray-800 bg-gray-950/70 p-3.5 space-y-3.5 text-sm">
         {snowEvidenceRows.length > 0 && !simpleView && (
           <section className="space-y-2">
-            <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Diagnostic Evidence</p>
-            <div className="analysis-scroll max-h-[28rem] space-y-2 rounded border border-gray-800 bg-gray-950/70 p-2.5">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Diagnostic Evidence</p>
+            <div className="analysis-scroll max-h-[28rem] space-y-2 rounded border border-gray-800 bg-gray-950/80 p-2.5">
               {snowRecords.length > 0 && (
                 <div className="space-y-1.5">
                   <p className="text-[11px] uppercase tracking-wide text-gray-500">Record snapshot</p>
@@ -915,11 +915,11 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
 
         {snowEvidenceRows.length > 0 && simpleView && (
           <section className="space-y-2">
-            <details className="rounded border border-gray-800 bg-gray-950/70 p-2.5">
-              <summary className="cursor-pointer text-xs font-semibold text-cyan-200 uppercase tracking-wide">
+            <details className="rounded border border-gray-800 bg-gray-950/80 p-2.5">
+              <summary className="cursor-pointer text-xs font-semibold text-gray-400 uppercase tracking-wide">
                 Diagnostic Evidence (collapsed in simple view)
               </summary>
-              <div className="analysis-scroll mt-2 max-h-[20rem] space-y-2 rounded border border-gray-800 bg-gray-900/70 p-2">
+              <div className="analysis-scroll mt-2 max-h-[20rem] space-y-2 rounded border border-gray-800 bg-gray-950/70 p-2">
                 {snowRecords.slice(0, 6).map((item, idx) => (
                   <div key={`snow-record-simple-${idx}`} className="rounded border border-gray-800 bg-gray-900/70 px-2 py-1.5">
                     <p className="text-[11px] text-cyan-300 font-semibold">{item.label}</p>
@@ -946,11 +946,11 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
         )}
 
         <section className="space-y-2">
-          <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Assessment</p>
-          <div className="overflow-hidden rounded border border-gray-800 bg-gray-950/70">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Assessment</p>
+          <div className="overflow-hidden rounded border border-gray-800 bg-gray-950/80">
             <table className="w-full border-collapse text-left text-xs text-gray-200">
               <thead>
-                <tr className="bg-gray-800/80 text-gray-300 uppercase tracking-wide">
+                <tr className="bg-gray-900 text-gray-300 uppercase tracking-wide">
                   <th className="border border-gray-800 px-2.5 py-2 font-medium">Reasoning step</th>
                   <th className="border border-gray-800 px-2.5 py-2 font-medium">Finding</th>
                 </tr>
@@ -975,8 +975,8 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
 
         {(analyzedArtifacts.length > 0 || notAnalyzedArtifacts.length > 0) && (
           <section className="space-y-2">
-            <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Artifact Coverage</p>
-            <div className="rounded border border-gray-800 bg-gray-950/70 p-2.5 space-y-2">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Artifact Coverage</p>
+            <div className="rounded border border-gray-800 bg-gray-950/80 p-2.5 space-y-1.5">
               {analyzedArtifacts.map((item, idx) => (
                 <p key={`artifact-ok-${idx}`} className="text-xs text-emerald-300 leading-relaxed">- Analyzed: {item.file} ({item.type}) - {item.finding}</p>
               ))}
@@ -988,9 +988,9 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
         )}
 
         <section className="space-y-2">
-          <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Recommended Next Steps</p>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Recommended Next Steps</p>
           {recommendedSteps.length > 0 && (
-            <div className="rounded border border-gray-800 bg-gray-950/70 p-2.5 space-y-1">
+            <div className="rounded border border-gray-800 bg-gray-950/80 p-2.5 space-y-1">
               {recommendedSteps.map((step, idx) => (
                 <p key={`next-step-${idx}`} className="text-xs text-gray-200 leading-relaxed">{idx + 1}. {step}</p>
               ))}
@@ -1000,7 +1000,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
 
         {analysis.blindSpots.length > 0 && (
           <div className="space-y-1.5">
-            <p className="text-xs font-semibold text-yellow-300 uppercase tracking-wide flex items-center gap-1">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1">
               <AlertTriangle size={10} /> Evidence Gaps
             </p>
             {analysis.blindSpots.map((b, i) => (
@@ -1047,8 +1047,8 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
 
         {!sparseEvidenceMode && !simpleView && (
           <section className="space-y-2">
-            <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Unique DevAssist Sections</p>
-            <div className="rounded border border-gray-800 bg-gray-950/70 p-2.5 space-y-1">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Unique DevAssist Sections</p>
+            <div className="rounded border border-gray-800 bg-gray-950/80 p-2.5 space-y-1">
               <p className="text-xs text-gray-200">- Analysis Framework Trace (skills): preflight checks, routing, and evidence quality.</p>
               {hasRepoComparisonSections && <p className="text-xs text-gray-200">- Repo / MTM Comparison: cross-checks against related bugs, test coverage, commits, and release context.</p>}
               <p className="text-xs text-gray-200">- AI Assessment Panel: optional secondary perspective for reviewer comparison.</p>
@@ -1076,7 +1076,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
 
       {/* Repo / MTM Comparison */}
       {shouldShowSupplementary && (session.relatedItems?.length || session.testCases?.length || session.recentCommits?.length || session.areaEvidence?.length || session.versionEvidence?.length || session.kbEvidence?.length) && (
-        <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-4">
+        <div className="rounded-lg border border-gray-800 bg-gray-950/80 p-3.5 space-y-3.5">
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Repo / MTM Comparison</p>
 
           {(session.kbEvidence?.length ?? 0) > 0 && (

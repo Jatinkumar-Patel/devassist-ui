@@ -315,7 +315,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
   }, [autoResult, blockedReason, result, running, sysId]);
 
   return (
-    <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-3">
+    <div className="rounded-lg border border-gray-800 bg-gray-950/80 p-3.5 space-y-2.5">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-medium text-gray-400 flex items-center gap-1.5">
           <FileSearch size={13} /> Log Scan
@@ -326,13 +326,13 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
           <button
             type="button"
             onClick={() => setSimpleView((prev) => !prev)}
-            className="text-xs border border-gray-600 text-gray-300 px-3 py-1.5 rounded hover:bg-gray-800"
+            className="text-xs border border-gray-700 text-gray-300 px-3 py-1.5 rounded hover:bg-gray-900"
           >
             {simpleView ? 'Detailed view' : 'Simple view'}
           </button>
           <button onClick={analyze} disabled={running || !sysId || !!blockedReason}
-            className="flex items-center gap-1.5 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-40
-                       border border-gray-600 text-gray-300 px-3 py-1.5 rounded font-medium">
+            className="flex items-center gap-1.5 text-xs bg-gray-900 hover:bg-gray-800 disabled:opacity-40
+                       border border-gray-700 text-gray-300 px-3 py-1.5 rounded font-medium">
             {running ? <Loader2 size={11} className="animate-spin" /> : <FileSearch size={11} />}
             {running ? 'Analyzing…' : result ? 'Re-run' : 'Analyze logs'}
           </button>
@@ -345,8 +345,8 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
 
       {/* Manual sysId entry when SNOW task not auto-fetched */}
       {!autoSysId && (
-        <div className="rounded-lg border border-amber-800/50 bg-amber-950/20 p-3 space-y-2">
-          <p className="text-[11px] text-amber-300">
+        <div className="rounded-lg border border-gray-800 bg-gray-950/70 p-3 space-y-2">
+          <p className="text-[11px] text-gray-400">
             SNOW task not auto-fetched (task may be in an unlisted table or VPN issue).
             Paste the SNOW record <strong>sys_id</strong> manually to run log analysis:
           </p>
@@ -356,41 +356,41 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
               value={manualSysId}
               onChange={(e) => setManualSysId(e.target.value)}
               placeholder="e.g. 1a2b3c4d5e6f7890abcdef1234567890"
-              className="flex-1 bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs font-mono text-gray-200 placeholder-gray-600 focus:outline-none focus:border-cyan-600"
+              className="flex-1 bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs font-mono text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500"
             />
             <button
               onClick={analyze}
               disabled={running || !manualSysId.trim() || !!blockedReason}
-              className="text-xs bg-cyan-800/50 hover:bg-cyan-700/60 border border-cyan-700/60 text-cyan-200 px-3 py-1 rounded disabled:opacity-40 font-medium"
+              className="text-xs bg-gray-900 hover:bg-gray-800 border border-gray-700 text-gray-300 px-3 py-1 rounded disabled:opacity-40 font-medium"
             >
               {running ? 'Running…' : 'Run'}
             </button>
           </div>
-          <p className="text-[10px] text-gray-600">Find sys_id: open the SNOW task → right-click → Copy sys_id, or from the SNOW URL.</p>
+          <p className="text-[10px] text-gray-500">Find sys_id: open the SNOW task → right-click → Copy sys_id, or from the SNOW URL.</p>
         </div>
       )}
 
       {error && <p className="text-xs text-red-400">{error}</p>}
 
       {blockedReason && (
-        <div className="rounded-lg border border-amber-800/60 bg-amber-950/20 p-3 space-y-1">
-          <p className="text-xs font-medium text-amber-300">{waitingForSnowCheck ? 'Log scan pending' : 'Log scan unavailable'}</p>
-          <p className="text-xs text-amber-200/90">{blockedReason}</p>
+        <div className="rounded-lg border border-gray-800 bg-gray-950/70 p-3 space-y-1">
+          <p className="text-xs font-medium text-gray-300">{waitingForSnowCheck ? 'Log scan pending' : 'Log scan unavailable'}</p>
+          <p className="text-xs text-gray-500">{blockedReason}</p>
         </div>
       )}
 
       {result && (
-        <div className="space-y-4">
+        <div className="space-y-3.5">
           <div className="grid grid-cols-3 gap-2 text-xs">
-            <div className="bg-gray-800 rounded p-2">
+            <div className="bg-gray-900 rounded p-2">
               <p className="text-gray-500 font-medium">Attachments found</p>
               <p className="text-gray-200 font-mono">{result.totalAttachments ?? 0}</p>
             </div>
-            <div className="bg-gray-800 rounded p-2">
+            <div className="bg-gray-900 rounded p-2">
               <p className="text-gray-500 font-medium">Scannable</p>
               <p className="text-gray-200 font-mono">{result.scannableAttachments ?? 0}</p>
             </div>
-            <div className="bg-gray-800 rounded p-2">
+            <div className="bg-gray-900 rounded p-2">
               <p className="text-gray-500 font-medium">Pattern hits</p>
               <p className="text-gray-200 font-mono">{result.totalHits ?? 0}</p>
             </div>
@@ -426,23 +426,23 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
           )}
 
           {!simpleView && comparison && (
-            <div className="rounded-lg border border-cyan-900/60 bg-cyan-950/20 p-3 space-y-3">
+            <div className="rounded-lg border border-gray-800 bg-gray-950/70 p-3 space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-cyan-200">Analysis comparison</p>
-                <p className="text-xs text-cyan-100/90 font-mono">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Analysis comparison</p>
+                <p className="text-xs text-gray-400 font-mono">
                   Delta: {comparison.delta >= 0 ? `+${comparison.delta}` : comparison.delta} (DevAssist {comparison.devassistScore} vs baseline {comparison.baselineScore})
                 </p>
               </div>
 
               <div className="grid gap-2 md:grid-cols-2">
-                <div className="rounded border border-cyan-900/40 bg-black/20 p-2 space-y-1">
-                  <p className="text-[11px] text-cyan-300 uppercase tracking-wide">{comparison.baselineLabel}</p>
+                <div className="rounded border border-gray-800 bg-gray-950/60 p-2 space-y-1">
+                  <p className="text-[11px] text-gray-400 uppercase tracking-wide">{comparison.baselineLabel}</p>
                   <p className="text-xs text-gray-300">Seed-only count: {comparison.baselineMetrics.seeds}</p>
                   <p className="text-xs text-gray-300">Active buckets: {comparison.baselineMetrics.buckets}</p>
                   <p className="text-xs text-gray-300">Generic suggestions: {comparison.baselineMetrics.suggestions}</p>
                 </div>
-                <div className="rounded border border-emerald-900/50 bg-black/20 p-2 space-y-1">
-                  <p className="text-[11px] text-emerald-300 uppercase tracking-wide">DevAssist enhanced analysis</p>
+                <div className="rounded border border-gray-800 bg-gray-950/60 p-2 space-y-1">
+                  <p className="text-[11px] text-gray-400 uppercase tracking-wide">DevAssist enhanced analysis</p>
                   <p className="text-xs text-gray-300">Evidence domains: {comparison.devassistMetrics.evidenceDomains}</p>
                   <p className="text-xs text-gray-300">Sections with signal: {comparison.devassistMetrics.sectionsWithSignal}</p>
                   <p className="text-xs text-gray-300">Confidence bonus: {comparison.devassistMetrics.confidenceBonus}</p>
@@ -459,18 +459,18 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
               )}
 
               {comparison.coverageCard.length > 0 && (
-                <div className="rounded border border-cyan-900/40 bg-black/20 p-2 space-y-2">
-                  <p className="text-[11px] text-cyan-300 uppercase tracking-wide">Coverage card</p>
+                <div className="rounded border border-gray-800 bg-gray-950/60 p-2 space-y-2">
+                  <p className="text-[11px] text-gray-400 uppercase tracking-wide">Coverage card</p>
                   <div className="grid gap-1.5 sm:grid-cols-2">
                     {comparison.coverageCard.map((entry) => (
-                      <div key={entry.domain} className="rounded border border-cyan-900/30 bg-cyan-950/15 p-2">
+                      <div key={entry.domain} className="rounded border border-gray-800 bg-gray-950/50 p-2">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-xs text-cyan-100 font-medium">#{entry.rank} {entry.label}</p>
+                          <p className="text-xs text-gray-200 font-medium">#{entry.rank} {entry.label}</p>
                           <div className="flex items-center gap-1.5">
-                            <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${entry.verdict === 'pass' ? 'border-emerald-600/60 text-emerald-300' : 'border-rose-700/70 text-rose-300'}`}>
+                            <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${entry.verdict === 'pass' ? 'border-gray-600 text-gray-300' : 'border-gray-600 text-gray-400'}`}>
                               {entry.verdict}
                             </span>
-                            <p className="text-[11px] text-cyan-200 font-mono">+{entry.points}</p>
+                            <p className="text-[11px] text-gray-400 font-mono">+{entry.points}</p>
                           </div>
                         </div>
                         <p className="text-[11px] text-gray-300">{entry.count} signal(s) captured</p>
@@ -486,9 +486,9 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
           )}
 
           {!simpleView && (result.suppressedNoiseCount ?? 0) > 0 && (
-            <div className="rounded-lg border border-indigo-900/60 bg-indigo-950/20 p-3">
-              <p className="text-xs font-medium text-indigo-200">Noise filtering applied</p>
-              <p className="text-xs text-indigo-100/80 mt-1">
+            <div className="rounded-lg border border-gray-800 bg-gray-950/70 p-3">
+              <p className="text-xs font-medium text-gray-300">Noise filtering applied</p>
+              <p className="text-xs text-gray-500 mt-1">
                 Suppressed {result.suppressedNoiseCount} low-value operation line(s) (CheckShellForIdle, GetConnectedHCServerName, ResolveLocalHost)
                 so diagnostics focus on errors, warnings, lock contention, and exception traces.
               </p>
@@ -496,9 +496,9 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
           )}
 
           {!simpleView && result.explanation && result.explanation.length > 0 && (
-            <div className="rounded-lg border border-cyan-900/60 bg-cyan-950/20 p-3 space-y-2">
-              <p className="text-xs font-medium text-cyan-200 uppercase tracking-wide">Error explanation</p>
-              <div className="space-y-1 text-xs text-cyan-50/90">
+            <div className="rounded-lg border border-gray-800 bg-gray-950/70 p-3 space-y-2">
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Error explanation</p>
+              <div className="space-y-1 text-xs text-gray-300">
                 {result.explanation.map((line, i) => (
                   <p key={i} className="leading-relaxed">{line}</p>
                 ))}
@@ -507,7 +507,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
           )}
 
           <div className="space-y-2">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide flex items-center gap-1.5">
               <FileSearch size={11} /> Evidence files
             </p>
             <p className="text-[11px] text-gray-500">
@@ -517,20 +517,20 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
               {visibleFileCards.map((card, i) => {
                 const isSkipped = card.kind === 'skipped';
                 return (
-                  <div key={`file-card-${i}`} className={`rounded-lg border p-3 space-y-1.5 ${isSkipped ? 'border-amber-900/60 bg-amber-950/20' : 'border-gray-800 bg-gray-950/50'}`}>
+                  <div key={`file-card-${i}`} className={`rounded-lg border p-3 space-y-1.5 ${isSkipped ? 'border-gray-800 bg-gray-950/70' : 'border-gray-800 bg-gray-950/60'}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className={`text-xs font-semibold break-all ${isSkipped ? 'text-amber-100' : 'text-gray-200'}`}>{card.file}</p>
-                        <p className={`text-[11px] uppercase tracking-wide ${isSkipped ? 'text-amber-300' : 'text-cyan-300'}`}>{card.summary}</p>
+                        <p className="text-xs font-semibold break-all text-gray-200">{card.file}</p>
+                        <p className="text-[11px] uppercase tracking-wide text-gray-400">{card.summary}</p>
                       </div>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded border uppercase ${isSkipped ? 'border-amber-700/70 text-amber-300' : 'border-gray-700 text-gray-400'}`}>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded border border-gray-700 text-gray-400 uppercase">
                         {card.kind}
                       </span>
                     </div>
                     {card.details.length > 0 && (
                       <div className="space-y-0.5">
                         {card.details.map((detail, idx) => (
-                          <p key={idx} className={`text-xs ${isSkipped ? 'text-amber-200/80' : 'text-gray-400'}`}>{detail}</p>
+                          <p key={idx} className="text-xs text-gray-400">{detail}</p>
                         ))}
                       </div>
                     )}
@@ -553,14 +553,14 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
           </div>
 
           {(result.totalAttachments ?? 0) === 0 && (
-            <div className="rounded-lg border border-gray-800 bg-gray-950/40 p-3">
+            <div className="rounded-lg border border-gray-800 bg-gray-950/60 p-3">
               <p className="text-xs font-medium text-gray-300">No SNOW attachments found for this record chain</p>
               <p className="text-xs text-gray-500 mt-1">There is nothing for DevAssist to scan yet. Use Raw evidence to confirm whether the task, incident, or case actually has attachments.</p>
             </div>
           )}
 
           {(result.totalAttachments ?? 0) > 0 && (result.scannableAttachments ?? 0) === 0 && (
-            <div className="rounded-lg border border-gray-800 bg-gray-950/40 p-3">
+            <div className="rounded-lg border border-gray-800 bg-gray-950/60 p-3">
               <p className="text-xs font-medium text-gray-300">Attachments found, but none are processable yet</p>
               <p className="text-xs text-gray-500 mt-1">Supported scan types are `.log`, `.txt`, `.zip`, `.csv`, `.json`, `.xml`, `.xlsx`, `.xls`, `.png`, `.jpg`, `.jpeg`, `.bmp`, `.tif`, and `.tiff`.</p>
             </div>
