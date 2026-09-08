@@ -20,11 +20,36 @@ function normalizeKeyPart(values: string[] = []): string[] {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 }
 
-function buildTriageCacheKey(raw: string, selectedProductIds: string[] = [], selectedReportedReleases: string[] = []): string {
-  const normalizedRaw = raw.trim().toUpperCase();
+function normalizeWorkItemIdentity(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+
+  const { type, id } = detectInput(trimmed);
+  const workId = String(id ?? '').trim();
+  if (!workId) return trimmed.toUpperCase();
+
+  const compactId = workId.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+
+  switch (type) {
+    case 'DA':
+    case 'TFS':
+      return `WORKITEM:${compactId}`;
+    case 'TASK':
+      return `TASK:${compactId}`;
+    case 'INC':
+      return `INC:${compactId}`;
+    case 'CS':
+      return `CS:${compactId}`;
+    default:
+      return trimmed.toUpperCase();
+  }
+}
+
+export function buildTriageCacheKey(raw: string, selectedProductIds: string[] = [], selectedReportedReleases: string[] = []): string {
+  const workItemIdentity = normalizeWorkItemIdentity(raw);
   const products = normalizeKeyPart(selectedProductIds).join('|');
   const releases = normalizeKeyPart(selectedReportedReleases).join('|');
-  return `${normalizedRaw}::${products}::${releases}`;
+  return `${workItemIdentity}::${products}::${releases}`;
 }
 
 function buildCacheMeta(key: string, source: 'fresh' | 'cache', reusedFromSessionId?: string) {
