@@ -114,9 +114,26 @@ interface LogAnalysisResult {
   operationTimelineSummaries: OperationTimelineSummary[];
   spreadsheetSummaries: SpreadsheetSummary[];
   imageSummaries: ImageSummary[];
+  diagnosticSummary: DiagnosticSummary;
   suggestions: CodeSuggestion[];
   explanation: string[];
   cached?: boolean;
+}
+
+interface DiagnosticSummary {
+  primaryFinding: string;
+  confidence: 'high' | 'medium' | 'low';
+  rationale: string[];
+  evidenceCoverage: {
+    errors: number;
+    warnings: number;
+    locks: number;
+    operations: number;
+    stackTraces: number;
+    timelineDelayRows: number;
+    spreadsheetSignals: number;
+    imageSignals: number;
+  };
 }
 
 interface StackTraceSummary {
@@ -833,6 +850,88 @@ function formatTopSeeds(topSeeds: Record<string, number>): string[] {
     .map(([seed, count]) => `${seed} (${count})`);
 }
 
+function buildDiagnosticSummary(result: {
+  byCategory: Record<string, LogHit[]>;
+  topSeeds: Record<string, number>;
+  stackTraces: StackTraceSummary[];
+  operationTimelineSummaries: OperationTimelineSummary[];
+  spreadsheetSummaries: SpreadsheetSummary[];
+  imageSummaries: ImageSummary[];
+}): DiagnosticSummary {
+  const errors = result.byCategory.error?.length ?? 0;
+  const warnings = result.byCategory.warning?.length ?? 0;
+  const locks = result.byCategory.lock?.length ?? 0;
+  const operations = result.byCategory.ops?.length ?? 0;
+  const stackTraces = result.stackTraces.length;
+  const timelineDelayRows = result.operationTimelineSummaries.reduce((sum, s) => sum + s.delayedCount, 0);
+
+  const spreadsheetSignals = result.spreadsheetSummaries.reduce((sum, sheet) => {
+    const findings = sheet.findings ?? [];
+    return sum + findings.filter((line) => /duplicate|mapping gaps|conversion summary|status distribution|multiple nametype|missing target|not found|invalid|fail|error/i.test(line)).length;
+  }, 0);
+
+  const imageSignals = result.imageSummaries.reduce((sum, image) => {
+    const findings = image.findings ?? [];
+    return sum + findings.filter((line) => /duplicate|error|exception|timeout|failed|unable|not found|invalid|missing|record|patient|workflow/i.test(line)).length;
+  }, 0);
+
+  const lockTimeoutCount = result.topSeeds['LockWithTimeout'] ?? 0;
+  const progressTimeoutCount = result.topSeeds['progress indicator has timed out'] ?? 0;
+  const genericTimeoutCount = (result.topSeeds['timed out'] ?? 0) + (result.topSeeds['Timeout'] ?? 0);
+
+  const rationale: string[] = [];
+  let primaryFinding = 'No single dominant failure pattern detected in scanned evidence';
+  let confidence: DiagnosticSummary['confidence'] = 'low';
+
+  if (errors > 0 && stackTraces > 0) {
+    primaryFinding = 'Server-side exception path is the dominant signal';
+    confidence = errors >= 5 || stackTraces >= 2 ? 'high' : 'medium';
+    rationale.push(`${errors} error/fatal hit(s) with ${stackTraces} extracted stack trace(s).`);
+    rationale.push('Start from the first exception stack trace and correlate with incident timestamps.');
+  } else if (lockTimeoutCount >= 20 || locks >= 25 || timelineDelayRows >= 10) {
+    primaryFinding = 'Lock contention and long-running operations are the dominant signal';
+    confidence = lockTimeoutCount >= 50 || timelineDelayRows >= 20 ? 'high' : 'medium';
+    rationale.push(`LockWithTimeout=${lockTimeoutCount}, lock-category hits=${locks}, delayed timeline rows=${timelineDelayRows}.`);
+    rationale.push('This pattern commonly aligns with queuing/throughput bottlenecks rather than isolated user error.');
+  } else if ((progressTimeoutCount + genericTimeoutCount) > 0 && warnings > 0 && errors === 0) {
+    primaryFinding = 'Client-side timeout or retry behavior appears dominant';
+    confidence = warnings >= 10 ? 'medium' : 'low';
+    rationale.push(`Timeout-related seeds found (${progressTimeoutCount + genericTimeoutCount}) with warnings=${warnings} and no direct error signatures.`);
+    rationale.push('Correlate client timeout moments with server timeline rows to confirm client timeout threshold mismatch.');
+  } else if (spreadsheetSignals > 0 && errors === 0) {
+    primaryFinding = 'Data-quality or mapping drift is the dominant signal';
+    confidence = spreadsheetSignals >= 3 ? 'medium' : 'low';
+    rationale.push(`Spreadsheet signals=${spreadsheetSignals} across parsed sheet findings.`);
+    rationale.push('Evidence points to duplicate/misaligned records rather than a pure service runtime failure.');
+  } else if (imageSignals > 0 && errors === 0) {
+    primaryFinding = 'UI workflow evidence from screenshots is the dominant signal';
+    confidence = imageSignals >= 2 ? 'medium' : 'low';
+    rationale.push(`Image OCR signals=${imageSignals} from screenshot text findings.`);
+    rationale.push('Use OCR text and timeline context to map user-visible failure to the backend path.');
+  } else if (operations > 0 && errors === 0 && warnings === 0) {
+    primaryFinding = 'Operational calls are present without clear failure signatures';
+    confidence = 'low';
+    rationale.push(`${operations} operation hit(s) with no direct error/timeout indicators.`);
+    rationale.push('Expand evidence window or inspect non-scannable attachments for missing context.');
+  }
+
+  return {
+    primaryFinding,
+    confidence,
+    rationale,
+    evidenceCoverage: {
+      errors,
+      warnings,
+      locks,
+      operations,
+      stackTraces,
+      timelineDelayRows,
+      spreadsheetSignals,
+      imageSignals,
+    },
+  };
+}
+
 function buildExplanation(result: {
   totalAttachments: number;
   scannableAttachments: number;
@@ -847,6 +946,7 @@ function buildExplanation(result: {
   imageSummaries: ImageSummary[];
   lockPairs: LogHit[];
   suppressedNoiseCount: number;
+  diagnosticSummary?: DiagnosticSummary;
 }): string[] {
   const explanation: string[] = [];
 
@@ -881,6 +981,13 @@ function buildExplanation(result: {
     }
     if (opsCount > 0 && errorCount === 0) {
       explanation.push(`The scan found operational calls but no direct error pattern. The issue may be in a dependency, data mismatch, or a code path that does not log exceptions clearly.`);
+    }
+  }
+
+  if (result.diagnosticSummary) {
+    explanation.push(`Primary diagnostic finding: ${result.diagnosticSummary.primaryFinding} (confidence: ${result.diagnosticSummary.confidence}).`);
+    for (const line of result.diagnosticSummary.rationale.slice(0, 3)) {
+      explanation.push(line);
     }
   }
 
@@ -1124,6 +1231,15 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
       rawTextBlocks.flatMap((b) => extractStackTraces(b.content, b.file, MAX_STACK_TRACES)),
       MAX_STACK_TRACES
     );
+    const topSeeds = summariseBySeeds(allHits);
+    const diagnosticSummary = buildDiagnosticSummary({
+      byCategory,
+      topSeeds,
+      stackTraces,
+      operationTimelineSummaries: operationTimelineSummaries.slice(0, 20),
+      spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
+      imageSummaries: imageSummaries.slice(0, 40),
+    });
 
     const result: LogAnalysisResult = {
       totalAttachments: attachments.length,
@@ -1135,11 +1251,12 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
       hits: allHits.slice(0, 100), // cap display at 100
       byCategory,
       lockPairs: lockPairs.slice(0, 20),
-      topSeeds: summariseBySeeds(allHits),
+      topSeeds,
       stackTraces,
       operationTimelineSummaries: operationTimelineSummaries.slice(0, 20),
       spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
       imageSummaries: imageSummaries.slice(0, 40),
+      diagnosticSummary,
       suggestions,
       explanation: buildExplanation({
         totalAttachments: attachments.length,
@@ -1148,13 +1265,14 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
         skipped,
         totalHits: allHits.length,
         byCategory,
-        topSeeds: summariseBySeeds(allHits),
+        topSeeds,
         stackTraces,
         operationTimelineSummaries: operationTimelineSummaries.slice(0, 20),
         spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
         imageSummaries: imageSummaries.slice(0, 40),
         lockPairs: lockPairs.slice(0, 20),
         suppressedNoiseCount,
+        diagnosticSummary,
       }),
       cached: false,
     };

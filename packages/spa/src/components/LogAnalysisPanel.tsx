@@ -63,6 +63,21 @@ interface LogAnalysisResult {
     findings?: string[];
     hitCount: number;
   }>;
+  diagnosticSummary?: {
+    primaryFinding: string;
+    confidence: 'high' | 'medium' | 'low';
+    rationale: string[];
+    evidenceCoverage: {
+      errors: number;
+      warnings: number;
+      locks: number;
+      operations: number;
+      stackTraces: number;
+      timelineDelayRows: number;
+      spreadsheetSignals: number;
+      imageSignals: number;
+    };
+  };
   suggestions: CodeSuggestion[];
   cached?: boolean;
 }
@@ -89,6 +104,12 @@ const SEVERITY_COLOR = {
   critical: 'border-red-700 bg-red-950/30 text-red-300',
   high:     'border-orange-700 bg-orange-950/20 text-orange-300',
   medium:   'border-yellow-700 bg-yellow-950/20 text-yellow-300',
+};
+
+const DIAGNOSTIC_CONFIDENCE_COLOR = {
+  high: 'border-emerald-700/60 bg-emerald-950/30 text-emerald-200',
+  medium: 'border-yellow-700/60 bg-yellow-950/30 text-yellow-200',
+  low: 'border-gray-700 bg-gray-900/70 text-gray-200',
 };
 
 interface FileAnalysisCard {
@@ -353,6 +374,35 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
               <p className="text-gray-200 font-mono">{result.totalHits ?? 0}</p>
             </div>
           </div>
+
+          {result.diagnosticSummary && (
+            <div className={`rounded-lg border p-3 space-y-2 ${DIAGNOSTIC_CONFIDENCE_COLOR[result.diagnosticSummary.confidence]}`}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide">Primary diagnostic finding</p>
+                <span className="text-[10px] uppercase tracking-wide border border-current/40 rounded px-1.5 py-0.5">
+                  {result.diagnosticSummary.confidence} confidence
+                </span>
+              </div>
+              <p className="text-xs leading-relaxed">{result.diagnosticSummary.primaryFinding}</p>
+              {result.diagnosticSummary.rationale.length > 0 && (
+                <div className="space-y-0.5">
+                  {result.diagnosticSummary.rationale.map((line, idx) => (
+                    <p key={idx} className="text-xs opacity-90">- {line}</p>
+                  ))}
+                </div>
+              )}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1 border-t border-current/20 text-[11px]">
+                <p>Errors: {result.diagnosticSummary.evidenceCoverage.errors}</p>
+                <p>Warnings: {result.diagnosticSummary.evidenceCoverage.warnings}</p>
+                <p>Locks: {result.diagnosticSummary.evidenceCoverage.locks}</p>
+                <p>Ops: {result.diagnosticSummary.evidenceCoverage.operations}</p>
+                <p>Stack traces: {result.diagnosticSummary.evidenceCoverage.stackTraces}</p>
+                <p>Timeline delays: {result.diagnosticSummary.evidenceCoverage.timelineDelayRows}</p>
+                <p>Sheet signals: {result.diagnosticSummary.evidenceCoverage.spreadsheetSignals}</p>
+                <p>Image signals: {result.diagnosticSummary.evidenceCoverage.imageSignals}</p>
+              </div>
+            </div>
+          )}
 
           {(result.suppressedNoiseCount ?? 0) > 0 && (
             <div className="rounded-lg border border-indigo-900/60 bg-indigo-950/20 p-3">
