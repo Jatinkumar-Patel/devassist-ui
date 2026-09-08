@@ -189,6 +189,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
   const [result, setResult] = useState<LogAnalysisResult | null>(autoResult ?? null);
   const [error, setError] = useState('');
   const [manualSysId, setManualSysId] = useState('');
+  const [simpleView, setSimpleView] = useState(true);
   const [showAllFileAnalysis, setShowAllFileAnalysis] = useState(false);
   const autoAttemptedForSysIdRef = useRef<string>('');
 
@@ -321,13 +322,26 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
           {snowTaskNumber && <span className="text-gray-600 font-mono">{snowTaskNumber}</span>}
           {autoSysId && <span className="text-gray-600 font-mono text-[10px]">sysId: {autoSysId}</span>}
         </p>
-        <button onClick={analyze} disabled={running || !sysId || !!blockedReason}
-          className="flex items-center gap-1.5 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-40
-                     border border-gray-600 text-gray-300 px-3 py-1.5 rounded font-medium">
-          {running ? <Loader2 size={11} className="animate-spin" /> : <FileSearch size={11} />}
-          {running ? 'Analyzing…' : result ? 'Re-run' : 'Analyze logs'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSimpleView((prev) => !prev)}
+            className="text-xs border border-gray-600 text-gray-300 px-3 py-1.5 rounded hover:bg-gray-800"
+          >
+            {simpleView ? 'Detailed view' : 'Simple view'}
+          </button>
+          <button onClick={analyze} disabled={running || !sysId || !!blockedReason}
+            className="flex items-center gap-1.5 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-40
+                       border border-gray-600 text-gray-300 px-3 py-1.5 rounded font-medium">
+            {running ? <Loader2 size={11} className="animate-spin" /> : <FileSearch size={11} />}
+            {running ? 'Analyzing…' : result ? 'Re-run' : 'Analyze logs'}
+          </button>
+        </div>
       </div>
+
+      {simpleView && (
+        <p className="text-[11px] text-gray-500">Simple view shows key metrics and top evidence first. Switch to Detailed view for full diagnostics.</p>
+      )}
 
       {/* Manual sysId entry when SNOW task not auto-fetched */}
       {!autoSysId && (
@@ -411,7 +425,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
             </div>
           )}
 
-          {comparison && (
+          {!simpleView && comparison && (
             <div className="rounded-lg border border-cyan-900/60 bg-cyan-950/20 p-3 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-cyan-200">Analysis comparison</p>
@@ -471,7 +485,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
             </div>
           )}
 
-          {(result.suppressedNoiseCount ?? 0) > 0 && (
+          {!simpleView && (result.suppressedNoiseCount ?? 0) > 0 && (
             <div className="rounded-lg border border-indigo-900/60 bg-indigo-950/20 p-3">
               <p className="text-xs font-medium text-indigo-200">Noise filtering applied</p>
               <p className="text-xs text-indigo-100/80 mt-1">
@@ -481,7 +495,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
             </div>
           )}
 
-          {result.explanation && result.explanation.length > 0 && (
+          {!simpleView && result.explanation && result.explanation.length > 0 && (
             <div className="rounded-lg border border-cyan-900/60 bg-cyan-950/20 p-3 space-y-2">
               <p className="text-xs font-medium text-cyan-200 uppercase tracking-wide">Error explanation</p>
               <div className="space-y-1 text-xs text-cyan-50/90">
@@ -552,21 +566,22 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
             </div>
           )}
 
-          {/* Coverage */}
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="bg-gray-800 rounded p-2 space-y-0.5">
-              <p className="text-gray-500 font-medium">Analyzed</p>
-              {result.analyzed.map((f, i) => <p key={i} className="text-gray-300 font-mono break-all">{f}</p>)}
-              {!result.analyzed.length && <p className="text-gray-600">none</p>}
+          {!simpleView && (
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-gray-800 rounded p-2 space-y-0.5">
+                <p className="text-gray-500 font-medium">Analyzed</p>
+                {result.analyzed.map((f, i) => <p key={i} className="text-gray-300 font-mono break-all">{f}</p>)}
+                {!result.analyzed.length && <p className="text-gray-600">none</p>}
+              </div>
+              <div className="bg-gray-800 rounded p-2 space-y-0.5">
+                <p className="text-gray-500 font-medium">Not analyzed</p>
+                {result.skipped.map((f, i) => <p key={i} className="text-yellow-500/70 font-mono break-all">{f}</p>)}
+                {!result.skipped.length && <p className="text-gray-600">none</p>}
+              </div>
             </div>
-            <div className="bg-gray-800 rounded p-2 space-y-0.5">
-              <p className="text-gray-500 font-medium">Not analyzed</p>
-              {result.skipped.map((f, i) => <p key={i} className="text-yellow-500/70 font-mono break-all">{f}</p>)}
-              {!result.skipped.length && <p className="text-gray-600">none</p>}
-            </div>
-          </div>
+          )}
 
-          {result.spreadsheetSummaries && result.spreadsheetSummaries.length > 0 && (
+          {!simpleView && result.spreadsheetSummaries && result.spreadsheetSummaries.length > 0 && (
             <details className="rounded-lg border border-cyan-900/60 bg-cyan-950/20 p-3 group" open={!sparseResultMode}>
               <summary className="flex items-center justify-between cursor-pointer list-none select-none">
                 <span className="text-xs font-medium text-cyan-200">Spreadsheet Data Extracted ({result.spreadsheetSummaries.length})</span>
@@ -596,7 +611,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
             </details>
           )}
 
-          {result.imageSummaries && result.imageSummaries.length > 0 && (
+          {!simpleView && result.imageSummaries && result.imageSummaries.length > 0 && (
             <details className="rounded-lg border border-emerald-900/60 bg-emerald-950/20 p-3 group" open={!sparseResultMode}>
               <summary className="flex items-center justify-between cursor-pointer list-none select-none">
                 <span className="text-xs font-medium text-emerald-200">Image OCR Extracted ({result.imageSummaries.length})</span>
@@ -623,7 +638,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
             </details>
           )}
 
-          {result.stackTraces && result.stackTraces.length > 0 && (
+          {!simpleView && result.stackTraces && result.stackTraces.length > 0 && (
             <details className="rounded-lg border border-fuchsia-900/60 bg-fuchsia-950/20 p-3 group" open={!sparseResultMode}>
               <summary className="flex items-center justify-between cursor-pointer list-none select-none">
                 <span className="text-xs font-medium text-fuchsia-200">Top exception stack traces ({result.stackTraces.length})</span>
@@ -641,7 +656,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
             </details>
           )}
 
-          {result.operationTimelineSummaries && result.operationTimelineSummaries.length > 0 && (
+          {!simpleView && result.operationTimelineSummaries && result.operationTimelineSummaries.length > 0 && (
             <details className="rounded-lg border border-sky-900/60 bg-sky-950/20 p-3 group" open={!sparseResultMode}>
               <summary className="flex items-center justify-between cursor-pointer list-none select-none">
                 <span className="text-xs font-medium text-sky-200">Operation timeline analysis ({result.operationTimelineSummaries.length} file(s))</span>
@@ -670,7 +685,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
           )}
 
           {/* ── Categorized sections ── */}
-          {(Object.entries(result.byCategory) as [string, LogHit[]][])
+          {!simpleView && (Object.entries(result.byCategory) as [string, LogHit[]][])
             .filter(([, hits]) => hits.length > 0)
             .map(([cat, hits]) => {
               const cfg = CATEGORY_CONFIG[cat as keyof typeof CATEGORY_CONFIG] ?? CATEGORY_CONFIG.other;
@@ -701,7 +716,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
             })}
 
           {/* ── Code suggestions ── */}
-          {result.suggestions.length > 0 && (
+          {!simpleView && result.suggestions.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
                 <Code2 size={11} /> Code Analysis & Suggestions

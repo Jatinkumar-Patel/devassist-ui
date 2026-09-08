@@ -657,6 +657,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
   const [running, setRunning] = useState(false);
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [simpleView, setSimpleView] = useState(true);
   const [showSupplementary, setShowSupplementary] = useState(false);
 
   const { adoItem, product, snowTask, analysis } = session;
@@ -763,7 +764,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
     repoEvidenceCount <= 3 &&
     analyzedArtifacts.length <= 2 &&
     notAnalyzedArtifacts.length <= 2;
-  const shouldShowSupplementary = !sparseEvidenceMode || showSupplementary;
+  const shouldShowSupplementary = showSupplementary || (!simpleView && !sparseEvidenceMode);
   const emailHref = buildAnalysisEmail(session, analysis, snowEvidenceRows);
 
   const copyL2 = () => {
@@ -819,8 +820,23 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
             >
               {expanded ? 'Collapse view' : 'Expand view'}
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSimpleView((prev) => !prev);
+                setShowSupplementary(false);
+              }}
+              className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-200 hover:border-cyan-400/50 hover:text-white"
+            >
+              {simpleView ? 'Switch to detailed view' : 'Switch to simple view'}
+            </button>
           </div>
         </div>
+        {simpleView && (
+          <p className="text-[11px] text-gray-300">
+            Simple view is enabled. Core findings are shown first; advanced evidence and AI sections are hidden until expanded.
+          </p>
+        )}
         <pre className="text-xs opacity-80 whitespace-pre-wrap font-sans">{analysis.clientReported}</pre>
       </div>
 
@@ -848,7 +864,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
 
       {/* Diagnostic evidence and assessment */}
       <div className="rounded-lg border border-gray-700 bg-gray-900 p-4 space-y-4 text-sm">
-        {snowEvidenceRows.length > 0 && (
+        {snowEvidenceRows.length > 0 && !simpleView && (
           <section className="space-y-2">
             <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Diagnostic Evidence</p>
             <div className="analysis-scroll max-h-[28rem] space-y-2 rounded border border-gray-800 bg-gray-950/70 p-2.5">
@@ -894,6 +910,38 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                 </div>
               )}
             </div>
+          </section>
+        )}
+
+        {snowEvidenceRows.length > 0 && simpleView && (
+          <section className="space-y-2">
+            <details className="rounded border border-gray-800 bg-gray-950/70 p-2.5">
+              <summary className="cursor-pointer text-xs font-semibold text-cyan-200 uppercase tracking-wide">
+                Diagnostic Evidence (collapsed in simple view)
+              </summary>
+              <div className="analysis-scroll mt-2 max-h-[20rem] space-y-2 rounded border border-gray-800 bg-gray-900/70 p-2">
+                {snowRecords.slice(0, 6).map((item, idx) => (
+                  <div key={`snow-record-simple-${idx}`} className="rounded border border-gray-800 bg-gray-900/70 px-2 py-1.5">
+                    <p className="text-[11px] text-cyan-300 font-semibold">{item.label}</p>
+                    <p className="text-xs text-gray-300 leading-relaxed">{item.detail}</p>
+                  </div>
+                ))}
+                {snowTimeline.slice(0, 6).map((item, idx) => (
+                  <div key={`snow-timeline-simple-${idx}`} className="rounded border border-gray-800 bg-gray-900/70 px-2 py-1.5">
+                    <p className="text-xs text-gray-200">
+                      <span className="text-cyan-300 font-semibold">{item.label}:</span> {item.detail}
+                    </p>
+                  </div>
+                ))}
+                {snowOther.slice(0, 6).map((item, idx) => (
+                  <div key={`snow-other-simple-${idx}`} className="rounded border border-gray-800 bg-gray-900/70 px-2 py-1.5">
+                    <p className="text-xs text-gray-200 whitespace-pre-wrap leading-relaxed">
+                      <span className="text-cyan-300 font-semibold">{item.label}:</span> {item.detail}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </details>
           </section>
         )}
 
@@ -961,7 +1009,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           </div>
         )}
 
-        {analysis.skillSections && (
+        {analysis.skillSections && !simpleView && (
           <section className="space-y-2">
             <details className="group rounded border border-gray-800 bg-gray-950/70 p-2.5" open={false}>
               <summary className="cursor-pointer text-[11px] font-semibold text-gray-400 uppercase tracking-wide list-none">
@@ -997,7 +1045,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           </section>
         )}
 
-        {!sparseEvidenceMode && (
+        {!sparseEvidenceMode && !simpleView && (
           <section className="space-y-2">
             <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Unique DevAssist Sections</p>
             <div className="rounded border border-gray-800 bg-gray-950/70 p-2.5 space-y-1">
@@ -1009,9 +1057,13 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
         )}
       </div>
 
-      {sparseEvidenceMode && !showSupplementary && (
+      {!showSupplementary && (
         <div className="rounded-lg border border-cyan-900/50 bg-cyan-950/10 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <p className="text-xs text-cyan-100/90">Compact view enabled because evidence is sparse. Optional sections are hidden to keep the UI lighter.</p>
+          <p className="text-xs text-cyan-100/90">
+            {simpleView
+              ? 'Simple view is active. Optional sections are hidden to keep the UI lighter.'
+              : 'Detailed view is active. Use this only when you need deeper evidence sections.'}
+          </p>
           <button
             type="button"
             onClick={() => setShowSupplementary(true)}
