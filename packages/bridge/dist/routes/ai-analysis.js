@@ -166,6 +166,7 @@ function buildHeuristicAssessment(req, fallbackReason) {
         .map(([seed, count]) => `${seed} (${count}x)`);
     const evidence = req.logHits.slice(0, 5).map((hit) => `[${hit.file}:${hit.line}] (${hit.seed}) ${hit.text}`);
     return [
+        'Mode: Deterministic fallback (external LLM unavailable).',
         `Assessment: ${verdict}`,
         `Client reported: ${req.da.title}`,
         '',
@@ -181,13 +182,14 @@ function buildHeuristicAssessment(req, fallbackReason) {
         `  - Direction: ${req.repos.length ? req.repos.join(', ') : 'Mapped repos unavailable'}`,
         '  - Observed vs expected: Use top signal and first failing call path to validate behavior against product contract.',
         '',
-        `Gap: External AI provider was unavailable (${fallbackReason}). Deterministic triage used local evidence only; verify with additional incident-window logs to raise confidence.`,
+        `Gap: Deterministic triage used local evidence only; verify with additional incident-window logs to raise confidence.`,
         `Confidence: ${evidence.length || topSignals.length ? 'Medium' : 'Low'} — based on deterministic seed and evidence extraction without external LLM synthesis.`,
         '',
         'Blind spots / to raise confidence:',
         '  - Attach exact incident-window logs with timestamps and correlation IDs.',
         '  - Confirm environment/build and whether issue is user-specific or environment-wide.',
         '',
+        `Provider warning: ${fallbackReason}`,
         'Recommended next step: Run focused log and DB validation using the SQL and metadata tools, then re-run AI summary when provider connectivity is restored.',
     ].join('\n');
 }
@@ -195,26 +197,52 @@ function buildHeuristicFollowUp(req, fallbackReason) {
     const question = req.question.trim();
     const lower = question.toLowerCase();
     const signals = Object.entries(req.topSeeds ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const dominantSignal = signals[0] ? `${signals[0][0]} (${signals[0][1]}x)` : 'No dominant signal yet';
+    if (/pat|token|credential|auth|github/.test(lower)) {
+        return [
+            'Mode: Deterministic fallback (external LLM unavailable).',
+            'Credential route check:',
+            '1) Ensure PAT has Work Items (Read) and Code (Read) scopes.',
+            '2) Save PAT in Settings and re-run Bridge status check.',
+            '3) If provider still fails, this is likely network/endpoint reachability, not PAT syntax.',
+            `Current deterministic signal: ${dominantSignal}.`,
+            `Provider warning: ${fallbackReason}`,
+        ].join('\n');
+    }
+    if (/^\d{5,}$/.test(lower)) {
+        return [
+            'Mode: Deterministic fallback (external LLM unavailable).',
+            `Ticket check for ${question}:`,
+            '1) Verify DA Reported in Release and SNOW incident/task release mention are aligned.',
+            '2) Compare only same-release historical work items in Repo/MTM Comparison.',
+            `3) Validate dominant signal path first: ${dominantSignal}.`,
+            `Provider warning: ${fallbackReason}`,
+        ].join('\n');
+    }
     if (/next|what should i do|action|validate/.test(lower)) {
         return [
-            `External AI provider unavailable (${fallbackReason}). Deterministic follow-up response:`,
-            `1) Validate top signal path first: ${signals[0] ? `${signals[0][0]} (${signals[0][1]}x)` : 'No dominant signal yet'}.`,
+            'Mode: Deterministic fallback (external LLM unavailable).',
+            `1) Validate top signal path first: ${dominantSignal}.`,
             '2) Use SQL metadata explorer to confirm object mapping (tables/views/SP) tied to failing workflow.',
             '3) Run a read-only SQL query for recent rows correlated to incident time window.',
             '4) Re-run log analysis after adding missing attachments/screenshots.',
+            `Provider warning: ${fallbackReason}`,
         ].join('\n');
     }
     if (/why|root cause|reason/.test(lower)) {
         return [
-            `External AI provider unavailable (${fallbackReason}). Deterministic root-cause guidance:`,
+            'Mode: Deterministic fallback (external LLM unavailable).',
             `Most likely direction is based on seeds: ${signals.map(([s, c]) => `${s} (${c}x)`).join(', ') || 'none'}.`,
             'This is evidence-weighted guidance, not a final root-cause confirmation. Confirm with incident-window logs and DB correlation.',
+            `Provider warning: ${fallbackReason}`,
         ].join('\n');
     }
     return [
-        `External AI provider unavailable (${fallbackReason}).`,
-        `Question received: ${question}`,
-        'Deterministic response mode is active. Continue using follow-up prompts; responses will stay evidence-based from DA/SNOW/log context.',
+        'Mode: Deterministic fallback (external LLM unavailable).',
+        `Question: ${question}`,
+        `Best deterministic direction: validate ${dominantSignal} against DA description, SNOW timeline, and latest attachment evidence.`,
+        'Then ask a focused follow-up such as: "which log lines most support config issue vs code bug".',
+        `Provider warning: ${fallbackReason}`,
     ].join('\n');
 }
 function getGitHubModelToken(body, bridgeSecrets) {

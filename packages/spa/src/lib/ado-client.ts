@@ -67,6 +67,52 @@ export interface RelatedItem {
   changedDate?: string;
 }
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function extractReleaseCore(value: string): string {
+  const normalized = String(value ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const match = normalized.match(/\b\d+\.\d+\b/);
+  return match ? match[0] : '';
+}
+
+function normalizeReleaseText(value: string): string {
+  return String(value ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+export function matchesReleaseHints(versionText: string, versionHints: string[]): boolean {
+  const normalizedVersion = normalizeReleaseText(versionText);
+  if (!versionHints.length) return true;
+  if (!normalizedVersion) return false;
+
+  return versionHints.some((hint) => {
+    const normalizedHint = normalizeReleaseText(hint);
+    if (!normalizedHint) return false;
+
+    const core = extractReleaseCore(normalizedHint);
+    if (core) {
+      const coreRegex = new RegExp(`(^|[^\\d])${escapeRegex(core)}([^\\d]|$)`, 'i');
+      if (!coreRegex.test(normalizedVersion)) return false;
+      if (/\bpr\b/i.test(normalizedHint)) return /\bpr\b/i.test(normalizedVersion);
+      return true;
+    }
+
+    return normalizedVersion.includes(normalizedHint);
+  });
+}
+
+export function filterItemsByReleaseHints<T extends { supportVersion?: string; reportedRelease?: string }>(
+  items: T[],
+  versionHints: string[]
+): T[] {
+  if (!versionHints.length) return items;
+  return items.filter((item) => {
+    const versionText = `${item.reportedRelease ?? ''} ${item.supportVersion ?? ''}`.trim();
+    return matchesReleaseHints(versionText, versionHints);
+  });
+}
+
 async function runWiql(pat: string, query: string): Promise<number[]> {
   return runWiqlLimited(pat, query, 15);
 }
@@ -97,7 +143,14 @@ async function fetchReleaseFieldBatch(ids: number[], pat: string): Promise<strin
 
 async function fetchItemsBatch(ids: number[], pat: string): Promise<RelatedItem[]> {
   if (!ids.length) return [];
-  const fields = 'System.Id,System.Title,System.State,System.WorkItemType';
+  const fields = [
+    'System.Id',
+    'System.Title',
+    'System.State',
+    'System.WorkItemType',
+    'Allscripts.Field.SupportVersion',
+    'Allscripts.Field.ReportedinRelease',
+  ].join(',');
   const url = bridgeApi(`/api/ado/SR/_apis/wit/workItems?ids=${ids.join(',')}&fields=${fields}&api-version=7.0`);
   const res = await fetch(url, { headers: adoHeaders(pat), signal: AbortSignal.timeout(6000) });
   if (!res.ok) return [];
@@ -108,6 +161,8 @@ async function fetchItemsBatch(ids: number[], pat: string): Promise<RelatedItem[
     state: w.fields['System.State'] ?? '',
     type: w.fields['System.WorkItemType'] ?? '',
     url: workItemUrl(w.id),
+    supportVersion: w.fields['Allscripts.Field.SupportVersion'] ?? '',
+    reportedRelease: w.fields['Allscripts.Field.ReportedinRelease'] ?? '',
   }));
 }
 
@@ -194,10 +249,7 @@ export async function fetchAreaVersionEvidence(areaPath: string, pat: string, ve
   if (!hints.length) return [];
 
   const all = await fetchAreaItems(areaPath, pat);
-  const filtered = all.filter((item) => {
-    const hay = `${item.title} ${item.supportVersion ?? ''} ${item.reportedRelease ?? ''}`.toLowerCase();
-    return hints.some((h) => hay.includes(h));
-  });
+  const filtered = filterItemsByReleaseHints(all, hints);
 
   return filtered.slice(0, 25);
 }

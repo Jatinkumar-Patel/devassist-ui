@@ -219,7 +219,7 @@ export interface TriageSession {
   areaEvidence?: import('../lib/ado-client').RelatedItem[]; // recent defects/bugs/tasks same area
   versionEvidence?: import('../lib/ado-client').RelatedItem[]; // area evidence filtered by version hints
   databaseEvidence?: Array<{ repo: string; path: string; url: string }>; // DB repo hits
-  kbEvidence?: Array<{ number: string; shortDescription: string; state: string; updatedOn: string }>; // SNOW KB related entries
+  kbEvidence?: Array<{ number: string; shortDescription: string; state: string; updatedOn: string; release?: string }>; // SNOW KB related entries
   recentCommits?: Array<{ sha: string; message: string; date: string; url: string }>;
   cacheMeta?: TriageCacheMeta;
   status: 'idle' | 'loading' | 'ready' | 'error';

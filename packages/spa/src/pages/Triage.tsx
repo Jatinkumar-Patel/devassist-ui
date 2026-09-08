@@ -4,7 +4,7 @@ import TriageInput from '../components/TriageInput';
 import TriagePanel from '../components/TriagePanel';
 import { detectInput } from '../lib/input-detector';
 import { loadRegistry, routeByAreaPath } from '../lib/product-registry';
-import { fetchWorkItem, findWorkItemBySnowTask, findWorkItemByCase, fetchAreaItemsByPaths, fetchAreaVersionEvidenceByPaths } from '../lib/ado-client';
+import { fetchWorkItem, findWorkItemBySnowTask, findWorkItemByCase, fetchAreaItemsByPaths, fetchAreaVersionEvidenceByPaths, filterItemsByReleaseHints, matchesReleaseHints } from '../lib/ado-client';
 import { fetchSnowTask, fetchSnowWorkNotes, fetchSnowAttachments, fetchSnowCase, fetchSnowIncident, fetchSnowIncidentByCase, fetchSnowTasksByIncident, fetchSnowKbSearch, escalateSnowTask, snowVal } from '../lib/snow-client';
 import { matchPattern, runCodeSearch, runDatabaseRepoSearch, buildSkillDrivenAssessment } from '../lib/analysis';
 import { fetchRelatedBugs, fetchTestCases } from '../lib/ado-client';
@@ -107,7 +107,11 @@ function buildReleaseHintsFromInputs(adoItem: any, selectedReportedReleases: str
   const reportedRelease = String(adoItem?.fields?.['Allscripts.Field.ReportedinRelease'] ?? '').trim();
   const supportVersion = String(adoItem?.fields?.['Allscripts.Field.SupportVersion'] ?? '').trim();
 
-  const base = fromUser.length ? fromUser : [reportedRelease, supportVersion].filter(Boolean);
+  const base = fromUser.length
+    ? fromUser
+    : reportedRelease
+      ? [reportedRelease]
+      : [supportVersion].filter(Boolean);
 
   const expanded = base.flatMap((v) => {
     const compact = v.replace(/\s+/g, ' ').trim();
@@ -138,6 +142,21 @@ function buildReleaseHintsFromInputs(adoItem: any, selectedReportedReleases: str
     hints.push(h);
   }
   return hints;
+}
+
+function mapKbEvidenceRows(kbRows: any[], versionHints: string[]) {
+  const mapped = kbRows.slice(0, 25).map((row: any) => ({
+    number: String(row?.number?.display_value ?? row?.number ?? ''),
+    shortDescription: String(row?.short_description?.display_value ?? row?.short_description ?? ''),
+    state: String(row?.workflow_state?.display_value ?? row?.workflow_state ?? ''),
+    updatedOn: String(row?.sys_updated_on?.display_value ?? row?.sys_updated_on ?? ''),
+    release: String(row?.release?.display_value ?? row?.release ?? row?.version?.display_value ?? row?.version ?? ''),
+  }));
+
+  if (!versionHints.length) return mapped.slice(0, 15);
+
+  const filtered = mapped.filter((row) => matchesReleaseHints(`${row.release} ${row.shortDescription}`, versionHints));
+  return (filtered.length ? filtered : mapped).slice(0, 15);
 }
 
 function buildKbTerms(adoItem: any, product?: Product, userSelectedScope?: boolean): string[] {
@@ -680,20 +699,15 @@ export default function TriagePage() {
             fetchSnowKbSearch(kbTerms, versionHints),
           ]);
           if (cancelledRef.current) return;
-          if (relatedBugs.status === 'fulfilled') s = { ...s, relatedItems: relatedBugs.value };
-          if (testCases.status === 'fulfilled')   s = { ...s, testCases: testCases.value };
-          if (areaEvidence.status === 'fulfilled') s = { ...s, areaEvidence: areaEvidence.value };
-          if (versionEvidence.status === 'fulfilled') s = { ...s, versionEvidence: versionEvidence.value };
+          if (relatedBugs.status === 'fulfilled') s = { ...s, relatedItems: filterItemsByReleaseHints(relatedBugs.value, versionHints) };
+          if (testCases.status === 'fulfilled')   s = { ...s, testCases: filterItemsByReleaseHints(testCases.value, versionHints) };
+          if (areaEvidence.status === 'fulfilled') s = { ...s, areaEvidence: filterItemsByReleaseHints(areaEvidence.value, versionHints) };
+          if (versionEvidence.status === 'fulfilled') s = { ...s, versionEvidence: filterItemsByReleaseHints(versionEvidence.value, versionHints) };
           if (kbEvidence.status === 'fulfilled') {
             const kbRows = Array.isArray(kbEvidence.value?.result) ? kbEvidence.value.result : [];
             s = {
               ...s,
-              kbEvidence: kbRows.slice(0, 15).map((row: any) => ({
-                number: String(row?.number?.display_value ?? row?.number ?? ''),
-                shortDescription: String(row?.short_description?.display_value ?? row?.short_description ?? ''),
-                state: String(row?.workflow_state?.display_value ?? row?.workflow_state ?? ''),
-                updatedOn: String(row?.sys_updated_on?.display_value ?? row?.sys_updated_on ?? ''),
-              })),
+              kbEvidence: mapKbEvidenceRows(kbRows, versionHints),
             };
           }
           // GitHub recent commits for primary repos
@@ -896,20 +910,15 @@ export default function TriagePage() {
               fetchAreaVersionEvidenceByPaths(evidenceAreaPaths, adoPat, versionHints),
               fetchSnowKbSearch(kbTerms, versionHints),
             ]);
-            if (relatedBugs.status === 'fulfilled') s = { ...s, relatedItems: relatedBugs.value };
-            if (testCases.status === 'fulfilled') s = { ...s, testCases: testCases.value };
-            if (areaEvidence.status === 'fulfilled') s = { ...s, areaEvidence: areaEvidence.value };
-            if (versionEvidence.status === 'fulfilled') s = { ...s, versionEvidence: versionEvidence.value };
+            if (relatedBugs.status === 'fulfilled') s = { ...s, relatedItems: filterItemsByReleaseHints(relatedBugs.value, versionHints) };
+            if (testCases.status === 'fulfilled') s = { ...s, testCases: filterItemsByReleaseHints(testCases.value, versionHints) };
+            if (areaEvidence.status === 'fulfilled') s = { ...s, areaEvidence: filterItemsByReleaseHints(areaEvidence.value, versionHints) };
+            if (versionEvidence.status === 'fulfilled') s = { ...s, versionEvidence: filterItemsByReleaseHints(versionEvidence.value, versionHints) };
             if (kbEvidence.status === 'fulfilled') {
               const kbRows = Array.isArray(kbEvidence.value?.result) ? kbEvidence.value.result : [];
               s = {
                 ...s,
-                kbEvidence: kbRows.slice(0, 15).map((row: any) => ({
-                  number: String(row?.number?.display_value ?? row?.number ?? ''),
-                  shortDescription: String(row?.short_description?.display_value ?? row?.short_description ?? ''),
-                  state: String(row?.workflow_state?.display_value ?? row?.workflow_state ?? ''),
-                  updatedOn: String(row?.sys_updated_on?.display_value ?? row?.sys_updated_on ?? ''),
-                })),
+                kbEvidence: mapKbEvidenceRows(kbRows, versionHints),
               };
             }
             if ((githubPat || hasGithubPat) && routedProduct.repos.length) {

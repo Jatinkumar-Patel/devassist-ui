@@ -1037,6 +1037,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                 <div key={`${kb.number}-${idx}`} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-800 last:border-0">
                   <span className="text-altera-teal font-mono shrink-0 mr-2">{kb.number || 'KB'}</span>
                   <span className="text-gray-300 break-words flex-1">{kb.shortDescription || '(no short description)'}</span>
+                  <span className="text-gray-500 shrink-0 ml-2">{kb.release || '-'}</span>
                   <span className="text-gray-500 shrink-0 ml-2">{kb.state || '-'}</span>
                   <span className="text-gray-600 shrink-0 ml-2">{kb.updatedOn ? String(kb.updatedOn) : '-'}</span>
                 </div>
@@ -1055,7 +1056,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                   <a href={item.url} target="_blank" rel="noreferrer"
                      className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{item.id}</a>
                   <span className="text-gray-300 break-words flex-1">{item.title}</span>
-                  <span className="text-gray-500 shrink-0 ml-2">{item.supportVersion || item.reportedRelease || '-'}</span>
+                  <span className="text-gray-500 shrink-0 ml-2">{item.reportedRelease || item.supportVersion || '-'}</span>
                   <span className={`shrink-0 ml-2 px-1.5 py-0.5 rounded text-xs ${
                     /Closed|Resolved|Done|Completed/i.test(item.state) ? 'bg-emerald-950 text-emerald-400' : 'bg-gray-800 text-gray-400'
                   }`}>{item.state}</span>
@@ -1076,7 +1077,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                      className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{item.id}</a>
                   <span className="text-gray-300 break-words flex-1">{item.title}</span>
                   <span className="text-gray-500 shrink-0 ml-2">{item.type}</span>
-                  <span className="text-gray-600 shrink-0 ml-2">{item.supportVersion || '-'}</span>
+                  <span className="text-gray-600 shrink-0 ml-2">{item.reportedRelease || item.supportVersion || '-'}</span>
                 </div>
               ))}
             </div>
@@ -1383,7 +1384,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
           title: f['System.Title'],
           areaPath: f['System.AreaPath'],
           customer: String(f['Allscripts.Field.CustomerName'] ?? ''),
-          release: String(f['Allscripts.Field.SupportVersion'] ?? ''),
+          release: String(f['Allscripts.Field.ReportedinRelease'] ?? f['Allscripts.Field.SupportVersion'] ?? ''),
           severity: String(f['Microsoft.VSTS.Common.Severity'] ?? ''),
           description: clampText(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '', 1200),
         },
@@ -1460,7 +1461,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
           title: f['System.Title'],
           areaPath: f['System.AreaPath'],
           customer: String(f['Allscripts.Field.CustomerName'] ?? ''),
-          release: String(f['Allscripts.Field.SupportVersion'] ?? ''),
+          release: String(f['Allscripts.Field.ReportedinRelease'] ?? f['Allscripts.Field.SupportVersion'] ?? ''),
           severity: String(f['Microsoft.VSTS.Common.Severity'] ?? ''),
           description: clampText(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '', 1000),
         },
