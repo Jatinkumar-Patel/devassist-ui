@@ -1085,16 +1085,16 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
       {/* Repo / MTM Comparison */}
       {shouldShowSupplementary && (session.relatedItems?.length || session.testCases?.length || session.recentCommits?.length || session.areaEvidence?.length || session.versionEvidence?.length || session.kbEvidence?.length) && (
         <div className="rounded-lg border border-gray-800 bg-gray-950/80 p-3.5 space-y-3.5">
-          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Repo / MTM Comparison</p>
+          <p className="text-sm font-medium text-gray-300 uppercase tracking-wide">Repo / MTM Comparison</p>
 
           {(session.kbEvidence?.length ?? 0) > 0 && (
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+              <p className="text-sm font-medium text-gray-400 flex items-center gap-1.5">
                 <Bug size={11} className="text-gray-500" />
                 SNOW KB related articles · {session.kbEvidence!.length} found
               </p>
-              {session.kbEvidence!.map((kb, idx) => (
-                <div key={`${kb.number}-${idx}`} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-800 last:border-0">
+              {session.kbEvidence!.slice(0, 8).map((kb, idx) => (
+                <div key={`${kb.number}-${idx}`} className="flex items-center justify-between text-sm py-0.5 border-b border-gray-800 last:border-0">
                   <span className="text-altera-teal font-mono shrink-0 mr-2">{kb.number || 'KB'}</span>
                   <span className="text-gray-300 break-words flex-1">{kb.shortDescription || '(no short description)'}</span>
                   <span className="text-gray-500 shrink-0 ml-2">{kb.release || '-'}</span>
@@ -1102,17 +1102,18 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                   <span className="text-gray-600 shrink-0 ml-2">{kb.updatedOn ? String(kb.updatedOn) : '-'}</span>
                 </div>
               ))}
+              {session.kbEvidence!.length > 8 && <p className="text-xs text-gray-500">Showing first 8 KB rows.</p>}
             </div>
           )}
 
           {(session.versionEvidence?.length ?? 0) > 0 && (
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+              <p className="text-sm font-medium text-gray-400 flex items-center gap-1.5">
                 <Bug size={11} className="text-gray-500" />
                 Similar historical items in same release context · {session.versionEvidence!.length} found
               </p>
-              {session.versionEvidence!.map(item => (
-                <div key={item.id} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-800 last:border-0">
+              {session.versionEvidence!.slice(0, 8).map(item => (
+                <div key={item.id} className="flex items-center justify-between text-sm py-0.5 border-b border-gray-800 last:border-0">
                   <a href={item.url} target="_blank" rel="noreferrer"
                      className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{item.id}</a>
                   <span className="text-gray-300 break-words flex-1">{item.title}</span>
@@ -1122,17 +1123,18 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                   }`}>{item.state}</span>
                 </div>
               ))}
+              {session.versionEvidence!.length > 8 && <p className="text-xs text-gray-500">Showing first 8 release-context rows.</p>}
             </div>
           )}
 
           {(session.areaEvidence?.length ?? 0) > 0 && (
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+              <p className="text-sm font-medium text-gray-400 flex items-center gap-1.5">
                 <Bug size={11} className="text-gray-500" />
                 Area evidence (defect/bug/task/story, 365d) · {session.areaEvidence!.length} found
               </p>
-              {session.areaEvidence!.map(item => (
-                <div key={item.id} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-800 last:border-0">
+              {session.areaEvidence!.slice(0, 8).map(item => (
+                <div key={item.id} className="flex items-center justify-between text-sm py-0.5 border-b border-gray-800 last:border-0">
                   <a href={item.url} target="_blank" rel="noreferrer"
                      className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{item.id}</a>
                   <span className="text-gray-300 break-words flex-1">{item.title}</span>
@@ -1140,18 +1142,19 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                   <span className="text-gray-600 shrink-0 ml-2">{item.reportedRelease || item.supportVersion || '-'}</span>
                 </div>
               ))}
+              {session.areaEvidence!.length > 8 && <p className="text-xs text-gray-500">Showing first 8 area evidence rows.</p>}
             </div>
           )}
 
           {/* Related open bugs */}
           {(session.relatedItems?.length ?? 0) > 0 && (
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+              <p className="text-sm font-medium text-gray-400 flex items-center gap-1.5">
                 <Bug size={11} className="text-gray-500" />
                 Open bugs — same area (last 90 days) · {session.relatedItems!.length} found
               </p>
-              {session.relatedItems!.map(item => (
-                <div key={item.id} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-800 last:border-0">
+              {session.relatedItems!.slice(0, 8).map(item => (
+                <div key={item.id} className="flex items-center justify-between text-sm py-0.5 border-b border-gray-800 last:border-0">
                   <a href={item.url} target="_blank" rel="noreferrer"
                      className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{item.id}</a>
                   <span className="text-gray-300 break-words flex-1">{item.title}</span>
@@ -1163,6 +1166,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                   }`}>{item.state}</span>
                 </div>
               ))}
+              {session.relatedItems!.length > 8 && <p className="text-xs text-gray-500">Showing first 8 open bugs.</p>}
               {session.relatedItems!.length === 0 && (
                 <p className="text-xs text-gray-600">No open bugs found in this area — this may be a new/unreported issue</p>
               )}
@@ -1180,18 +1184,19 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           {/* Test cases */}
           {(session.testCases?.length ?? 0) > 0 && (
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+              <p className="text-sm font-medium text-gray-400 flex items-center gap-1.5">
                 <TestTube size={11} className="text-gray-500" />
                 MTM Test cases — same area · {session.testCases!.length} found
               </p>
-              {session.testCases!.map(tc => (
-                <div key={tc.id} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-800 last:border-0">
+              {session.testCases!.slice(0, 8).map(tc => (
+                <div key={tc.id} className="flex items-center justify-between text-sm py-0.5 border-b border-gray-800 last:border-0">
                   <a href={tc.url} target="_blank" rel="noreferrer"
                      className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{tc.id}</a>
                   <span className="text-gray-300 break-words flex-1">{tc.title}</span>
                   <span className="shrink-0 ml-2 px-1.5 py-0.5 rounded text-xs bg-gray-900 text-gray-300">{tc.state}</span>
                 </div>
               ))}
+              {session.testCases!.length > 8 && <p className="text-xs text-gray-500">Showing first 8 test cases.</p>}
             </div>
           )}
           {(session.testCases?.length ?? 0) === 0 && session.testCases !== undefined && (
@@ -1206,18 +1211,19 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           {/* Recent commits */}
           {(session.recentCommits?.length ?? 0) > 0 && (
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+              <p className="text-sm font-medium text-gray-400 flex items-center gap-1.5">
                 <GitCommit size={11} className="text-altera-teal" />
                 Recent commits — {session.product?.repos.find(r=>r.required)?.repo ?? 'primary repo'}
               </p>
-              {session.recentCommits!.map(c => (
-                <div key={c.sha} className="flex items-center gap-2 text-xs py-0.5 border-b border-gray-800 last:border-0">
+              {session.recentCommits!.slice(0, 8).map(c => (
+                <div key={c.sha} className="flex items-center gap-2 text-sm py-0.5 border-b border-gray-800 last:border-0">
                   <a href={c.url} target="_blank" rel="noreferrer"
                      className="text-altera-teal font-mono shrink-0">{c.sha}</a>
                   <span className="text-gray-400 shrink-0">{c.date}</span>
                   <span className="text-gray-300 break-words">{c.message}</span>
                 </div>
               ))}
+              {session.recentCommits!.length > 8 && <p className="text-xs text-gray-500">Showing first 8 commits.</p>}
             </div>
           )}
         </div>
@@ -1425,7 +1431,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
   const [aiWarning, setAiWarning] = useState<string | null>(null);
   const [ollamaOk, setOllamaOk] = useState<boolean | null>(null);
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
-  const [providerSelection, setProviderSelection] = useState<AiProviderSelection>('github-models');
+  const [providerSelection, setProviderSelection] = useState<AiProviderSelection>('auto');
   const [agentSelection, setAgentSelection] = useState<AiAgentSelection>('triage-l2');
   const [modelSelection, setModelSelection] = useState<AiModelSelection>('provider-default');
   const [customModelInput, setCustomModelInput] = useState('');
@@ -1474,8 +1480,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
       });
   }, [BRIDGE]);
 
-  const hasAnyToken = Boolean(openaiKey || githubPat);
-  const canRun = Boolean(aiStatus?.anyBackendReady || hasAnyToken || ollamaOk);
+  const canRun = Boolean(session.adoItem);
   const providerOptions: Array<{ value: AiProviderSelection; label: string; enabled: boolean }> = [
     { value: 'auto', label: 'Auto (best available)', enabled: true },
     { value: 'github-models', label: 'GitHub Models', enabled: Boolean(githubPat || aiStatus?.githubReady) },
@@ -1565,13 +1570,22 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
     };
   };
 
-  const requestAssessment = async (question: string, agent: AiAgentSelection): Promise<{ assessment: string; source?: string; warning?: string }> => {
+  const requestAssessment = async (
+    question: string,
+    agent: AiAgentSelection,
+    mode: 'initial' | 'continue' = 'continue'
+  ): Promise<{ assessment: string; source?: string; warning?: string }> => {
     const body = buildRequestBody(question, agent);
     if (!body) throw new Error('Missing ADO item context.');
-    const res = await fetch(`${BRIDGE}/api/ai-analyze/continue`, {
+    const endpoint = mode === 'initial' ? '/api/ai-analyze' : '/api/ai-analyze/continue';
+    const payload = mode === 'initial'
+      ? { ...body, question: undefined, history: undefined, priorAssessment: undefined, priorVerdict: undefined, priorConfidence: undefined, priorGap: undefined }
+      : body;
+
+    const res = await fetch(`${BRIDGE}${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(120_000),
     });
     const raw = await res.text();
@@ -1592,7 +1606,8 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
         session.analysis?.codeAnalysis?.match(/Keyword pattern: "([^"]+)"/)?.[1]
           ? `${followUpQuestion.trim() || 'Summarize the current triage evidence.'}\n\nFocus on the most diagnostic signals and the strongest hypothesis.`
           : (followUpQuestion.trim() || 'Summarize the current triage evidence.'),
-        agentSelection
+        agentSelection,
+        'initial'
       );
       setResult(data.assessment);
       setAiSource(data.source ?? null);
@@ -1677,10 +1692,10 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
   };
 
   return (
-    <div className="rounded-lg border border-purple-800/40 bg-purple-950/20 p-4 space-y-3">
+    <div className="rounded-lg border border-gray-800 bg-gray-950/30 p-4 space-y-3 text-sm">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-xs font-medium text-purple-300 flex items-center gap-1.5">
+          <p className="text-sm font-semibold text-gray-200 flex items-center gap-1.5">
             <Sparkles size={13} /> AI Assessment
           </p>
           {ollamaOk === true && (
@@ -1695,17 +1710,17 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
           {aiStatus?.openaiReady && (
             <span className="text-xs text-cyan-300 border border-cyan-800 rounded px-1.5 py-0.5">OpenAI env ready</span>
           )}
-          {aiSource && <span className="text-xs text-gray-500">{sourceLabel[aiSource] ?? aiSource}</span>}
+          {aiSource && <span className="text-sm text-gray-400">{sourceLabel[aiSource] ?? aiSource}</span>}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {result && (
             <button onClick={copyResult}
-              className="flex items-center gap-1 text-xs text-gray-400 hover:text-white border border-gray-700 px-2 py-1 rounded">
+              className="flex items-center gap-1 text-sm text-gray-300 hover:text-white border border-gray-700 px-2 py-1 rounded">
               {copied ? <><CheckCircle2 size={11} className="text-emerald-400"/> Copied</> : <><ClipboardCopy size={11}/> Copy</>}
             </button>
           )}
-          <button onClick={runAi} disabled={running || !canRun || (providerSelection !== 'auto' && !selectedProviderEnabled)}
-            className="flex items-center justify-center gap-1.5 text-xs bg-purple-900/60 hover:bg-purple-900/90 disabled:opacity-40 border border-purple-600 text-purple-100 px-3 py-1.5 rounded font-medium w-full sm:w-auto">
+          <button onClick={runAi} disabled={running || !canRun}
+            className="flex items-center justify-center gap-1.5 text-sm bg-gray-900 hover:bg-gray-800 disabled:opacity-40 border border-gray-700 text-gray-100 px-3 py-1.5 rounded font-medium w-full sm:w-auto">
             {running ? <><Loader2 size={11} className="animate-spin"/> Asking AI...</>
             : result  ? <><Sparkles size={11}/> Re-run</>
             : <><Sparkles size={11}/> Ask AI</>}
@@ -1714,7 +1729,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
       </div>
 
       <div className="grid gap-2 sm:grid-cols-3">
-        <label className="text-[11px] text-gray-400 space-y-1">
+        <label className="text-xs text-gray-400 space-y-1">
           <span className="uppercase tracking-wide">LLM provider</span>
           <select
             value={providerSelection}
@@ -1722,7 +1737,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
               setProviderSelection(e.target.value as AiProviderSelection);
               setModelSelection('provider-default');
             }}
-            className="w-full bg-gray-950 border border-gray-700 rounded px-2.5 py-2 text-xs text-gray-200 focus:outline-none focus:border-cyan-500"
+            className="w-full bg-gray-950 border border-gray-700 rounded px-2.5 py-2 text-sm text-gray-200 focus:outline-none focus:border-gray-500"
           >
             {providerOptions.map((opt) => (
               <option key={opt.value} value={opt.value} disabled={!opt.enabled && opt.value !== 'auto'}>
@@ -1732,12 +1747,12 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
           </select>
         </label>
 
-        <label className="text-[11px] text-gray-400 space-y-1">
+        <label className="text-xs text-gray-400 space-y-1">
           <span className="uppercase tracking-wide">LLM model</span>
           <select
             value={modelSelection}
             onChange={(e) => setModelSelection(e.target.value as AiModelSelection)}
-            className="w-full bg-gray-950 border border-gray-700 rounded px-2.5 py-2 text-xs text-gray-200 focus:outline-none focus:border-cyan-500"
+            className="w-full bg-gray-950 border border-gray-700 rounded px-2.5 py-2 text-sm text-gray-200 focus:outline-none focus:border-gray-500"
           >
             {modelOptions.map((opt) => (
               <option key={opt} value={opt}>
@@ -1747,12 +1762,12 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
           </select>
         </label>
 
-        <label className="text-[11px] text-gray-400 space-y-1">
+        <label className="text-xs text-gray-400 space-y-1">
           <span className="uppercase tracking-wide">Agent mode</span>
           <select
             value={agentSelection}
             onChange={(e) => setAgentSelection(e.target.value as AiAgentSelection)}
-            className="w-full bg-gray-950 border border-gray-700 rounded px-2.5 py-2 text-xs text-gray-200 focus:outline-none focus:border-cyan-500"
+            className="w-full bg-gray-950 border border-gray-700 rounded px-2.5 py-2 text-sm text-gray-200 focus:outline-none focus:border-gray-500"
           >
             {agentOptions.map((opt) => (
               <option key={opt.id} value={opt.id}>{opt.label}</option>
@@ -1762,31 +1777,31 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
       </div>
 
       {modelSelection === 'custom' && (
-        <label className="text-[11px] text-gray-400 space-y-1 block">
+        <label className="text-xs text-gray-400 space-y-1 block">
           <span className="uppercase tracking-wide">Custom model name</span>
           <input
             value={customModelInput}
             onChange={(e) => setCustomModelInput(e.target.value)}
             placeholder={fallbackModel}
-            className="w-full bg-gray-950 border border-gray-700 rounded px-2.5 py-2 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-cyan-500"
+            className="w-full bg-gray-950 border border-gray-700 rounded px-2.5 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500"
           />
         </label>
       )}
 
-      <p className="text-[11px] text-gray-500">
+      <p className="text-xs text-gray-400">
         {agentOptions.find((a) => a.id === agentSelection)?.description ?? 'Select an agent mode tuned for your triage objective.'}
       </p>
 
       <div className="rounded-lg border border-gray-800 bg-gray-950/60 p-3 space-y-2">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Prompt presets</p>
-          <label className="text-[11px] text-gray-500 flex items-center gap-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Prompt presets</p>
+          <label className="text-xs text-gray-500 flex items-center gap-2">
             <span>Search</span>
             <input
               value={templateSearch}
               onChange={(e) => setTemplateSearch(e.target.value)}
               placeholder="filter presets"
-              className="w-36 bg-gray-950 border border-gray-700 rounded px-2 py-1 text-[11px] text-gray-200 focus:outline-none focus:border-gray-500"
+              className="w-36 bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-gray-500"
             />
           </label>
         </div>
@@ -1796,21 +1811,21 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
               key={template.label}
               type="button"
               onClick={() => applyFollowUpTemplate(template)}
-              className="text-[10px] px-2.5 py-1 rounded border border-gray-700 bg-gray-950/60 text-gray-300 hover:border-gray-500 hover:text-white"
+              className="text-xs px-2.5 py-1 rounded border border-gray-700 bg-gray-950/60 text-gray-300 hover:border-gray-500 hover:text-white"
             >
               {template.label}
             </button>
           ))}
           {filteredTemplates.length === 0 && (
-            <span className="text-[11px] text-gray-500">No presets match that search.</span>
+            <span className="text-xs text-gray-500">No presets match that search.</span>
           )}
         </div>
       </div>
 
       <div className="rounded-lg border border-gray-800 bg-gray-950/60 p-3 space-y-2">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Compare agents</p>
-          <label className="text-[11px] text-gray-500 flex items-center gap-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Compare agents</p>
+          <label className="text-xs text-gray-500 flex items-center gap-2">
             <input
               type="checkbox"
               checked={compareMode}
@@ -1825,7 +1840,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
             <select
               value={compareAgent}
               onChange={(e) => setCompareAgent(e.target.value as AiAgentSelection)}
-              className="w-full bg-gray-950 border border-gray-700 rounded px-2.5 py-2 text-xs text-gray-200 focus:outline-none focus:border-gray-500"
+              className="w-full bg-gray-950 border border-gray-700 rounded px-2.5 py-2 text-sm text-gray-200 focus:outline-none focus:border-gray-500"
             >
               {agentOptions.filter((opt) => opt.id !== agentSelection).map((opt) => (
                 <option key={opt.id} value={opt.id}>{opt.label}</option>
@@ -1835,7 +1850,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
               type="button"
               onClick={runCompareAgents}
               disabled={compareRunning || !followUpQuestion.trim() || !session.adoItem}
-              className="text-xs px-3 py-2 rounded border border-gray-700 bg-gray-900 text-gray-200 hover:bg-gray-800 disabled:opacity-40"
+              className="text-sm px-3 py-2 rounded border border-gray-700 bg-gray-900 text-gray-200 hover:bg-gray-800 disabled:opacity-40"
             >
               {compareRunning ? 'Comparing...' : 'Compare agents'}
             </button>
@@ -1847,15 +1862,15 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
             {compareResults.map((item) => (
               <div key={item.agent} className="rounded border border-gray-700 bg-gray-950/60 p-3 space-y-2">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <p className="text-xs font-semibold text-gray-300">{item.label}</p>
+                  <p className="text-sm font-semibold text-gray-300">{item.label}</p>
                   {item.source && <span className="text-[10px] text-gray-500 uppercase tracking-wide">{item.source}</span>}
                 </div>
                 {item.error ? (
                   <p className="text-xs text-red-400 whitespace-pre-wrap">{item.error}</p>
                 ) : (
-                  <pre className="text-xs text-gray-200 whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-auto">{item.assessment}</pre>
+                  <pre className="text-sm text-gray-200 whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-auto">{item.assessment}</pre>
                 )}
-                {item.warning && <p className="text-[11px] text-yellow-300 whitespace-pre-wrap">{item.warning}</p>}
+                {item.warning && <p className="text-xs text-yellow-300 whitespace-pre-wrap">{item.warning}</p>}
               </div>
             ))}
           </div>
@@ -1863,41 +1878,41 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
       </div>
 
       {providerSelection !== 'auto' && !selectedProviderEnabled && (
-        <p className="text-xs text-yellow-400">Selected provider is not ready. Configure credentials/runtime or switch provider.</p>
+        <p className="text-sm text-yellow-400">Selected provider is not ready. Configure credentials/runtime or switch provider.</p>
       )}
 
       {aiSource === 'deterministic-fallback' && (
-        <div className="rounded border border-yellow-800/70 bg-yellow-950/20 px-2.5 py-2 text-xs text-yellow-200">
+        <div className="rounded border border-yellow-800/70 bg-yellow-950/20 px-2.5 py-2 text-sm text-yellow-200">
           External AI route is unavailable in this environment. DevAssist switched to deterministic ticket-analysis mode so triage can continue.
         </div>
       )}
 
       {aiWarning && (
-        <p className="text-xs text-yellow-300 whitespace-pre-wrap">Provider warning: {aiWarning}</p>
+        <p className="text-sm text-yellow-300 whitespace-pre-wrap">Provider warning: {aiWarning}</p>
       )}
 
       {!canRun && (
-        <div className="text-xs text-yellow-600 space-y-1">
+        <div className="text-sm text-yellow-600 space-y-1">
           <p>No AI backend is configured for this session.</p>
           <p>• <strong className="text-yellow-400">Preferred</strong>: add GitHub PAT in <a href={`${import.meta.env.BASE_URL}settings`} className="underline text-yellow-400">Settings</a> so bridge can use GitHub Models.</p>
           <p>• <strong className="text-yellow-400">Fallback</strong>: add OpenAI key or run local Ollama at <code>http://localhost:11434</code>.</p>
         </div>
       )}
-      {error && <p className="text-xs text-red-400 font-mono whitespace-pre-wrap">Error: {error}</p>}
+      {error && <p className="text-sm text-red-400 font-mono whitespace-pre-wrap">Error: {error}</p>}
       {result && (
-        <pre className="text-xs text-gray-200 whitespace-pre-wrap font-mono leading-relaxed bg-gray-900/60 rounded p-3 max-h-96 overflow-auto border border-gray-700">
+        <pre className="text-sm text-gray-200 whitespace-pre-wrap font-mono leading-relaxed bg-gray-900/60 rounded p-3 max-h-96 overflow-auto border border-gray-700">
           {result}
         </pre>
       )}
 
       <div className="rounded-lg border border-gray-700 bg-gray-900/40 p-3 space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Saved follow-up history</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Saved follow-up history</p>
           {chatHistory.length > 0 && (
             <button
               type="button"
               onClick={() => setChatHistory([])}
-              className="text-[10px] text-gray-400 hover:text-white border border-gray-700 rounded px-2 py-1"
+              className="text-xs text-gray-400 hover:text-white border border-gray-700 rounded px-2 py-1"
             >
               Clear
             </button>
@@ -1909,48 +1924,48 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
             {chatHistory.map((entry, idx) => (
               <div key={`${entry.at}-${idx}`} className="rounded border border-gray-700 bg-gray-950/40 p-2 space-y-2">
                 <div>
-                  <p className="text-[10px] uppercase tracking-wide text-gray-500">Question</p>
-                  <p className="text-xs text-gray-200 whitespace-pre-wrap">{entry.question}</p>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Question</p>
+                  <p className="text-sm text-gray-200 whitespace-pre-wrap">{entry.question}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wide text-gray-500">Answer</p>
-                  <pre className="text-[11px] text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">{entry.answer}</pre>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Answer</p>
+                  <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">{entry.answer}</pre>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <p className="text-xs text-gray-500">No saved follow-up history yet. Ask the first question below.</p>
+          <p className="text-sm text-gray-500">No saved follow-up history yet. Ask the first question below.</p>
         )}
 
-        <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Continue with AI</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Continue with AI</p>
         <textarea
           value={followUpQuestion}
           onChange={(e) => setFollowUpQuestion(e.target.value)}
           rows={3}
           placeholder="Ask a follow-up or use the presets above to drive the analysis."
-          className="w-full bg-gray-950 border border-gray-700 rounded px-3 py-2 text-xs text-gray-200 resize-y focus:outline-none focus:border-altera-teal/60"
+          className="w-full bg-gray-950 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 resize-y focus:outline-none focus:border-gray-500"
         />
         <div className="flex justify-end">
           <button
             type="button"
             onClick={runFollowUp}
-            disabled={followUpRunning || !canRun || !followUpQuestion.trim() || (providerSelection !== 'auto' && !selectedProviderEnabled)}
-            className="flex items-center justify-center gap-1.5 text-xs bg-cyan-900/50 hover:bg-cyan-900/80 disabled:opacity-40 border border-cyan-600 text-cyan-100 px-3 py-1.5 rounded font-medium"
+            disabled={followUpRunning || !canRun || !followUpQuestion.trim()}
+            className="flex items-center justify-center gap-1.5 text-sm bg-gray-900 hover:bg-gray-800 disabled:opacity-40 border border-gray-700 text-gray-100 px-3 py-1.5 rounded font-medium"
           >
             {followUpRunning ? <><Loader2 size={11} className="animate-spin" /> Continuing...</> : <><Sparkles size={11} /> Continue</>}
           </button>
         </div>
-        {followUpError && <p className="text-xs text-red-400 font-mono whitespace-pre-wrap">Error: {followUpError}</p>}
+        {followUpError && <p className="text-sm text-red-400 font-mono whitespace-pre-wrap">Error: {followUpError}</p>}
         {followUpResult && (
-          <pre className="text-xs text-gray-200 whitespace-pre-wrap font-mono leading-relaxed bg-gray-950/50 rounded p-3 max-h-72 overflow-auto border border-gray-700">
+          <pre className="text-sm text-gray-200 whitespace-pre-wrap font-mono leading-relaxed bg-gray-950/50 rounded p-3 max-h-72 overflow-auto border border-gray-700">
             {followUpResult}
           </pre>
         )}
       </div>
 
       {!result && !error && canRun && !running && (
-        <p className="text-xs text-gray-600">
+        <p className="text-sm text-gray-500">
           {ollamaOk ? 'Ollama detected — click "Ask AI" to run locally.' : 'Click "Ask AI" to use the configured model route for this session.'}
         </p>
       )}

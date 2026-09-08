@@ -100,7 +100,7 @@ export const useSettingsStore = create<SettingsState>()(
       migrate: (persistedState: any) => ({
         adoPat: '',
         githubPat: '',
-        openaiKey: '',
+        openaiKey: persistedState?.openaiKey ?? '',
         hasAdoPat: Boolean(persistedState?.hasAdoPat),
         hasGithubPat: Boolean(persistedState?.hasGithubPat),
         bridgeUrl: persistedState?.bridgeUrl ?? ORG_DEFAULTS.bridgeUrl,
@@ -117,7 +117,7 @@ export const useSettingsStore = create<SettingsState>()(
       partialize: (s) => ({
         adoPat: '',
         githubPat: '',
-        openaiKey: '',
+        openaiKey: s.openaiKey,
         hasAdoPat: s.hasAdoPat,
         hasGithubPat: s.hasGithubPat,
         bridgeUrl: s.bridgeUrl,

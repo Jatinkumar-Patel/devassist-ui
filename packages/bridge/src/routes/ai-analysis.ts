@@ -215,26 +215,37 @@ function buildHeuristicAssessment(req: AnalysisRequest, fallbackReason: string):
     .slice(0, 5)
     .map(([seed, count]) => `${seed} (${count}x)`);
   const evidence = req.logHits.slice(0, 5).map((hit) => `[${hit.file}:${hit.line}] (${hit.seed}) ${hit.text}`);
+  const snowShort = req.snowTask?.shortDescription || 'No SNOW short description provided.';
+  const snowState = req.snowTask?.state ? `Current state: ${req.snowTask.state}` : 'State not provided.';
+  const repoFocus = req.repos.length ? req.repos.join(', ') : 'No mapped repo focus found from product routing.';
+  const confidence = evidence.length || topSignals.length ? 'Medium' : 'Low';
+  const likelyCause = verdict === 'CONFIG / INSTALL'
+    ? 'Identity/token/config path'
+    : verdict === 'CODE BUG'
+      ? 'Runtime code-path or exception-handling path'
+      : 'Insufficient deterministic evidence';
 
   return [
     'Mode: Deterministic fallback (external LLM unavailable).',
     `Assessment: ${verdict}`,
+    `Likely cause family: ${likelyCause}`,
     `Client reported: ${req.da.title}`,
     '',
     'SNOW evidence:',
-    `  - ${req.snowTask?.shortDescription || 'No SNOW short description provided.'}`,
-    `  - ${req.snowTask?.state ? `Current state: ${req.snowTask.state}` : 'State not provided.'}`,
+    `  - ${snowShort}`,
+    `  - ${snowState}`,
     '',
     'Log analysis:',
     `  - Top signals: ${topSignals.length ? topSignals.join(', ') : 'none'}`,
     `  - Evidence lines: ${evidence.length ? 'captured' : 'none captured'}`,
+    ...(evidence.length ? evidence.slice(0, 3).map((line) => `  - ${line}`) : []),
     '',
     'Code analysis:',
-    `  - Direction: ${req.repos.length ? req.repos.join(', ') : 'Mapped repos unavailable'}`,
+    `  - Direction: ${repoFocus}`,
     '  - Observed vs expected: Use top signal and first failing call path to validate behavior against product contract.',
     '',
     `Gap: Deterministic triage used local evidence only; verify with additional incident-window logs to raise confidence.`,
-    `Confidence: ${evidence.length || topSignals.length ? 'Medium' : 'Low'} — based on deterministic seed and evidence extraction without external LLM synthesis.`,
+    `Confidence: ${confidence} — based on deterministic seed and evidence extraction without external LLM synthesis.`,
     '',
     'Blind spots / to raise confidence:',
     '  - Attach exact incident-window logs with timestamps and correlation IDs.',
@@ -250,22 +261,33 @@ function buildHeuristicFollowUp(req: FollowUpRequest, fallbackReason: string): s
   const lower = question.toLowerCase();
   const signals = Object.entries(req.topSeeds ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const dominantSignal = signals[0] ? `${signals[0][0]} (${signals[0][1]}x)` : 'No dominant signal yet';
+  const evidence = req.logHits.slice(0, 4).map((hit) => `[${hit.file}:${hit.line}] (${hit.seed}) ${hit.text}`);
+  const priorSummary = req.priorAssessment?.trim()
+    ? req.priorAssessment.trim().slice(0, 320)
+    : 'No prior AI summary available.';
+
+  const base = [
+    'Mode: Deterministic fallback (external LLM unavailable).',
+    `Question: ${question}`,
+    `Dominant signal: ${dominantSignal}`,
+    `Prior context: ${priorSummary}`,
+    evidence.length ? `Evidence sample: ${evidence[0]}` : 'Evidence sample: no parsed log lines available.',
+  ];
 
   if (/pat|token|credential|auth|github/.test(lower)) {
     return [
-      'Mode: Deterministic fallback (external LLM unavailable).',
+      ...base,
       'Credential route check:',
       '1) Ensure PAT has Work Items (Read) and Code (Read) scopes.',
       '2) Save PAT in Settings and re-run Bridge status check.',
       '3) If provider still fails, this is likely network/endpoint reachability, not PAT syntax.',
-      `Current deterministic signal: ${dominantSignal}.`,
       `Provider warning: ${fallbackReason}`,
     ].join('\n');
   }
 
   if (/^\d{5,}$/.test(lower)) {
     return [
-      'Mode: Deterministic fallback (external LLM unavailable).',
+      ...base,
       `Ticket check for ${question}:`,
       '1) Verify DA Reported in Release and SNOW incident/task release mention are aligned.',
       '2) Compare only same-release historical work items in Repo/MTM Comparison.',
@@ -276,7 +298,7 @@ function buildHeuristicFollowUp(req: FollowUpRequest, fallbackReason: string): s
 
   if (/next|what should i do|action|validate/.test(lower)) {
     return [
-      'Mode: Deterministic fallback (external LLM unavailable).',
+      ...base,
       `1) Validate top signal path first: ${dominantSignal}.`,
       '2) Use SQL metadata explorer to confirm object mapping (tables/views/SP) tied to failing workflow.',
       '3) Run a read-only SQL query for recent rows correlated to incident time window.',
@@ -287,7 +309,7 @@ function buildHeuristicFollowUp(req: FollowUpRequest, fallbackReason: string): s
 
   if (/why|root cause|reason/.test(lower)) {
     return [
-      'Mode: Deterministic fallback (external LLM unavailable).',
+      ...base,
       `Most likely direction is based on seeds: ${signals.map(([s, c]) => `${s} (${c}x)`).join(', ') || 'none'}.`,
       'This is evidence-weighted guidance, not a final root-cause confirmation. Confirm with incident-window logs and DB correlation.',
       `Provider warning: ${fallbackReason}`,
@@ -295,8 +317,7 @@ function buildHeuristicFollowUp(req: FollowUpRequest, fallbackReason: string): s
   }
 
   return [
-    'Mode: Deterministic fallback (external LLM unavailable).',
-    `Question: ${question}`,
+    ...base,
     `Best deterministic direction: validate ${dominantSignal} against DA description, SNOW timeline, and latest attachment evidence.`,
     'Then ask a focused follow-up such as: "which log lines most support config issue vs code bug".',
     `Provider warning: ${fallbackReason}`,
@@ -526,9 +547,10 @@ aiAnalysisRouter.get('/status', async (_req: Request, res: Response) => {
 });
 
 function requestedProvider(value: unknown): ProviderSelection {
-  const normalized = String(value ?? 'github-models').trim().toLowerCase();
+  const normalized = String(value ?? 'auto').trim().toLowerCase();
+  if (normalized === 'auto') return 'auto';
   if (normalized === 'github-models' || normalized === 'openai' || normalized === 'ollama') return normalized;
-  return 'github-models';
+  return 'auto';
 }
 
 function providerAttemptOrder(selection: ProviderSelection): Array<'github-models' | 'openai' | 'ollama'> {

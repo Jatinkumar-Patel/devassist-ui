@@ -51,8 +51,11 @@ async function isBridgeReachable(baseUrl: string, timeoutMs: number): Promise<bo
 
 export default function App() {
   const navigate = useNavigate();
-  const { bridgeUrl, setBridgeUrl, setSecretStatus } = useSettingsStore();
-  const [wizardDone, setWizardDone] = useState(localStorage.getItem('devassist-setup-done') === '1');
+  const { bridgeUrl, setBridgeUrl, setSecretStatus, hasAdoPat, hasGithubPat } = useSettingsStore();
+  const [wizardDone, setWizardDone] = useState(() => {
+    const localFlag = localStorage.getItem('devassist-setup-done') === '1';
+    return localFlag || (hasAdoPat && hasGithubPat);
+  });
   const [bridgeChecked, setBridgeChecked] = useState(false);
   const [setupChecked, setSetupChecked] = useState(false);
   const [localBridgeNotice, setLocalBridgeNotice] = useState<LocalBridgeNotice | null>(null);
@@ -119,6 +122,13 @@ export default function App() {
     return () => { cancelled = true; };
   }, [setSecretStatus]);
 
+  // If status was already known from a prior run, keep wizard skipped on refresh.
+  useEffect(() => {
+    if (!hasAdoPat || !hasGithubPat) return;
+    localStorage.setItem('devassist-setup-done', '1');
+    setWizardDone(true);
+  }, [hasAdoPat, hasGithubPat]);
+
   // First-run auto-check: if the connector is up and server-managed credentials
   // are already configured, skip the setup wizard automatically.
   useEffect(() => {
@@ -128,6 +138,16 @@ export default function App() {
         if (!cancelled) setSetupChecked(true);
         return;
       }
+
+      if (hasAdoPat && hasGithubPat) {
+        localStorage.setItem('devassist-setup-done', '1');
+        if (!cancelled) {
+          setWizardDone(true);
+          setSetupChecked(true);
+        }
+        return;
+      }
+
       try {
         const res = await fetch(`${bridgeUrl}/api/status`, { signal: AbortSignal.timeout(2500) });
         if (!res.ok) return;
@@ -145,7 +165,7 @@ export default function App() {
     }
     checkServerManagedSetup();
     return () => { cancelled = true; };
-  }, [wizardDone, bridgeUrl]);
+  }, [wizardDone, bridgeUrl, hasAdoPat, hasGithubPat]);
 
   useEffect(() => {
     let cancelled = false;

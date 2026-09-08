@@ -76,6 +76,11 @@ export function routeByAreaPath(areaPath: string, reg: ProductRegistry, title?: 
     return byTitle ?? candidates[0];
   }
 
+  // AreaPath is authoritative when present. Do not cross-route to a different product via title keywords.
+  if (areaPath.trim()) {
+    return undefined;
+  }
+
   // No prefix match — try title keywords as fallback (e.g. area path is parent but title names the product)
   if (titleLower.includes('shm') || titleLower.includes('secure health mess')) {
     return reg.products.find((p) => p.id === 'shm');

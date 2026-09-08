@@ -1284,8 +1284,14 @@ export async function buildSkillDrivenAssessment(
 
   // ── Step 8: blind spots (from profile.md clarity checklist) ──────────────
   const blindSpots: string[] = [];
+  const requiredRepos = product.repos.filter((r) => r.required).map((r) => r.repo);
   if (!logHits?.length) blindSpots.push('HWS logs not attached or not yet scanned — attach logs for the incident window to raise confidence');
-  if (!codeHits.length) blindSpots.push('Code search found no hits — clone SunriseMobile + HWS repos locally for direct inspection');
+  if (!codeHits.length) {
+    const repoHint = requiredRepos.length
+      ? `clone/search ${requiredRepos.join(' + ')} locally for direct inspection`
+      : 'clone/search mapped product repositories locally for direct inspection';
+    blindSpots.push(`Code search found no hits — ${repoHint}`);
+  }
   if (!snowWorkNotes)   blindSpots.push('SNOW work notes empty — review SNOW task for additional context from support engineer');
   if (!databaseEvidence.length) blindSpots.push('No direct DB repo hit found — broaden DB search terms (SP/view/table names) for deeper database verification');
   if (!spreadsheetSummaries.length) blindSpots.push('No spreadsheet evidence extracted from attachments — include PSS workbook exports when available');

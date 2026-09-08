@@ -87,22 +87,23 @@ function newSession(
 }
 
 function getEvidenceAreaPaths(primaryAreaPath: string, product?: Product, userSelectedScope?: boolean): string[] {
-  // Always prioritize the DA/ADO area path; UI product scope is additive fallback context.
-  if (userSelectedScope && product) {
+  const primary = primaryAreaPath.trim();
+
+  // ADO area path is the source of truth unless the user explicitly selected scope.
+  if (!userSelectedScope) {
+    return primary ? [primary] : [];
+  }
+
+  if (product) {
     const paths = [
-      primaryAreaPath,
+      primary,
       product.areaPathPrefix,
       ...(product.areaPathPrefixes ?? []),
     ].map((p) => p.trim()).filter(Boolean);
     return Array.from(new Set(paths));
   }
-  const paths = [
-    primaryAreaPath,
-    product?.areaPathPrefix ?? '',
-    ...(product?.areaPathPrefixes ?? []),
-  ].map((p) => p.trim()).filter(Boolean);
 
-  return Array.from(new Set(paths));
+  return primary ? [primary] : [];
 }
 
 function expandReleaseHints(base: string[]): string[] {

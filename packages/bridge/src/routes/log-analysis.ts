@@ -255,14 +255,36 @@ interface AttachmentMeta {
 
 const TEXT_EXTENSIONS = ['.log', '.txt', '.csv', '.json', '.xml'];
 const SPREADSHEET_EXTENSIONS = ['.xlsx', '.xls'];
-const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff'];
-const SCANNABLE_EXTENSIONS = ['.log', '.txt', '.zip', '.csv', '.json', '.xml', '.xlsx', '.xls', '.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff'];
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.gif', '.webp'];
+const SCANNABLE_EXTENSIONS = ['.log', '.txt', '.zip', '.csv', '.json', '.xml', '.xlsx', '.xls', '.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.gif', '.webp'];
 const MAX_XLSX_BYTES = 30 * 1024 * 1024;
 
 function extensionOf(fileName: string): string {
   const lower = fileName.toLowerCase();
   const idx = lower.lastIndexOf('.');
   return idx >= 0 ? lower.slice(idx) : '';
+}
+
+function extensionFromContentType(contentType: string): string {
+  const lower = contentType.toLowerCase();
+  if (lower.includes('zip')) return '.zip';
+  if (lower.includes('spreadsheetml') || lower.includes('officedocument.spreadsheetml')) return '.xlsx';
+  if (lower.includes('excel') || lower.includes('ms-excel')) return '.xls';
+  if (lower.includes('json')) return '.json';
+  if (lower.includes('xml')) return '.xml';
+  if (lower.includes('csv')) return '.csv';
+  if (lower.includes('plain')) return '.txt';
+  if (lower.includes('png')) return '.png';
+  if (lower.includes('jpeg') || lower.includes('jpg')) return '.jpg';
+  if (lower.includes('tiff')) return '.tiff';
+  if (lower.includes('bmp')) return '.bmp';
+  if (lower.includes('gif')) return '.gif';
+  if (lower.includes('webp')) return '.webp';
+  return '';
+}
+
+function resolveAttachmentExtension(fileName: string, contentType: string): string {
+  return extensionOf(fileName) || extensionFromContentType(contentType);
 }
 
 function attachmentFingerprint(attachments: AttachmentMeta[]): string {
@@ -336,10 +358,18 @@ async function getOcrWorker(): Promise<any> {
   if (!ocrWorkerPromise) {
     ocrWorkerPromise = (async () => {
       const tesseract = await import('tesseract.js');
-      return (tesseract as any).createWorker('eng', 1, {
+      const createWorker = (tesseract as any).createWorker;
+      const options = {
         logger: () => undefined,
         cachePath: path.join(os.tmpdir(), 'devassist-tesseract-cache'),
-      });
+      };
+
+      // tesseract.js signatures vary by major version. Try modern and legacy forms.
+      try {
+        return await createWorker('eng', 1, options);
+      } catch {
+        return await createWorker('eng', options);
+      }
     })();
   }
   return ocrWorkerPromise;
@@ -1321,7 +1351,7 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
 
     for (const att of attachments) {
       const fileName = val(att.file_name) || '(unnamed attachment)';
-      const ext = extensionOf(fileName);
+      const ext = resolveAttachmentExtension(fileName, val(att.content_type));
       if (SCANNABLE_EXTENSIONS.includes(ext)) {
         scannableFiles.push(att);
       } else {
@@ -1334,6 +1364,7 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
       const fileName = val(att.file_name);
       const sysId = val(att.sys_id);
       const contentType = val(att.content_type);
+      const resolvedExt = resolveAttachmentExtension(fileName, contentType);
       const sizeBytesStr = val(att.size_bytes);
       const sizeBytes = parseInt(sizeBytesStr, 10) || 0;
 
@@ -1353,7 +1384,7 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
           `-UseDefaultCredentials -UseBasicParsing -TimeoutSec 300 -OutFile '${outPath}'`
         );
 
-        if (contentType.includes('zip') || fileName.endsWith('.zip')) {
+        if (resolvedExt === '.zip') {
           // Extract zip and parse each .log file inside
           const extractDir = outPath + '_extracted';
           fs.mkdirSync(extractDir, { recursive: true });
@@ -1413,7 +1444,7 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
         } else {
           let note = '';
           const rawStat = fs.statSync(outPath);
-          const ext = extensionOf(fileName);
+          const ext = resolvedExt;
           let hits: LogHit[] = [];
           if (SPREADSHEET_EXTENSIONS.includes(ext)) {
             if (rawStat.size > MAX_XLSX_BYTES) {
