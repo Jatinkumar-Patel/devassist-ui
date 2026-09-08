@@ -17,6 +17,9 @@ jobs:
       - name: Typecheck bridge
         working-directory: packages/bridge
         run: npx tsc --noEmit
+      - name: Run bridge analyzer quality gates
+        working-directory: packages/bridge
+        run: npm run test
       - name: Typecheck + build SPA
         working-directory: packages/spa
         run: npm run build

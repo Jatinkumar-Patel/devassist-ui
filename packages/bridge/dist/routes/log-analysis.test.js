@@ -290,3 +290,141 @@ function makeHit(category, seed, line) {
     ];
     strict_1.default.equal((0, log_analysis_1.detectHeaderRowIndex)(rows), 2);
 });
+(0, node_test_1.default)('quality score passes threshold for evidence-rich analysis', () => {
+    const diagnosticSummary = (0, log_analysis_1.buildDiagnosticSummary)({
+        byCategory: {
+            error: [makeHit('error', 'ERROR', 10), makeHit('error', 'SecurityTokenExpiredException', 11)],
+            warning: [makeHit('warning', 'Timeout', 12)],
+            lock: [makeHit('lock', 'LockWithTimeout', 13)],
+            ops: [makeHit('ops', 'SendNotification', 14)],
+            other: [],
+        },
+        topSeeds: {
+            ERROR: 1,
+            SecurityTokenExpiredException: 2,
+            Timeout: 2,
+            LockWithTimeout: 4,
+            SendNotification: 1,
+        },
+        stackTraces: [
+            {
+                file: 'sample.log',
+                exception: 'SecurityTokenExpiredException',
+                signature: 'SecurityTokenExpiredException|at Foo.Bar',
+                firstLine: 11,
+                preview: 'SecurityTokenExpiredException at Foo.Bar',
+            },
+        ],
+        operationTimelineSummaries: [
+            {
+                file: 'timeline.tsv',
+                rowsParsed: 25,
+                delayedCount: 3,
+                errorRows: 1,
+                thresholdSeconds: 2,
+                topDelayed: [],
+            },
+        ],
+        spreadsheetSummaries: [
+            {
+                file: 'evidence.xlsx',
+                sheet: 'Sheet1',
+                rowCount: 20,
+                columnCount: 8,
+                headers: [],
+                sampleRows: [],
+                findings: ['Potential mapping gaps: missing target for X'],
+            },
+        ],
+        imageSummaries: [
+            {
+                file: 'screen.png',
+                textPreview: 'token expired',
+                charCount: 80,
+                findings: ['OCR high-signal matches: SecurityTokenExpiredException'],
+                hitCount: 2,
+            },
+        ],
+    });
+    const quality = (0, log_analysis_1.buildQualityScore)({
+        diagnosticSummary,
+        totalAttachments: 6,
+        scannableAttachments: 6,
+        skippedCount: 0,
+        totalHits: 24,
+        stackTraces: [
+            {
+                file: 'sample.log',
+                exception: 'SecurityTokenExpiredException',
+                signature: 'SecurityTokenExpiredException|at Foo.Bar',
+                firstLine: 11,
+                preview: 'SecurityTokenExpiredException at Foo.Bar',
+            },
+        ],
+        operationTimelineSummaries: [
+            {
+                file: 'timeline.tsv',
+                rowsParsed: 25,
+                delayedCount: 3,
+                errorRows: 1,
+                thresholdSeconds: 2,
+                topDelayed: [],
+            },
+        ],
+        spreadsheetSummaries: [
+            {
+                file: 'evidence.xlsx',
+                sheet: 'Sheet1',
+                rowCount: 20,
+                columnCount: 8,
+                headers: [],
+                sampleRows: [],
+                findings: ['Potential mapping gaps: missing target for X'],
+            },
+        ],
+        imageSummaries: [
+            {
+                file: 'screen.png',
+                textPreview: 'token expired',
+                charCount: 80,
+                findings: ['OCR high-signal matches: SecurityTokenExpiredException'],
+                hitCount: 2,
+            },
+        ],
+        suggestionsCount: 3,
+    });
+    strict_1.default.equal(quality.pass, true);
+    strict_1.default.ok(quality.score >= log_analysis_1.LOG_ANALYSIS_QUALITY_SCORE_THRESHOLD);
+    strict_1.default.match(quality.grade, /A|B|C/);
+});
+(0, node_test_1.default)('quality score fails threshold for low-signal and low-completeness analysis', () => {
+    const diagnosticSummary = (0, log_analysis_1.buildDiagnosticSummary)({
+        byCategory: {
+            error: [],
+            warning: [],
+            lock: [],
+            ops: [],
+            other: [],
+        },
+        topSeeds: {},
+        stackTraces: [],
+        operationTimelineSummaries: [],
+        spreadsheetSummaries: [],
+        imageSummaries: [],
+    });
+    const quality = (0, log_analysis_1.buildQualityScore)({
+        diagnosticSummary,
+        totalAttachments: 5,
+        scannableAttachments: 1,
+        skippedCount: 4,
+        totalHits: 0,
+        stackTraces: [],
+        operationTimelineSummaries: [],
+        spreadsheetSummaries: [],
+        imageSummaries: [],
+        suggestionsCount: 0,
+    });
+    strict_1.default.equal(quality.pass, false);
+    strict_1.default.ok(quality.score < log_analysis_1.LOG_ANALYSIS_QUALITY_SCORE_THRESHOLD);
+    strict_1.default.equal(quality.grade, 'F');
+});

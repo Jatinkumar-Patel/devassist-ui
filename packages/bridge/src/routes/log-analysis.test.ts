@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  LOG_ANALYSIS_QUALITY_SCORE_THRESHOLD,
   buildDiagnosticSummary,
+  buildQualityScore,
   buildSuggestions,
   detectHeaderRowIndex,
   extractKeywordHitsFromText,
@@ -317,4 +319,148 @@ test('spreadsheet header detection finds header row when exports include preface
   ];
 
   assert.equal(detectHeaderRowIndex(rows), 2);
+});
+
+test('quality score passes threshold for evidence-rich analysis', () => {
+  const diagnosticSummary = buildDiagnosticSummary({
+    byCategory: {
+      error: [makeHit('error', 'ERROR', 10), makeHit('error', 'SecurityTokenExpiredException', 11)],
+      warning: [makeHit('warning', 'Timeout', 12)],
+      lock: [makeHit('lock', 'LockWithTimeout', 13)],
+      ops: [makeHit('ops', 'SendNotification', 14)],
+      other: [],
+    },
+    topSeeds: {
+      ERROR: 1,
+      SecurityTokenExpiredException: 2,
+      Timeout: 2,
+      LockWithTimeout: 4,
+      SendNotification: 1,
+    },
+    stackTraces: [
+      {
+        file: 'sample.log',
+        exception: 'SecurityTokenExpiredException',
+        signature: 'SecurityTokenExpiredException|at Foo.Bar',
+        firstLine: 11,
+        preview: 'SecurityTokenExpiredException at Foo.Bar',
+      },
+    ],
+    operationTimelineSummaries: [
+      {
+        file: 'timeline.tsv',
+        rowsParsed: 25,
+        delayedCount: 3,
+        errorRows: 1,
+        thresholdSeconds: 2,
+        topDelayed: [],
+      },
+    ],
+    spreadsheetSummaries: [
+      {
+        file: 'evidence.xlsx',
+        sheet: 'Sheet1',
+        rowCount: 20,
+        columnCount: 8,
+        headers: [],
+        sampleRows: [],
+        findings: ['Potential mapping gaps: missing target for X'],
+      },
+    ],
+    imageSummaries: [
+      {
+        file: 'screen.png',
+        textPreview: 'token expired',
+        charCount: 80,
+        findings: ['OCR high-signal matches: SecurityTokenExpiredException'],
+        hitCount: 2,
+      },
+    ],
+  });
+
+  const quality = buildQualityScore({
+    diagnosticSummary,
+    totalAttachments: 6,
+    scannableAttachments: 6,
+    skippedCount: 0,
+    totalHits: 24,
+    stackTraces: [
+      {
+        file: 'sample.log',
+        exception: 'SecurityTokenExpiredException',
+        signature: 'SecurityTokenExpiredException|at Foo.Bar',
+        firstLine: 11,
+        preview: 'SecurityTokenExpiredException at Foo.Bar',
+      },
+    ],
+    operationTimelineSummaries: [
+      {
+        file: 'timeline.tsv',
+        rowsParsed: 25,
+        delayedCount: 3,
+        errorRows: 1,
+        thresholdSeconds: 2,
+        topDelayed: [],
+      },
+    ],
+    spreadsheetSummaries: [
+      {
+        file: 'evidence.xlsx',
+        sheet: 'Sheet1',
+        rowCount: 20,
+        columnCount: 8,
+        headers: [],
+        sampleRows: [],
+        findings: ['Potential mapping gaps: missing target for X'],
+      },
+    ],
+    imageSummaries: [
+      {
+        file: 'screen.png',
+        textPreview: 'token expired',
+        charCount: 80,
+        findings: ['OCR high-signal matches: SecurityTokenExpiredException'],
+        hitCount: 2,
+      },
+    ],
+    suggestionsCount: 3,
+  });
+
+  assert.equal(quality.pass, true);
+  assert.ok(quality.score >= LOG_ANALYSIS_QUALITY_SCORE_THRESHOLD);
+  assert.match(quality.grade, /A|B|C/);
+});
+
+test('quality score fails threshold for low-signal and low-completeness analysis', () => {
+  const diagnosticSummary = buildDiagnosticSummary({
+    byCategory: {
+      error: [],
+      warning: [],
+      lock: [],
+      ops: [],
+      other: [],
+    },
+    topSeeds: {},
+    stackTraces: [],
+    operationTimelineSummaries: [],
+    spreadsheetSummaries: [],
+    imageSummaries: [],
+  });
+
+  const quality = buildQualityScore({
+    diagnosticSummary,
+    totalAttachments: 5,
+    scannableAttachments: 1,
+    skippedCount: 4,
+    totalHits: 0,
+    stackTraces: [],
+    operationTimelineSummaries: [],
+    spreadsheetSummaries: [],
+    imageSummaries: [],
+    suggestionsCount: 0,
+  });
+
+  assert.equal(quality.pass, false);
+  assert.ok(quality.score < LOG_ANALYSIS_QUALITY_SCORE_THRESHOLD);
+  assert.equal(quality.grade, 'F');
 });

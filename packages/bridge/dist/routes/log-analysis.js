@@ -36,11 +36,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.logAnalysisRouter = void 0;
+exports.LOG_ANALYSIS_QUALITY_SCORE_THRESHOLD = exports.logAnalysisRouter = void 0;
 exports.normalizeDiagnosticText = normalizeDiagnosticText;
 exports.extractKeywordHitsFromText = extractKeywordHitsFromText;
 exports.detectHeaderRowIndex = detectHeaderRowIndex;
 exports.buildDiagnosticSummary = buildDiagnosticSummary;
+exports.buildQualityScore = buildQualityScore;
 exports.buildSuggestions = buildSuggestions;
 const express_1 = require("express");
 const node_1 = __importStar(require("read-excel-file/node"));
@@ -157,6 +158,7 @@ const MAX_OCR_IMAGE_BYTES = 15 * 1024 * 1024;
 const MAX_STACK_TRACES = 5;
 const SKIP_OPERATIONS = ['CheckShellForIdle', 'GetConnectedHCServerName', 'ResolveLocalHost'];
 const TIMELINE_DELAY_THRESHOLD_SECONDS = 2.0;
+exports.LOG_ANALYSIS_QUALITY_SCORE_THRESHOLD = 70;
 function shouldSkipOperationLine(line) {
     return SKIP_OPERATIONS.some((op) => line.toLowerCase().includes(op.toLowerCase()));
 }
@@ -979,6 +981,54 @@ function buildDiagnosticSummary(result) {
         },
     };
 }
+function buildQualityScore(result) {
+    const confidenceWeight = result.diagnosticSummary.confidence === 'high'
+        ? 30
+        : result.diagnosticSummary.confidence === 'medium'
+            ? 20
+            : 10;
+    const coverageSignals = [
+        result.totalHits > 0,
+        result.stackTraces.length > 0,
+        result.operationTimelineSummaries.length > 0,
+        result.spreadsheetSummaries.length > 0,
+        result.imageSummaries.length > 0,
+        result.suggestionsCount > 0,
+    ].filter(Boolean).length;
+    const coverage = Math.min(40, coverageSignals * 7);
+    const completenessBase = result.totalAttachments > 0
+        ? Math.round((result.scannableAttachments / Math.max(result.totalAttachments, 1)) * 20)
+        : 0;
+    const completenessEvidence = result.diagnosticSummary.rationale.length >= 2 ? 8 : 4;
+    const evidenceCompleteness = Math.min(30, completenessBase + completenessEvidence);
+    const penaltyNoHits = result.scannableAttachments > 0 && result.totalHits === 0 ? 12 : 0;
+    const penaltyMostlySkipped = result.totalAttachments > 0 && result.skippedCount > result.scannableAttachments ? 10 : 0;
+    const penalties = penaltyNoHits + penaltyMostlySkipped;
+    const rawScore = coverage + confidenceWeight + evidenceCompleteness - penalties;
+    const score = Math.max(0, Math.min(100, rawScore));
+    const grade = score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 70 ? 'C' : score >= 60 ? 'D' : 'F';
+    const pass = score >= exports.LOG_ANALYSIS_QUALITY_SCORE_THRESHOLD;
+    const rationale = [
+        `Coverage signals=${coverageSignals} (${coverage} pts).`,
+        `Diagnostic confidence=${result.diagnosticSummary.confidence} (${confidenceWeight} pts).`,
+        `Evidence completeness=${evidenceCompleteness} pts (scannable=${result.scannableAttachments}/${result.totalAttachments}).`,
+    ];
+    if (penalties > 0)
+        rationale.push(`Penalties applied=${penalties} pts.`);
+    return {
+        score,
+        grade,
+        threshold: exports.LOG_ANALYSIS_QUALITY_SCORE_THRESHOLD,
+        pass,
+        components: {
+            coverage,
+            confidence: confidenceWeight,
+            evidenceCompleteness,
+            penalties,
+        },
+        rationale,
+    };
+}
 function buildExplanation(result) {
     const explanation = [];
     if (result.totalAttachments === 0) {
@@ -1251,6 +1301,18 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
             spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
             imageSummaries: imageSummaries.slice(0, 40),
         });
+        const qualityScore = buildQualityScore({
+            diagnosticSummary,
+            totalAttachments: attachments.length,
+            scannableAttachments: scannableFiles.length,
+            skippedCount: skipped.length,
+            totalHits: allHits.length,
+            stackTraces,
+            operationTimelineSummaries: operationTimelineSummaries.slice(0, 20),
+            spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
+            imageSummaries: imageSummaries.slice(0, 40),
+            suggestionsCount: suggestions.length,
+        });
         const result = {
             totalAttachments: attachments.length,
             scannableAttachments: scannableFiles.length,
@@ -1267,6 +1329,7 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
             spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
             imageSummaries: imageSummaries.slice(0, 40),
             diagnosticSummary,
+            qualityScore,
             suggestions,
             explanation: buildExplanation({
                 totalAttachments: attachments.length,

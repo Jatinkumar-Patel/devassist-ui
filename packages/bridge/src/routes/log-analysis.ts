@@ -153,9 +153,24 @@ interface LogAnalysisResult {
   spreadsheetSummaries: SpreadsheetSummary[];
   imageSummaries: ImageSummary[];
   diagnosticSummary: DiagnosticSummary;
+  qualityScore: QualityScore;
   suggestions: CodeSuggestion[];
   explanation: string[];
   cached?: boolean;
+}
+
+export interface QualityScore {
+  score: number;
+  grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  threshold: number;
+  pass: boolean;
+  components: {
+    coverage: number;
+    confidence: number;
+    evidenceCompleteness: number;
+    penalties: number;
+  };
+  rationale: string[];
 }
 
 export interface DiagnosticSummary {
@@ -210,6 +225,7 @@ const MAX_OCR_IMAGE_BYTES = 15 * 1024 * 1024;
 const MAX_STACK_TRACES = 5;
 const SKIP_OPERATIONS = ['CheckShellForIdle', 'GetConnectedHCServerName', 'ResolveLocalHost'];
 const TIMELINE_DELAY_THRESHOLD_SECONDS = 2.0;
+export const LOG_ANALYSIS_QUALITY_SCORE_THRESHOLD = 70;
 
 function shouldSkipOperationLine(line: string): boolean {
   return SKIP_OPERATIONS.some((op) => line.toLowerCase().includes(op.toLowerCase()));
@@ -1087,6 +1103,71 @@ export function buildDiagnosticSummary(result: {
   };
 }
 
+export function buildQualityScore(result: {
+  diagnosticSummary: DiagnosticSummary;
+  totalAttachments: number;
+  scannableAttachments: number;
+  skippedCount: number;
+  totalHits: number;
+  stackTraces: StackTraceSummary[];
+  operationTimelineSummaries: OperationTimelineSummary[];
+  spreadsheetSummaries: SpreadsheetSummary[];
+  imageSummaries: ImageSummary[];
+  suggestionsCount: number;
+}): QualityScore {
+  const confidenceWeight = result.diagnosticSummary.confidence === 'high'
+    ? 30
+    : result.diagnosticSummary.confidence === 'medium'
+      ? 20
+      : 10;
+
+  const coverageSignals = [
+    result.totalHits > 0,
+    result.stackTraces.length > 0,
+    result.operationTimelineSummaries.length > 0,
+    result.spreadsheetSummaries.length > 0,
+    result.imageSummaries.length > 0,
+    result.suggestionsCount > 0,
+  ].filter(Boolean).length;
+  const coverage = Math.min(40, coverageSignals * 7);
+
+  const completenessBase = result.totalAttachments > 0
+    ? Math.round((result.scannableAttachments / Math.max(result.totalAttachments, 1)) * 20)
+    : 0;
+  const completenessEvidence = result.diagnosticSummary.rationale.length >= 2 ? 8 : 4;
+  const evidenceCompleteness = Math.min(30, completenessBase + completenessEvidence);
+
+  const penaltyNoHits = result.scannableAttachments > 0 && result.totalHits === 0 ? 12 : 0;
+  const penaltyMostlySkipped = result.totalAttachments > 0 && result.skippedCount > result.scannableAttachments ? 10 : 0;
+  const penalties = penaltyNoHits + penaltyMostlySkipped;
+
+  const rawScore = coverage + confidenceWeight + evidenceCompleteness - penalties;
+  const score = Math.max(0, Math.min(100, rawScore));
+  const grade: QualityScore['grade'] = score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 70 ? 'C' : score >= 60 ? 'D' : 'F';
+  const pass = score >= LOG_ANALYSIS_QUALITY_SCORE_THRESHOLD;
+
+  const rationale: string[] = [
+    `Coverage signals=${coverageSignals} (${coverage} pts).`,
+    `Diagnostic confidence=${result.diagnosticSummary.confidence} (${confidenceWeight} pts).`,
+    `Evidence completeness=${evidenceCompleteness} pts (scannable=${result.scannableAttachments}/${result.totalAttachments}).`,
+  ];
+  if (penalties > 0) rationale.push(`Penalties applied=${penalties} pts.`);
+
+  return {
+    score,
+    grade,
+    threshold: LOG_ANALYSIS_QUALITY_SCORE_THRESHOLD,
+    pass,
+    components: {
+      coverage,
+      confidence: confidenceWeight,
+      evidenceCompleteness,
+      penalties,
+    },
+    rationale,
+  };
+}
+
 function buildExplanation(result: {
   totalAttachments: number;
   scannableAttachments: number;
@@ -1395,6 +1476,18 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
       spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
       imageSummaries: imageSummaries.slice(0, 40),
     });
+    const qualityScore = buildQualityScore({
+      diagnosticSummary,
+      totalAttachments: attachments.length,
+      scannableAttachments: scannableFiles.length,
+      skippedCount: skipped.length,
+      totalHits: allHits.length,
+      stackTraces,
+      operationTimelineSummaries: operationTimelineSummaries.slice(0, 20),
+      spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
+      imageSummaries: imageSummaries.slice(0, 40),
+      suggestionsCount: suggestions.length,
+    });
 
     const result: LogAnalysisResult = {
       totalAttachments: attachments.length,
@@ -1412,6 +1505,7 @@ logAnalysisRouter.get('/:recordSysId', async (req: Request, res: Response) => {
       spreadsheetSummaries: spreadsheetSummaries.slice(0, 60),
       imageSummaries: imageSummaries.slice(0, 40),
       diagnosticSummary,
+      qualityScore,
       suggestions,
       explanation: buildExplanation({
         totalAttachments: attachments.length,
