@@ -11,6 +11,7 @@ import { aiAnalysisRouter } from './routes/ai-analysis';
 import { registryRouter } from './routes/registry';
 import { skillsRouter } from './routes/skills';
 import { secretsRouter } from './routes/secrets';
+import { sqlRouter } from './routes/sql';
 
 interface ServerOptions {
   spaOrigin: string;
@@ -51,6 +52,7 @@ export function createServer({ spaOrigin, pagesUrl, allowedOrigins }: ServerOpti
   app.use('/api/skills', skillsRouter);
   app.use('/api/registry', registryRouter);
   app.use('/api/secrets', secretsRouter);
+  app.use('/api/sql', sqlRouter);
 
   // Prevent unknown API routes from falling through to SPA HTML.
   app.use('/api', (req: Request, res: Response) => {

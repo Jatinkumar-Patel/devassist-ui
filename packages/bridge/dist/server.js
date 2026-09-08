@@ -17,6 +17,7 @@ const ai_analysis_1 = require("./routes/ai-analysis");
 const registry_1 = require("./routes/registry");
 const skills_1 = require("./routes/skills");
 const secrets_1 = require("./routes/secrets");
+const sql_1 = require("./routes/sql");
 function createServer({ spaOrigin, pagesUrl, allowedOrigins }) {
     const app = (0, express_1.default)();
     const allowedExactOrigins = new Set([
@@ -48,6 +49,7 @@ function createServer({ spaOrigin, pagesUrl, allowedOrigins }) {
     app.use('/api/skills', skills_1.skillsRouter);
     app.use('/api/registry', registry_1.registryRouter);
     app.use('/api/secrets', secrets_1.secretsRouter);
+    app.use('/api/sql', sql_1.sqlRouter);
     // Prevent unknown API routes from falling through to SPA HTML.
     app.use('/api', (req, res) => {
         res.status(404).json({

@@ -11,6 +11,15 @@ interface DiagnosticResult {
   details: string;
 }
 
+interface SqlTestResult {
+  ok: boolean;
+  message?: string;
+  error?: string;
+  server?: string;
+  database?: string;
+  elapsedMs?: number;
+}
+
 function isLocalBridgeUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -33,8 +42,22 @@ export default function SettingsPage() {
   const {
     openaiKey,
     bridgeUrl,
+    sqlServer,
+    sqlDatabase,
+    sqlPort,
+    sqlAuthMode,
+    sqlUser,
+    sqlEncrypt,
+    sqlTrustServerCertificate,
     setOpenaiKey,
     setBridgeUrl,
+    setSqlServer,
+    setSqlDatabase,
+    setSqlPort,
+    setSqlAuthMode,
+    setSqlUser,
+    setSqlEncrypt,
+    setSqlTrustServerCertificate,
     hasAdoPat,
     hasGithubPat,
     setSecretStatus,
@@ -45,6 +68,10 @@ export default function SettingsPage() {
   const [adoDraft, setAdoDraft] = useState('');
   const [githubDraft, setGithubDraft] = useState('');
   const [bridgeReachable, setBridgeReachable] = useState<boolean | null>(null);
+  const [sqlPassword, setSqlPassword] = useState('');
+  const [showSqlPassword, setShowSqlPassword] = useState(false);
+  const [sqlTesting, setSqlTesting] = useState(false);
+  const [sqlTestResult, setSqlTestResult] = useState<SqlTestResult | null>(null);
   const [supportModeEnabled, setSupportModeEnabled] = useState<boolean>(() => localStorage.getItem('devassist-support-mode') === '1');
   const localBridgeMode = isLocalBridgeUrl(bridgeUrl);
   const localHostPage = isLocalHostPage();
@@ -177,6 +204,155 @@ export default function SettingsPage() {
           className="text-xs text-red-500 hover:text-red-400 border border-red-900 hover:border-red-700 px-3 py-1.5 rounded-lg">
           Clear all PATs
         </button>
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">SQL Connection</h2>
+        <p className="text-xs text-gray-600">
+          VS Code SQL style connection profile for ticket-level DB verification. Password is used only for test connection and is not persisted in browser storage.
+        </p>
+
+        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-xs text-gray-400 space-y-1">
+              <span>Authentication Type</span>
+              <select
+                value={sqlAuthMode}
+                onChange={(e) => setSqlAuthMode(e.target.value === 'windows' ? 'windows' : 'sql-login')}
+                className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-altera-teal"
+              >
+                <option value="sql-login">SQL Login</option>
+                <option value="windows">Windows (Integrated)</option>
+              </select>
+            </label>
+
+            <label className="text-xs text-gray-400 space-y-1">
+              <span>Port</span>
+              <input
+                value={String(sqlPort)}
+                onChange={(e) => setSqlPort(Number(e.target.value) || 1433)}
+                className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-altera-teal"
+              />
+            </label>
+
+            <label className="text-xs text-gray-400 space-y-1">
+              <span>Server</span>
+              <input
+                value={sqlServer}
+                onChange={(e) => setSqlServer(e.target.value)}
+                placeholder="server-name or server.domain"
+                className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-altera-teal"
+              />
+            </label>
+
+            <label className="text-xs text-gray-400 space-y-1">
+              <span>Database</span>
+              <input
+                value={sqlDatabase}
+                onChange={(e) => setSqlDatabase(e.target.value)}
+                placeholder="master"
+                className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-altera-teal"
+              />
+            </label>
+
+            <label className="text-xs text-gray-400 space-y-1">
+              <span>User</span>
+              <input
+                value={sqlUser}
+                onChange={(e) => setSqlUser(e.target.value)}
+                placeholder={sqlAuthMode === 'windows' ? 'Optional for Windows auth' : 'SQL login user'}
+                disabled={sqlAuthMode === 'windows'}
+                className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 disabled:opacity-50 focus:outline-none focus:border-altera-teal"
+              />
+            </label>
+
+            <label className="text-xs text-gray-400 space-y-1">
+              <span>Password</span>
+              <div className="relative">
+                <input
+                  type={showSqlPassword ? 'text' : 'password'}
+                  value={sqlPassword}
+                  onChange={(e) => setSqlPassword(e.target.value)}
+                  placeholder={sqlAuthMode === 'windows' ? 'Not required for Windows auth' : 'SQL login password'}
+                  disabled={sqlAuthMode === 'windows'}
+                  className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 pr-9 text-sm text-gray-200 disabled:opacity-50 focus:outline-none focus:border-altera-teal"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSqlPassword((prev) => !prev)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400"
+                >
+                  {showSqlPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+            </label>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="flex items-center gap-2 text-xs text-gray-400">
+              <input
+                type="checkbox"
+                checked={sqlEncrypt}
+                onChange={(e) => setSqlEncrypt(e.target.checked)}
+              />
+              Encrypt connection
+            </label>
+            <label className="flex items-center gap-2 text-xs text-gray-400">
+              <input
+                type="checkbox"
+                checked={sqlTrustServerCertificate}
+                onChange={(e) => setSqlTrustServerCertificate(e.target.checked)}
+              />
+              Trust server certificate
+            </label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={sqlTesting || !sqlServer.trim() || (sqlAuthMode === 'sql-login' && (!sqlUser.trim() || !sqlPassword.trim()))}
+              onClick={async () => {
+                setSqlTesting(true);
+                setSqlTestResult(null);
+                try {
+                  const response = await fetch(`${bridgeUrl}/api/sql/test`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      server: sqlServer,
+                      database: sqlDatabase,
+                      port: sqlPort,
+                      authMode: sqlAuthMode,
+                      user: sqlAuthMode === 'sql-login' ? sqlUser : undefined,
+                      password: sqlAuthMode === 'sql-login' ? sqlPassword : undefined,
+                      encrypt: sqlEncrypt,
+                      trustServerCertificate: sqlTrustServerCertificate,
+                    }),
+                    signal: AbortSignal.timeout(15000),
+                  });
+                  const data = await response.json() as SqlTestResult;
+                  setSqlTestResult(data);
+                } catch (error: any) {
+                  setSqlTestResult({ ok: false, error: String(error?.message ?? 'SQL connection test failed') });
+                } finally {
+                  setSqlTesting(false);
+                }
+              }}
+              className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-gray-500 disabled:opacity-50"
+            >
+              {sqlTesting ? 'Testing...' : 'Test connection'}
+            </button>
+            <p className="text-xs text-gray-600">Tip: for SQL Login, credentials are used for this test request only.</p>
+          </div>
+
+          {sqlTestResult && (
+            <div className={`rounded border px-3 py-2 text-xs ${sqlTestResult.ok ? 'border-emerald-800 bg-emerald-950/30 text-emerald-300' : 'border-red-800 bg-red-950/30 text-red-300'}`}>
+              {sqlTestResult.ok
+                ? `${sqlTestResult.message ?? 'Connection successful'} ${sqlTestResult.server ? `| Server: ${sqlTestResult.server}` : ''} ${sqlTestResult.database ? `| DB: ${sqlTestResult.database}` : ''} ${typeof sqlTestResult.elapsedMs === 'number' ? `| ${sqlTestResult.elapsedMs} ms` : ''}`
+                : `Connection failed: ${sqlTestResult.error ?? 'Unknown error'}`}
+            </div>
+          )}
+        </div>
       </section>
 
       <section className="space-y-4">
