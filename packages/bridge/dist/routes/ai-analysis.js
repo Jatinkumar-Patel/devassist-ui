@@ -9,7 +9,11 @@ const https_1 = __importDefault(require("https"));
 const http_1 = __importDefault(require("http"));
 const mcp_secrets_1 = require("../utils/mcp-secrets");
 exports.aiAnalysisRouter = (0, express_1.Router)();
-const MODELS_API_URL = 'https://models.inference.ai.azure.com/chat/completions';
+const MODELS_API_URLS = [
+    'https://api.githubcopilot.com/chat/completions',
+    'https://models.inference.ai.azure.com/chat/completions',
+    'https://models.github.ai/inference/chat/completions',
+];
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 const OLLAMA_API_URL = 'http://localhost:11434/api/chat'; // local, no auth needed
 const MODEL_GH = 'gpt-4o-mini';
@@ -140,6 +144,79 @@ function normalizeAiProviderError(message) {
     }
     return text;
 }
+function shouldUseLocalFallback(message) {
+    const text = String(message ?? '').toLowerCase();
+    return /unreachable|unavailable|no ai backend|selected provider|timed out|econn|enotfound|eai_again|network|github models/.test(text);
+}
+function heuristicVerdict(topSeeds) {
+    const deadlock = (topSeeds['Deadlock'] ?? 0) + (topSeeds['deadlock victim'] ?? 0);
+    const auth = (topSeeds['Authentication failed'] ?? 0) + (topSeeds['Login failed'] ?? 0) + (topSeeds['UnauthorizedAccessException'] ?? 0);
+    const runtime = (topSeeds['ERROR'] ?? 0) + (topSeeds['FATAL'] ?? 0) + (topSeeds['Exception'] ?? 0) + (topSeeds['NullReferenceException'] ?? 0);
+    if (deadlock > 0 || runtime > 0)
+        return 'CODE BUG';
+    if (auth > 0)
+        return 'CONFIG / INSTALL';
+    return 'NEED MORE INFO';
+}
+function buildHeuristicAssessment(req, fallbackReason) {
+    const verdict = heuristicVerdict(req.topSeeds ?? {});
+    const topSignals = Object.entries(req.topSeeds ?? {})
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([seed, count]) => `${seed} (${count}x)`);
+    const evidence = req.logHits.slice(0, 5).map((hit) => `[${hit.file}:${hit.line}] (${hit.seed}) ${hit.text}`);
+    return [
+        `Assessment: ${verdict}`,
+        `Client reported: ${req.da.title}`,
+        '',
+        'SNOW evidence:',
+        `  - ${req.snowTask?.shortDescription || 'No SNOW short description provided.'}`,
+        `  - ${req.snowTask?.state ? `Current state: ${req.snowTask.state}` : 'State not provided.'}`,
+        '',
+        'Log analysis:',
+        `  - Top signals: ${topSignals.length ? topSignals.join(', ') : 'none'}`,
+        `  - Evidence lines: ${evidence.length ? 'captured' : 'none captured'}`,
+        '',
+        'Code analysis:',
+        `  - Direction: ${req.repos.length ? req.repos.join(', ') : 'Mapped repos unavailable'}`,
+        '  - Observed vs expected: Use top signal and first failing call path to validate behavior against product contract.',
+        '',
+        `Gap: External AI provider was unavailable (${fallbackReason}). Deterministic triage used local evidence only; verify with additional incident-window logs to raise confidence.`,
+        `Confidence: ${evidence.length || topSignals.length ? 'Medium' : 'Low'} — based on deterministic seed and evidence extraction without external LLM synthesis.`,
+        '',
+        'Blind spots / to raise confidence:',
+        '  - Attach exact incident-window logs with timestamps and correlation IDs.',
+        '  - Confirm environment/build and whether issue is user-specific or environment-wide.',
+        '',
+        'Recommended next step: Run focused log and DB validation using the SQL and metadata tools, then re-run AI summary when provider connectivity is restored.',
+    ].join('\n');
+}
+function buildHeuristicFollowUp(req, fallbackReason) {
+    const question = req.question.trim();
+    const lower = question.toLowerCase();
+    const signals = Object.entries(req.topSeeds ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    if (/next|what should i do|action|validate/.test(lower)) {
+        return [
+            `External AI provider unavailable (${fallbackReason}). Deterministic follow-up response:`,
+            `1) Validate top signal path first: ${signals[0] ? `${signals[0][0]} (${signals[0][1]}x)` : 'No dominant signal yet'}.`,
+            '2) Use SQL metadata explorer to confirm object mapping (tables/views/SP) tied to failing workflow.',
+            '3) Run a read-only SQL query for recent rows correlated to incident time window.',
+            '4) Re-run log analysis after adding missing attachments/screenshots.',
+        ].join('\n');
+    }
+    if (/why|root cause|reason/.test(lower)) {
+        return [
+            `External AI provider unavailable (${fallbackReason}). Deterministic root-cause guidance:`,
+            `Most likely direction is based on seeds: ${signals.map(([s, c]) => `${s} (${c}x)`).join(', ') || 'none'}.`,
+            'This is evidence-weighted guidance, not a final root-cause confirmation. Confirm with incident-window logs and DB correlation.',
+        ].join('\n');
+    }
+    return [
+        `External AI provider unavailable (${fallbackReason}).`,
+        `Question received: ${question}`,
+        'Deterministic response mode is active. Continue using follow-up prompts; responses will stay evidence-based from DA/SNOW/log context.',
+    ].join('\n');
+}
 function getGitHubModelToken(body, bridgeSecrets) {
     return (body.githubPat || bridgeSecrets.githubPat || '').trim();
 }
@@ -147,10 +224,10 @@ function getOpenAiKey(body) {
     return (body.openaiKey || process.env.OPENAI_API_KEY || '').trim();
 }
 /** Call GitHub Models API directly from Node.js — avoids brittle PowerShell parsing and noisy stderr output */
-function callGitHubModels(pat, messages, model = MODEL_GH) {
+function callGitHubModelsAtEndpoint(endpoint, pat, messages, model = MODEL_GH) {
     const payload = JSON.stringify({ model, messages, temperature: 0.1, max_tokens: 1200 });
     return new Promise((resolve, reject) => {
-        const req = https_1.default.request(MODELS_API_URL, {
+        const req = https_1.default.request(endpoint, {
             method: 'POST',
             headers: {
                 Authorization: `Bearer ${pat}`,
@@ -168,10 +245,10 @@ function callGitHubModels(pat, messages, model = MODEL_GH) {
                     try {
                         const json = JSON.parse(data || '{}');
                         const message = json?.error?.message ?? json?.error ?? (data.slice(0, 400) || 'empty response');
-                        return reject(new Error(`GitHub Models error (${res.statusCode}): ${message}`));
+                        return reject(new Error(`GitHub Models error (${res.statusCode}) [${endpoint}]: ${message}`));
                     }
                     catch {
-                        return reject(new Error(`GitHub Models error (${res.statusCode}): ${data.slice(0, 400) || 'empty response'}`));
+                        return reject(new Error(`GitHub Models error (${res.statusCode}) [${endpoint}]: ${data.slice(0, 400) || 'empty response'}`));
                     }
                 }
                 try {
@@ -183,7 +260,7 @@ function callGitHubModels(pat, messages, model = MODEL_GH) {
                     if (typeof content === 'string' && content.trim()) {
                         return resolve(content);
                     }
-                    return reject(new Error(`GitHub Models returned no usable content. Response: ${data.slice(0, 400) || 'empty response'}`));
+                    return reject(new Error(`GitHub Models returned no usable content [${endpoint}]. Response: ${data.slice(0, 400) || 'empty response'}`));
                 }
                 catch {
                     const match = data.match(/\{[\s\S]*\}/);
@@ -199,18 +276,41 @@ function callGitHubModels(pat, messages, model = MODEL_GH) {
                             // fall through to the final error message below
                         }
                     }
-                    reject(new Error(`GitHub Models returned an unexpected response: ${data.slice(0, 400) || 'empty response'}`));
+                    reject(new Error(`GitHub Models returned an unexpected response [${endpoint}]: ${data.slice(0, 400) || 'empty response'}`));
                 }
             });
         });
-        req.on('error', (e) => reject(new Error(`GitHub Models request failed: ${e.message}`)));
+        req.on('error', (e) => reject(new Error(`GitHub Models request failed [${endpoint}]: ${e.message}`)));
         req.on('timeout', () => {
             req.destroy();
-            reject(new Error('GitHub Models request timed out'));
+            reject(new Error(`GitHub Models request timed out [${endpoint}]`));
         });
         req.write(payload);
         req.end();
     });
+}
+function shouldTryAlternateGitHubEndpoint(errorMessage) {
+    const text = String(errorMessage ?? '').toLowerCase();
+    return (/enotfound|eai_again|econnrefused|econnreset|timed out|getaddrinfo|network/.test(text) ||
+        /error \(404\)|error \(408\)|error \(429\)|error \(500\)|error \(502\)|error \(503\)|error \(504\)/.test(text));
+}
+async function callGitHubModels(pat, messages, model = MODEL_GH) {
+    const errors = [];
+    for (let i = 0; i < MODELS_API_URLS.length; i++) {
+        const endpoint = MODELS_API_URLS[i];
+        try {
+            return await callGitHubModelsAtEndpoint(endpoint, pat, messages, model);
+        }
+        catch (error) {
+            const message = String(error?.message ?? error ?? 'GitHub Models request failed');
+            errors.push(message);
+            if (i === MODELS_API_URLS.length - 1)
+                break;
+            if (!shouldTryAlternateGitHubEndpoint(message))
+                break;
+        }
+    }
+    throw new Error(errors.join(' | '));
 }
 /** Call Ollama local LLM — no auth, no internet, runs at localhost:11434 */
 function callOllama(messages, model = MODEL_OLLAMA) {
@@ -381,6 +481,13 @@ exports.aiAnalysisRouter.post('/', async (req, res) => {
     }
     catch (err) {
         const normalized = normalizeAiProviderError(err.message);
+        if (shouldUseLocalFallback(normalized)) {
+            return res.json({
+                assessment: buildHeuristicAssessment(body, normalized),
+                source: 'deterministic-fallback',
+                warning: normalized,
+            });
+        }
         const status = /No AI backend is available|Selected provider/i.test(normalized) ? 503 : 502;
         return res.status(status).json({ error: normalized });
     }
@@ -405,6 +512,13 @@ exports.aiAnalysisRouter.post('/continue', async (req, res) => {
     }
     catch (err) {
         const normalized = normalizeAiProviderError(err.message);
+        if (shouldUseLocalFallback(normalized)) {
+            return res.json({
+                assessment: buildHeuristicFollowUp(body, normalized),
+                source: 'deterministic-fallback',
+                warning: normalized,
+            });
+        }
         const status = /No AI backend is available|Selected provider/i.test(normalized) ? 503 : 502;
         return res.status(status).json({ error: normalized });
     }
