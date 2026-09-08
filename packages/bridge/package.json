@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "test": "tsx --test src/routes/log-analysis.test.ts",
     "start": "node dist/index.js",
     "prepublishOnly": "npm run build"
   },
