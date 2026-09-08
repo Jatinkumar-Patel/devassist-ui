@@ -385,9 +385,9 @@ aiAnalysisRouter.get('/status', async (_req: Request, res: Response) => {
 });
 
 function requestedProvider(value: unknown): ProviderSelection {
-  const normalized = String(value ?? 'auto').trim().toLowerCase();
+  const normalized = String(value ?? 'github-models').trim().toLowerCase();
   if (normalized === 'github-models' || normalized === 'openai' || normalized === 'ollama') return normalized;
-  return 'auto';
+  return 'github-models';
 }
 
 function providerAttemptOrder(selection: ProviderSelection): Array<'github-models' | 'openai' | 'ollama'> {

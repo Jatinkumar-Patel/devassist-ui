@@ -1278,7 +1278,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
   const [aiSource, setAiSource] = useState<string | null>(null);
   const [ollamaOk, setOllamaOk] = useState<boolean | null>(null);
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
-  const [providerSelection, setProviderSelection] = useState<AiProviderSelection>('auto');
+  const [providerSelection, setProviderSelection] = useState<AiProviderSelection>('github-models');
   const [agentSelection, setAgentSelection] = useState<AiAgentSelection>('triage-l2');
   const [modelSelection, setModelSelection] = useState<AiModelSelection>('provider-default');
   const [customModelInput, setCustomModelInput] = useState('');
