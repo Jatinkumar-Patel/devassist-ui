@@ -38,11 +38,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.logAnalysisRouter = void 0;
 const express_1 = require("express");
+const node_1 = __importStar(require("read-excel-file/node"));
 const powershell_1 = require("../utils/powershell");
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const os_1 = __importDefault(require("os"));
-const XLSX = __importStar(require("xlsx"));
 exports.logAnalysisRouter = (0, express_1.Router)();
 const SNOW_BASE = 'https://servicenowviewer.allscripts.com/api/SNData';
 // Key patterns from areas/sunrise-mobile/logs.md + analysis-playbook.md
@@ -217,22 +217,114 @@ async function getOcrWorker() {
     }
     return ocrWorkerPromise;
 }
+function normalizeOcrText(rawText) {
+    return rawText
+        .replace(/\r/g, '\n')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/\u2018|\u2019/g, "'")
+        .replace(/\u201C|\u201D/g, '"')
+        .replace(/\s{3,}/g, ' ')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+function normalizedForSeedMatch(value) {
+    return value.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+function extractKeywordHitsFromText(text, fileName) {
+    const hits = [];
+    if (!text.trim())
+        return hits;
+    const lines = text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i] ?? '';
+        const lower = line.toLowerCase();
+        if (!lower.trim())
+            continue;
+        for (const seed of GREP_SEEDS) {
+            if (lower.includes(seed.toLowerCase())) {
+                hits.push({
+                    file: fileName,
+                    line: i + 1,
+                    text: line.trim().slice(0, 300),
+                    seed,
+                    category: SEED_CATEGORY[seed] ?? 'other',
+                });
+                break;
+            }
+        }
+    }
+    // Fallback for OCR text where spaces/punctuation split key phrases unpredictably.
+    const normalizedText = normalizedForSeedMatch(text);
+    for (const seed of GREP_SEEDS) {
+        const normalizedSeed = normalizedForSeedMatch(seed);
+        if (!normalizedSeed || normalizedSeed.length < 6)
+            continue;
+        if (!normalizedText.includes(normalizedSeed))
+            continue;
+        if (hits.some((h) => h.seed === seed))
+            continue;
+        hits.push({
+            file: fileName,
+            line: 1,
+            text: `OCR normalized-match: ${seed}`,
+            seed,
+            category: SEED_CATEGORY[seed] ?? 'other',
+        });
+    }
+    return hits.slice(0, 120);
+}
 async function analyzeImage(filePath, fileName) {
     const worker = await getOcrWorker();
-    const recognized = await worker.recognize(filePath);
-    const text = String(recognized?.data?.text ?? '').replace(/\s+/g, ' ').trim();
+    const ocrVariants = [
+        { psm: 6, rotateAuto: true, preserve_interword_spaces: 1 },
+        { psm: 11, rotateAuto: true, preserve_interword_spaces: 1 },
+        { psm: 4, rotateAuto: true, preserve_interword_spaces: 1 },
+    ];
+    let bestText = '';
+    let bestScore = -1;
+    for (const options of ocrVariants) {
+        try {
+            const recognized = await worker.recognize(filePath, options);
+            const text = normalizeOcrText(String(recognized?.data?.text ?? ''));
+            if (!text)
+                continue;
+            const score = text.length + (/(error|exception|timeout|failed|missing|invalid|denied|unable|patient|search|schedule|expiration|record)/i.test(text) ? 160 : 0);
+            if (score > bestScore) {
+                bestScore = score;
+                bestText = text;
+            }
+        }
+        catch {
+            // ignore and try next OCR mode
+        }
+    }
+    const text = bestText || '';
     const findings = [];
     const preview = text.slice(0, 240);
     if (text) {
         findings.push(`OCR extracted ${text.length} characters`);
-        if (/error|exception|timeout|failed|missing|invalid|denied|cannot|unable/i.test(text)) {
-            findings.push('Image text contains diagnostic keywords');
+        if (/duplicate|same patient|already exists|multiple records|not found|error|exception|timeout|failed|missing|invalid|denied|cannot|unable|schedule|patient|record|expiration/i.test(text)) {
+            findings.push('Image text contains strong workflow- or error-signaling keywords');
+        }
+        if (/duplicate|same patient|already exists|multiple records/i.test(text)) {
+            findings.push('OCR suggests a duplicate-record or selection problem in the UI');
+        }
+        if (/timeout|failed|unable|exception|error/i.test(text)) {
+            findings.push('OCR suggests a failing workflow or user-visible error message');
         }
     }
     else {
         findings.push('No OCR text detected');
     }
-    const hits = text ? parseHwsLog(text, fileName) : [];
+    const lineHits = text ? parseHwsLog(text, fileName) : [];
+    const ocrHits = extractKeywordHitsFromText(text, fileName);
+    const hitKey = (hit) => `${hit.file}|${hit.line}|${hit.seed}|${hit.text}`;
+    const mergedMap = new Map();
+    for (const hit of [...lineHits, ...ocrHits]) {
+        mergedMap.set(hitKey(hit), hit);
+    }
+    const hits = Array.from(mergedMap.values());
     return {
         hits,
         summary: {
@@ -380,10 +472,23 @@ function dedupeStackTraces(traces, maxCount) {
     }
     return out;
 }
-function parseSpreadsheet(filePath, fileName) {
+async function parseSpreadsheet(filePath, fileName) {
     const hits = [];
     const summaries = [];
-    const wb = XLSX.readFile(filePath, { dense: true, cellDates: false });
+    const ext = extensionOf(fileName);
+    if (ext === '.xls') {
+        summaries.push({
+            file: fileName,
+            sheet: 'N/A',
+            rowCount: 0,
+            columnCount: 0,
+            headers: [],
+            sampleRows: [],
+            findings: ['Legacy .xls format detected. Convert to .xlsx for deep spreadsheet analysis.'],
+        });
+        return { hits, summaries };
+    }
+    const sheets = await (0, node_1.readSheetNames)(filePath);
     const norm = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
     const parseBoolish = (value) => {
         const v = value.trim().toLowerCase();
@@ -395,13 +500,10 @@ function parseSpreadsheet(filePath, fileName) {
             return false;
         return undefined;
     };
-    for (const sheetName of wb.SheetNames.slice(0, 10)) {
-        const ws = wb.Sheets[sheetName];
-        if (!ws)
-            continue;
-        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
-        const visibleRows = rows
-            .map((row) => Array.isArray(row) ? row.map((v) => String(v ?? '').trim()) : [String(row ?? '').trim()])
+    for (const sheetName of sheets.slice(0, 10)) {
+        const rowsFromSheet = await (0, node_1.default)(filePath, { sheet: sheetName });
+        const visibleRows = rowsFromSheet
+            .map((row) => row.map((v) => String(v ?? '').trim()))
             .filter((cells) => cells.some((c) => c.length > 0));
         if (visibleRows.length > 0) {
             const headers = visibleRows[0]
@@ -434,14 +536,14 @@ function parseSpreadsheet(filePath, fileName) {
             const idxNameType = indexOfAny(['NameTypeCode']);
             const idxActive = indexOfAny(['Active']);
             const idxStatus = indexOfAny(['Status']);
-            const rows = visibleRows.slice(1).filter((row) => {
+            const dataRows = visibleRows.slice(1).filter((row) => {
                 if (!row.length)
                     return false;
                 const joined = row.slice(0, Math.min(row.length, 10)).map((x) => String(x ?? '').trim().toLowerCase()).join('|');
                 // Skip repeated header lines embedded in exports.
                 return !(joined.includes('siteid') && joined.includes('repflags') && (joined.includes('firstname') || joined.includes('displayname')));
             });
-            const conversionInsight = analyzeConversionRows(fileName, sheetName, headerRow, rows);
+            const conversionInsight = analyzeConversionRows(fileName, sheetName, headerRow, dataRows);
             const displayNameCounts = new Map();
             const personGuidSet = new Set();
             const guidSet = new Set();
@@ -451,7 +553,7 @@ function parseSpreadsheet(filePath, fileName) {
             let activeFalse = 0;
             let statusActive = 0;
             let statusInactive = 0;
-            for (const row of rows) {
+            for (const row of dataRows) {
                 const val = (idx) => (idx >= 0 ? String(row[idx] ?? '').trim() : '');
                 const first = val(idxFirstName);
                 const last = val(idxLastName);
@@ -495,7 +597,7 @@ function parseSpreadsheet(filePath, fileName) {
                 .slice(0, 3)
                 .map(([pg, types]) => `${pg}: ${Array.from(types).join('/')}`);
             const findings = [];
-            findings.push(`Rows analyzed: ${rows.length}; unique GUIDs: ${guidSet.size}; unique PersonGUIDs: ${personGuidSet.size}`);
+            findings.push(`Rows analyzed: ${dataRows.length}; unique GUIDs: ${guidSet.size}; unique PersonGUIDs: ${personGuidSet.size}`);
             if (duplicateDisplayNames.length) {
                 findings.push(`Duplicate display names: ${duplicateDisplayNames.slice(0, 3).map(([name, count]) => `${name} (${count})`).join(', ')}`);
             }
@@ -523,9 +625,9 @@ function parseSpreadsheet(filePath, fileName) {
             });
             hits.push(...conversionInsight.syntheticHits);
         }
-        const maxRows = Math.min(rows.length, 20000);
+        const maxRows = Math.min(visibleRows.length, 20000);
         for (let i = 0; i < maxRows; i++) {
-            const row = rows[i];
+            const row = visibleRows[i];
             const rowText = Array.isArray(row)
                 ? row.map((v) => String(v ?? '')).join(' | ')
                 : String(row ?? '');
@@ -692,7 +794,15 @@ function buildExplanation(result) {
         const sheetFindings = result.spreadsheetSummaries
             .flatMap((summary) => summary.findings ?? [])
             .slice(0, 4);
-        if (sheetFindings.length > 0) {
+        const duplicatePattern = sheetFindings.find((f) => /Duplicate display names|multiple NameTypeCode|PersonGUIDs with multiple/i.test(f));
+        const conversionPattern = sheetFindings.find((f) => /Conversion summary|Potential mapping gaps|Status distribution/i.test(f));
+        if (duplicatePattern) {
+            explanation.push(`Spreadsheet evidence is high-signal: ${duplicatePattern}. This suggests duplicate or stale data in the same record set rather than a benign export artifact.`);
+        }
+        else if (conversionPattern) {
+            explanation.push(`Spreadsheet evidence shows a conversion/data-quality pattern: ${conversionPattern}. This is stronger than a raw export read because it points to mapping drift or stale state.`);
+        }
+        else if (sheetFindings.length > 0) {
             explanation.push(`Spreadsheet attachments add more context: ${sheetFindings.join(' | ')}.`);
         }
         else {
@@ -703,7 +813,11 @@ function buildExplanation(result) {
         const imageSignals = result.imageSummaries
             .flatMap((image) => image.findings ?? [])
             .slice(0, 3);
-        if (imageSignals.length > 0) {
+        const diagnosticImage = imageSignals.find((f) => /duplicate|error|exception|timeout|failed|unable|not found|schedule|patient|record/i.test(f));
+        if (diagnosticImage) {
+            explanation.push(`Image OCR found diagnostic UI text: ${diagnosticImage}. This points to a workflow or error state visible in the screenshot, not just an empty image preview.`);
+        }
+        else if (imageSignals.length > 0) {
             explanation.push(`Image OCR found additional signals: ${imageSignals.join(' | ')}.`);
         }
         else {
@@ -796,7 +910,7 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
                                 skipped.push(`${fileName}/${relativeName} (spreadsheet too large: ${Math.round(innerStat.size / 1024 / 1024)}MB)`);
                                 continue;
                             }
-                            const parsed = parseSpreadsheet(innerPath, `${fileName}/${relativeName}`);
+                            const parsed = await parseSpreadsheet(innerPath, `${fileName}/${relativeName}`);
                             hits = parsed.hits;
                             spreadsheetSummaries.push(...parsed.summaries);
                             analyzed.push(`${fileName}/${relativeName} (spreadsheet parsed: ${parsed.summaries.length} sheet(s), ${hits.length} log-pattern hit(s))`);
@@ -842,7 +956,7 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
                             skipped.push(`${fileName} (spreadsheet too large: ${Math.round(rawStat.size / 1024 / 1024)}MB)`);
                             continue;
                         }
-                        const parsed = parseSpreadsheet(outPath, fileName);
+                        const parsed = await parseSpreadsheet(outPath, fileName);
                         hits = parsed.hits;
                         spreadsheetSummaries.push(...parsed.summaries);
                         analyzed.push(`${fileName} (spreadsheet parsed: ${parsed.summaries.length} sheet(s), ${hits.length} log-pattern hit(s))`);

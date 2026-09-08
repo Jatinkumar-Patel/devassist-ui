@@ -112,11 +112,11 @@ function getGitHubModelToken(body, bridgeSecrets) {
     return (body.githubPat || bridgeSecrets.githubPat || '').trim();
 }
 function getOpenAiKey(body) {
-    return (body.openaiKey || '').trim();
+    return (body.openaiKey || process.env.OPENAI_API_KEY || '').trim();
 }
 /** Call GitHub Models API directly from Node.js — avoids brittle PowerShell parsing and noisy stderr output */
-function callGitHubModels(pat, messages) {
-    const payload = JSON.stringify({ model: MODEL_GH, messages, temperature: 0.1, max_tokens: 1200 });
+function callGitHubModels(pat, messages, model = MODEL_GH) {
+    const payload = JSON.stringify({ model, messages, temperature: 0.1, max_tokens: 1200 });
     return new Promise((resolve, reject) => {
         const req = https_1.default.request(MODELS_API_URL, {
             method: 'POST',
@@ -248,6 +248,9 @@ function callOpenAI(apiKey, messages, model = MODEL_OAPI) {
 }
 // GET /api/ai-status — tells the SPA which AI backends are reachable
 exports.aiAnalysisRouter.get('/status', async (_req, res) => {
+    const bridgeSecrets = (0, mcp_secrets_1.readMcpSecrets)();
+    const githubReady = Boolean(process.env.GITHUB_PERSONAL_ACCESS_TOKEN?.trim() || bridgeSecrets.githubPat);
+    const openaiReady = Boolean(process.env.OPENAI_API_KEY?.trim());
     const ollama = await isOllamaRunning();
     const models = ollama
         ? await new Promise((resolve) => {
@@ -266,8 +269,66 @@ exports.aiAnalysisRouter.get('/status', async (_req, res) => {
             r.on('error', () => resolve([]));
         })
         : [];
-    res.json({ ollama, ollamaModels: models });
+    res.json({
+        ollama,
+        ollamaModels: models,
+        defaultModels: {
+            'github-models': MODEL_GH,
+            openai: MODEL_OAPI,
+            ollama: MODEL_OLLAMA,
+        },
+        githubReady,
+        openaiReady,
+        anyBackendReady: ollama || githubReady || openaiReady,
+    });
 });
+function requestedProvider(value) {
+    const normalized = String(value ?? 'auto').trim().toLowerCase();
+    if (normalized === 'github-models' || normalized === 'openai' || normalized === 'ollama')
+        return normalized;
+    return 'auto';
+}
+function providerAttemptOrder(selection) {
+    if (selection === 'github-models')
+        return ['github-models'];
+    if (selection === 'openai')
+        return ['openai'];
+    if (selection === 'ollama')
+        return ['ollama'];
+    return ['github-models', 'openai', 'ollama'];
+}
+async function runAiProviderSelection(body, messages) {
+    const bridgeSecrets = (0, mcp_secrets_1.readMcpSecrets)();
+    const githubToken = getGitHubModelToken(body, bridgeSecrets);
+    const openaiKey = getOpenAiKey(body);
+    const ollamaUp = await isOllamaRunning();
+    const provider = requestedProvider(body.aiProvider);
+    const desiredModel = (body.aiModel ?? '').trim();
+    for (const candidate of providerAttemptOrder(provider)) {
+        if (candidate === 'github-models') {
+            if (!githubToken)
+                continue;
+            const assessment = await callGitHubModels(githubToken, messages, desiredModel || MODEL_GH);
+            return { assessment, source: 'github-models' };
+        }
+        if (candidate === 'openai') {
+            if (!openaiKey)
+                continue;
+            const assessment = await callOpenAI(openaiKey, messages, desiredModel || MODEL_OAPI);
+            return { assessment, source: 'openai' };
+        }
+        if (candidate === 'ollama') {
+            if (!ollamaUp)
+                continue;
+            const assessment = await callOllama(messages, desiredModel || MODEL_OLLAMA);
+            return { assessment, source: 'ollama' };
+        }
+    }
+    if (provider !== 'auto') {
+        throw new Error(`Selected provider '${provider}' is not available. Choose Auto or configure credentials/runtime for that provider.`);
+    }
+    throw new Error('No AI backend is available. Configure one backend: GitHub PAT (Settings), OpenAI key (Settings), or local Ollama on localhost:11434.');
+}
 // POST /api/ai-analyze — auto-selects: Ollama (local) → OpenAI → GitHub Models
 exports.aiAnalysisRouter.post('/', async (req, res) => {
     const body = req.body;
@@ -276,33 +337,13 @@ exports.aiAnalysisRouter.post('/', async (req, res) => {
         { role: 'user', content: buildUserPrompt(body) },
     ];
     try {
-        let assessment;
-        let source;
-        const bridgeSecrets = (0, mcp_secrets_1.readMcpSecrets)();
-        const githubToken = getGitHubModelToken(body, bridgeSecrets);
-        const openaiKey = getOpenAiKey(body);
-        const ollamaUp = await isOllamaRunning();
-        if (githubToken) {
-            assessment = await callGitHubModels(githubToken, messages);
-            source = 'github-models';
-        }
-        else if (openaiKey) {
-            assessment = await callOpenAI(openaiKey, messages);
-            source = 'openai';
-        }
-        else if (ollamaUp) {
-            assessment = await callOllama(messages);
-            source = 'ollama';
-        }
-        else {
-            return res.status(503).json({
-                error: 'No AI backend is available. Preferred path: use the VS Code/GitHub-managed model route or add a GitHub PAT in Settings. Local Ollama/OpenAI remain fallback options.',
-            });
-        }
+        const { assessment, source } = await runAiProviderSelection(body, messages);
         return res.json({ assessment, source });
     }
     catch (err) {
-        return res.status(502).json({ error: normalizeAiProviderError(err.message) });
+        const normalized = normalizeAiProviderError(err.message);
+        const status = /No AI backend is available|Selected provider/i.test(normalized) ? 503 : 502;
+        return res.status(status).json({ error: normalized });
     }
 });
 // Follow-up route: continues the same investigation using the previous assessment and evidence
@@ -319,32 +360,12 @@ exports.aiAnalysisRouter.post('/continue', async (req, res) => {
         { role: 'user', content: buildFollowUpPrompt(body) },
     ];
     try {
-        const bridgeSecrets = (0, mcp_secrets_1.readMcpSecrets)();
-        const githubToken = getGitHubModelToken(body, bridgeSecrets);
-        const openaiKey = getOpenAiKey(body);
-        const ollamaUp = await isOllamaRunning();
-        let assessment;
-        let source;
-        if (githubToken) {
-            assessment = await callGitHubModels(githubToken, messages);
-            source = 'github-models';
-        }
-        else if (openaiKey) {
-            assessment = await callOpenAI(openaiKey, messages);
-            source = 'openai';
-        }
-        else if (ollamaUp) {
-            assessment = await callOllama(messages);
-            source = 'ollama';
-        }
-        else {
-            return res.status(503).json({
-                error: 'No AI backend is available for follow-up. Preferred path: use the VS Code/GitHub-managed model route or add a GitHub PAT in Settings. Local Ollama/OpenAI remain fallback options.',
-            });
-        }
+        const { assessment, source } = await runAiProviderSelection(body, messages);
         return res.json({ assessment, source });
     }
     catch (err) {
-        return res.status(502).json({ error: normalizeAiProviderError(err.message) });
+        const normalized = normalizeAiProviderError(err.message);
+        const status = /No AI backend is available|Selected provider/i.test(normalized) ? 503 : 502;
+        return res.status(status).json({ error: normalized });
     }
 });
