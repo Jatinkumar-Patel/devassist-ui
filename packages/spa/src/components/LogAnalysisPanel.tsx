@@ -438,6 +438,23 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
                   ))}
                 </div>
               )}
+
+              {comparison.coverageCard.length > 0 && (
+                <div className="rounded border border-cyan-900/40 bg-black/20 p-2 space-y-2">
+                  <p className="text-[11px] text-cyan-300 uppercase tracking-wide">Coverage card</p>
+                  <div className="grid gap-1.5 sm:grid-cols-2">
+                    {comparison.coverageCard.map((entry) => (
+                      <div key={entry.domain} className="rounded border border-cyan-900/30 bg-cyan-950/15 p-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs text-cyan-100 font-medium">#{entry.rank} {entry.label}</p>
+                          <p className="text-[11px] text-cyan-200 font-mono">+{entry.points}</p>
+                        </div>
+                        <p className="text-[11px] text-gray-300">{entry.count} signal(s) captured</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

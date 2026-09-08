@@ -34,6 +34,13 @@ export interface LogComparisonSummary {
     confidenceBonus: number;
     explanationDepth: number;
   };
+  coverageCard: Array<{
+    domain: string;
+    label: string;
+    count: number;
+    points: number;
+    rank: number;
+  }>;
   whyBetter: string[];
 }
 
@@ -92,6 +99,20 @@ export function buildLogComparisonSummary(result: LogComparisonSource): LogCompa
     explanationDepth,
   };
 
+  const coverageCard = [
+    { domain: 'errors', label: 'Errors', count: coverage?.errors ?? 0, points: scale(coverage?.errors ?? 0, 2, 18) },
+    { domain: 'warnings', label: 'Warnings', count: coverage?.warnings ?? 0, points: scale(coverage?.warnings ?? 0, 3, 14) },
+    { domain: 'locks', label: 'Lock contention', count: coverage?.locks ?? 0, points: scale(coverage?.locks ?? 0, 3, 14) },
+    { domain: 'operations', label: 'Operational calls', count: coverage?.operations ?? 0, points: scale(coverage?.operations ?? 0, 3, 10) },
+    { domain: 'stackTraces', label: 'Stack traces', count: coverage?.stackTraces ?? 0, points: scale(coverage?.stackTraces ?? 0, 2, 18) },
+    { domain: 'timelineDelayRows', label: 'Timeline delays', count: coverage?.timelineDelayRows ?? 0, points: scale(coverage?.timelineDelayRows ?? 0, 8, 14) },
+    { domain: 'spreadsheetSignals', label: 'Spreadsheet signals', count: coverage?.spreadsheetSignals ?? 0, points: scale(coverage?.spreadsheetSignals ?? 0, 3, 12) },
+    { domain: 'imageSignals', label: 'Image OCR signals', count: coverage?.imageSignals ?? 0, points: scale(coverage?.imageSignals ?? 0, 2, 10) },
+  ]
+    .filter((entry) => entry.count > 0)
+    .sort((a, b) => b.points - a.points || b.count - a.count || a.domain.localeCompare(b.domain))
+    .map((entry, index) => ({ ...entry, rank: index + 1 }));
+
   const baselineScore =
     scale(baselineMetrics.seeds, 4, 24) +
     scale(baselineMetrics.buckets, 3, 18) +
@@ -116,6 +137,10 @@ export function buildLogComparisonSummary(result: LogComparisonSource): LogCompa
   if ((result.explanation?.length ?? 0) > 0) {
     whyBetter.push(`Explains the result with ${result.explanation?.length ?? 0} reasoning lines instead of a generic summary.`);
   }
+  if (coverageCard.length > 0) {
+    const top = coverageCard[0];
+    whyBetter.push(`Top improved evidence domain: ${top.label} (${top.count} hit(s), ${top.points} point(s)).`);
+  }
 
   return {
     baselineLabel: 'VSCode + keyword-only baseline',
@@ -124,6 +149,7 @@ export function buildLogComparisonSummary(result: LogComparisonSource): LogCompa
     delta: devassistScore - baselineScore,
     baselineMetrics,
     devassistMetrics,
+    coverageCard,
     whyBetter,
   };
 }
