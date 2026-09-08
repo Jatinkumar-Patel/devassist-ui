@@ -20,14 +20,28 @@ const VERDICT_STYLE: Record<string, { icon: React.ReactNode; color: string }> = 
 };
 
 function normalizeEvidenceValue(v?: string): string {
-  const text = String(v ?? '').trim();
+  const text = decodeHtmlEntities(String(v ?? '')).trim();
   return text && text !== 'null' && text !== 'undefined' ? text : '-';
 }
 
-function compactText(value: string, max = 240): string {
-  const clean = value.replace(/\s+/g, ' ').trim();
-  if (clean.length <= max) return clean;
-  return `${clean.slice(0, max - 1)}...`;
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&nbsp;/gi, ' ');
+}
+
+function normalizeDisplayText(value: string): string {
+  return decodeHtmlEntities(value)
+    .replace(/<br\s*\/?\s*>/gi, '\n')
+    .replace(/<\/(p|div|li|tr|td|th|h[1-6])>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 const SNOW_STATE_LABELS: Record<string, string> = {
@@ -73,7 +87,7 @@ type SnowEvidenceUiEntry = {
 type CodeAnalysisUiItem = { label: string; detail: string };
 
 function parseBulletLines(text: string): string[] {
-  return text
+  return normalizeDisplayText(text)
     .split('\n')
     .map((line) => line.replace(/^[-*]\s*/, '').trim())
     .filter(Boolean);
@@ -129,7 +143,7 @@ function buildRecommendedNextSteps(analysis: TriageAnalysis): string[] {
     seen.add(key);
     unique.push(step);
   }
-  return unique.slice(0, 6);
+  return unique;
 }
 
 function parseSnowEvidenceForUi(rows: string[]): SnowEvidenceUiEntry[] {
@@ -196,10 +210,10 @@ function parseCodeAnalysisForUi(codeAnalysis: string): CodeAnalysisUiItem[] {
     if (idx > 0 && idx < 40) {
       return {
         label: line.slice(0, idx).trim(),
-        detail: compactText(line.slice(idx + 1).trim(), 260),
+        detail: normalizeDisplayText(line.slice(idx + 1).trim()),
       };
     }
-    return { label: 'Finding', detail: compactText(line, 260) };
+    return { label: 'Finding', detail: normalizeDisplayText(line) };
   });
 }
 
@@ -209,14 +223,14 @@ function formatSnowEvidence(evidence: string[]): string[] {
   const joined = evidence.join('\n');
   const looksLikeAuditBlob = joined.includes('"fieldname"') && joined.includes('"newvalue"');
   if (!looksLikeAuditBlob) {
-    return evidence.map((line) => line.trim()).filter(Boolean).slice(0, 60);
+    return evidence.map((line) => normalizeDisplayText(line)).filter(Boolean);
   }
 
   const pattern = /"fieldname"\s*:\s*\{[^}]*?"display_value"\s*:\s*"([^"]*)"[\s\S]*?"oldvalue"\s*:\s*\{[^}]*?"display_value"\s*:\s*"([^"]*)"[\s\S]*?"newvalue"\s*:\s*\{[^}]*?"display_value"\s*:\s*"([^"]*)"[\s\S]*?"sys_created_on"\s*:\s*\{[^}]*?"display_value"\s*:\s*"([^"]*)"[\s\S]*?"user"\s*:\s*\{[^}]*?"display_value"\s*:\s*"([^"]*)"/g;
   const rows: string[] = [];
   let match: RegExpExecArray | null;
 
-  while ((match = pattern.exec(joined)) !== null && rows.length < 60) {
+  while ((match = pattern.exec(joined)) !== null) {
     const [, field, oldValue, newValue, when, user] = match;
     rows.push(
       `${normalizeEvidenceValue(field)}: ${normalizeEvidenceValue(oldValue)} -> ${normalizeEvidenceValue(newValue)} | ${normalizeEvidenceValue(user)} | ${normalizeEvidenceValue(when)}`
@@ -228,9 +242,9 @@ function formatSnowEvidence(evidence: string[]): string[] {
   // Fallback for partially malformed payloads: keep only compact meaningful fragments.
   return joined
     .split('\n')
-    .map((line) => line.replace(/[{}\[\]"]+/g, ' ').replace(/\s+/g, ' ').trim())
+    .map((line) => normalizeDisplayText(line.replace(/[{}\[\]"]+/g, ' ')))
     .filter((line) => /fieldname|newvalue|oldvalue|priority|updated_by|updated_on/i.test(line))
-    .slice(0, 60);
+    ;
 }
 
 function buildAnalysisEmail(session: TriageSession, analysis: TriageAnalysis, snowEvidenceRows: string[]): string {
@@ -242,7 +256,7 @@ function buildAnalysisEmail(session: TriageSession, analysis: TriageAnalysis, sn
   const subject = `${workItemType}${workItemId ? ` #${workItemId}` : ''} - ${verdict} (${confidence})`;
 
   const evidenceBlock = snowEvidenceRows.length
-    ? snowEvidenceRows.slice(0, 6).map((x) => `- ${x}`).join('\n')
+    ? snowEvidenceRows.map((x) => `- ${x}`).join('\n')
     : '- No SNOW evidence captured';
 
   const body = [
@@ -256,10 +270,10 @@ function buildAnalysisEmail(session: TriageSession, analysis: TriageAnalysis, sn
     evidenceBlock,
     '',
     'Code Analysis:',
-    analysis.codeAnalysis.slice(0, 1200),
+    normalizeDisplayText(analysis.codeAnalysis),
     '',
     'Gap / Recommendation:',
-    analysis.gap.slice(0, 1200),
+    normalizeDisplayText(analysis.gap),
     '',
     'Blind Spots:',
     (analysis.blindSpots.length ? analysis.blindSpots : ['None']).map((x) => `- ${x}`).join('\n'),
@@ -269,7 +283,7 @@ function buildAnalysisEmail(session: TriageSession, analysis: TriageAnalysis, sn
 }
 
 function escapeHtml(value: unknown): string {
-  return String(value ?? '')
+  return normalizeDisplayText(String(value ?? ''))
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -278,7 +292,7 @@ function escapeHtml(value: unknown): string {
 }
 
 function sanitizeForReport(value: unknown): string {
-  const text = String(value ?? '');
+  const text = normalizeDisplayText(String(value ?? ''));
   const redacted = text
     .replace(/https?:\/\/[^\s]+/gi, '[REDACTED_URL]')
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[REDACTED_EMAIL]')
@@ -348,19 +362,19 @@ function buildPrintableHtml(session: TriageSession, analysis: TriageAnalysis, sn
     : '<li>No SNOW evidence captured</li>';
 
   const areaItemsHtml = areaEvidence.length
-    ? areaEvidence.slice(0, 12).map((item) => `<li><strong>#${escapeHtml(item.id)}</strong> ${escapeHtml(item.title)} <em>${escapeHtml(item.state)}</em></li>`).join('')
+    ? areaEvidence.map((item) => `<li><strong>#${escapeHtml(item.id)}</strong> ${escapeHtml(item.title)} <em>${escapeHtml(item.state)}</em></li>`).join('')
     : '<li>No area evidence</li>';
 
   const versionItemsHtml = versionEvidence.length
-    ? versionEvidence.slice(0, 12).map((item) => `<li><strong>#${escapeHtml(item.id)}</strong> ${escapeHtml(item.title)} <em>${escapeHtml(item.supportVersion || item.reportedRelease || item.state)}</em></li>`).join('')
+    ? versionEvidence.map((item) => `<li><strong>#${escapeHtml(item.id)}</strong> ${escapeHtml(item.title)} <em>${escapeHtml(item.supportVersion || item.reportedRelease || item.state)}</em></li>`).join('')
     : '<li>No version-linked evidence</li>';
 
   const relatedItemsHtml = relatedItems.length
-    ? relatedItems.slice(0, 12).map((item) => `<li><strong>#${escapeHtml(item.id)}</strong> ${escapeHtml(item.title)} <em>${escapeHtml(item.state)}</em></li>`).join('')
+    ? relatedItems.map((item) => `<li><strong>#${escapeHtml(item.id)}</strong> ${escapeHtml(item.title)} <em>${escapeHtml(item.state)}</em></li>`).join('')
     : '<li>No related open bugs</li>';
 
   const recentCommitsHtml = recentCommits.length
-    ? recentCommits.slice(0, 8).map((commit) => `<li><strong>${escapeHtml(commit.sha)}</strong> ${escapeHtml(commit.message)} <em>${escapeHtml(commit.date)}</em></li>`).join('')
+    ? recentCommits.map((commit) => `<li><strong>${escapeHtml(commit.sha)}</strong> ${escapeHtml(commit.message)} <em>${escapeHtml(commit.date)}</em></li>`).join('')
     : '<li>No recent commits</li>';
 
   const artifactLedgerHtml = artifactLedger
@@ -856,22 +870,9 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                   <p className="text-[11px] uppercase tracking-wide text-gray-500">Additional evidence</p>
                   {snowOther.map((item, idx) => (
                     <div key={`snow-other-${idx}`} className="rounded border border-gray-800 bg-gray-900/70 px-2.5 py-2">
-                      {item.detail.length > 260 ? (
-                        <details className="group">
-                          <summary className="cursor-pointer text-xs text-gray-200 list-none">
-                            <span className="text-cyan-300 font-semibold">{item.label}:</span> {compactText(item.detail, 260)}
-                            <span className="text-cyan-400 ml-2 group-open:hidden">Show more</span>
-                            <span className="text-cyan-400 ml-2 hidden group-open:inline">Show less</span>
-                          </summary>
-                          <p className="text-xs text-gray-200 mt-2 whitespace-pre-wrap leading-relaxed">
-                            <span className="text-cyan-300 font-semibold">{item.label}:</span> {item.detail}
-                          </p>
-                        </details>
-                      ) : (
-                        <p className="text-xs text-gray-200 whitespace-pre-wrap leading-relaxed">
-                          <span className="text-cyan-300 font-semibold">{item.label}:</span> {item.detail}
-                        </p>
-                      )}
+                      <p className="text-xs text-gray-200 whitespace-pre-wrap leading-relaxed">
+                        <span className="text-cyan-300 font-semibold">{item.label}:</span> {item.detail}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -912,10 +913,10 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
           <section className="space-y-2">
             <p className="text-xs font-semibold text-cyan-200 uppercase tracking-wide">Artifact Coverage</p>
             <div className="rounded border border-gray-800 bg-gray-950/70 p-2.5 space-y-2">
-              {analyzedArtifacts.slice(0, 8).map((item, idx) => (
+              {analyzedArtifacts.map((item, idx) => (
                 <p key={`artifact-ok-${idx}`} className="text-xs text-emerald-300 leading-relaxed">- Analyzed: {item.file} ({item.type}) - {item.finding}</p>
               ))}
-              {notAnalyzedArtifacts.slice(0, 8).map((item, idx) => (
+              {notAnalyzedArtifacts.map((item, idx) => (
                 <p key={`artifact-gap-${idx}`} className="text-xs text-yellow-300 leading-relaxed">- Not analyzed: {item.file} ({item.type}) - {item.reason}</p>
               ))}
             </div>
@@ -1001,12 +1002,12 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                 <Bug size={11} className="text-cyan-300" />
                 SNOW KB related articles · {session.kbEvidence!.length} found
               </p>
-              {session.kbEvidence!.slice(0, 8).map((kb, idx) => (
+              {session.kbEvidence!.map((kb, idx) => (
                 <div key={`${kb.number}-${idx}`} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-800 last:border-0">
                   <span className="text-altera-teal font-mono shrink-0 mr-2">{kb.number || 'KB'}</span>
-                  <span className="text-gray-300 truncate flex-1">{kb.shortDescription || '(no short description)'}</span>
+                  <span className="text-gray-300 break-words flex-1">{kb.shortDescription || '(no short description)'}</span>
                   <span className="text-gray-500 shrink-0 ml-2">{kb.state || '-'}</span>
-                  <span className="text-gray-600 shrink-0 ml-2">{kb.updatedOn ? String(kb.updatedOn).slice(0, 10) : '-'}</span>
+                  <span className="text-gray-600 shrink-0 ml-2">{kb.updatedOn ? String(kb.updatedOn) : '-'}</span>
                 </div>
               ))}
             </div>
@@ -1018,11 +1019,11 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                 <Bug size={11} className="text-amber-400" />
                 Similar historical items in same release context · {session.versionEvidence!.length} found
               </p>
-              {session.versionEvidence!.slice(0, 8).map(item => (
+              {session.versionEvidence!.map(item => (
                 <div key={item.id} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-800 last:border-0">
                   <a href={item.url} target="_blank" rel="noreferrer"
                      className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{item.id}</a>
-                  <span className="text-gray-300 truncate flex-1">{item.title}</span>
+                  <span className="text-gray-300 break-words flex-1">{item.title}</span>
                   <span className="text-gray-500 shrink-0 ml-2">{item.supportVersion || item.reportedRelease || '-'}</span>
                   <span className={`shrink-0 ml-2 px-1.5 py-0.5 rounded text-xs ${
                     /Closed|Resolved|Done|Completed/i.test(item.state) ? 'bg-emerald-950 text-emerald-400' : 'bg-gray-800 text-gray-400'
@@ -1038,11 +1039,11 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                 <Bug size={11} className="text-cyan-400" />
                 Area evidence (defect/bug/task/story, 365d) · {session.areaEvidence!.length} found
               </p>
-              {session.areaEvidence!.slice(0, 8).map(item => (
+              {session.areaEvidence!.map(item => (
                 <div key={item.id} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-800 last:border-0">
                   <a href={item.url} target="_blank" rel="noreferrer"
                      className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{item.id}</a>
-                  <span className="text-gray-300 truncate flex-1">{item.title}</span>
+                  <span className="text-gray-300 break-words flex-1">{item.title}</span>
                   <span className="text-gray-500 shrink-0 ml-2">{item.type}</span>
                   <span className="text-gray-600 shrink-0 ml-2">{item.supportVersion || '-'}</span>
                 </div>
@@ -1057,11 +1058,11 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                 <Bug size={11} className="text-red-400" />
                 Open bugs — same area (last 90 days) · {session.relatedItems!.length} found
               </p>
-              {session.relatedItems!.slice(0, 8).map(item => (
+              {session.relatedItems!.map(item => (
                 <div key={item.id} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-800 last:border-0">
                   <a href={item.url} target="_blank" rel="noreferrer"
                      className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{item.id}</a>
-                  <span className="text-gray-300 truncate flex-1">{item.title}</span>
+                  <span className="text-gray-300 break-words flex-1">{item.title}</span>
                   <span className={`shrink-0 ml-2 px-1.5 py-0.5 rounded text-xs ${
                     item.state === 'Active'     ? 'bg-blue-950 text-blue-400' :
                     item.state === 'New'        ? 'bg-green-950 text-green-400' :
@@ -1091,11 +1092,11 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                 <TestTube size={11} className="text-purple-400" />
                 MTM Test cases — same area · {session.testCases!.length} found
               </p>
-              {session.testCases!.slice(0, 6).map(tc => (
+              {session.testCases!.map(tc => (
                 <div key={tc.id} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-800 last:border-0">
                   <a href={tc.url} target="_blank" rel="noreferrer"
                      className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{tc.id}</a>
-                  <span className="text-gray-300 truncate flex-1">{tc.title}</span>
+                  <span className="text-gray-300 break-words flex-1">{tc.title}</span>
                   <span className="shrink-0 ml-2 px-1.5 py-0.5 rounded text-xs bg-purple-950 text-purple-400">{tc.state}</span>
                 </div>
               ))}
@@ -1117,12 +1118,12 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                 <GitCommit size={11} className="text-altera-teal" />
                 Recent commits — {session.product?.repos.find(r=>r.required)?.repo ?? 'primary repo'}
               </p>
-              {session.recentCommits!.slice(0, 5).map(c => (
+              {session.recentCommits!.map(c => (
                 <div key={c.sha} className="flex items-center gap-2 text-xs py-0.5 border-b border-gray-800 last:border-0">
                   <a href={c.url} target="_blank" rel="noreferrer"
                      className="text-altera-teal font-mono shrink-0">{c.sha}</a>
                   <span className="text-gray-400 shrink-0">{c.date}</span>
-                  <span className="text-gray-300 truncate">{c.message}</span>
+                  <span className="text-gray-300 break-words">{c.message}</span>
                 </div>
               ))}
             </div>
@@ -1280,19 +1281,19 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
           customer: String(f['Allscripts.Field.CustomerName'] ?? ''),
           release: String(f['Allscripts.Field.SupportVersion'] ?? ''),
           severity: String(f['Microsoft.VSTS.Common.Severity'] ?? ''),
-          description: String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '').replace(/<[^>]+>/g,' ').slice(0, 800),
+          description: normalizeDisplayText(String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '')),
         },
         snowTask: session.snowTask ? {
           number: String((session.snowTask as any).number?.display_value ?? (session.snowTask as any).number ?? ''),
           shortDescription: String((session.snowTask as any).short_description?.display_value ?? ''),
           state: String((session.snowTask as any).state?.display_value ?? ''),
-          workNotes: JSON.stringify((session.snowTask as any)._workNotes ?? '').slice(0, 1200),
+          workNotes: normalizeDisplayText(JSON.stringify((session.snowTask as any)._workNotes ?? '')),
         } : null,
         logHits,
         topSeeds,
         repos: session.product?.repos.map(r => `${r.owner}/${r.repo}`) ?? [],
         patternName: session.analysis?.codeAnalysis?.match(/Keyword pattern: "([^"]+)"/)?.[1],
-        patternFixDirection: session.analysis?.gap?.slice(0, 200),
+        patternFixDirection: normalizeDisplayText(session.analysis?.gap ?? ''),
       };
       const res = await fetch(`${BRIDGE}/api/ai-analyze`, {
         method: 'POST',
@@ -1341,13 +1342,13 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
           customer: String(f['Allscripts.Field.CustomerName'] ?? ''),
           release: String(f['Allscripts.Field.SupportVersion'] ?? ''),
           severity: String(f['Microsoft.VSTS.Common.Severity'] ?? ''),
-          description: String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '').replace(/<[^>]+>/g,' ').slice(0, 800),
+          description: normalizeDisplayText(String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '')),
         },
         snowTask: session.snowTask ? {
           number: String((session.snowTask as any).number?.display_value ?? (session.snowTask as any).number ?? ''),
           shortDescription: String((session.snowTask as any).short_description?.display_value ?? ''),
           state: String((session.snowTask as any).state?.display_value ?? ''),
-          workNotes: JSON.stringify((session.snowTask as any)._workNotes ?? '').slice(0, 1200),
+          workNotes: normalizeDisplayText(JSON.stringify((session.snowTask as any)._workNotes ?? '')),
         } : null,
         logHits,
         topSeeds,

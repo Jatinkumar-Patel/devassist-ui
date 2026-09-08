@@ -199,7 +199,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
 
     const byCategory: Record<string, LogHit[]> = { error: [], warning: [], lock: [], ops: [], other: [] };
     for (const hit of hits) {
-      byCategory[hit.category] = [...(byCategory[hit.category] ?? []), hit].slice(0, 30);
+      byCategory[hit.category] = [...(byCategory[hit.category] ?? []), hit];
     }
 
     return {
@@ -286,7 +286,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
         <p className="text-xs font-medium text-gray-400 flex items-center gap-1.5">
           <FileSearch size={13} /> Log Scan
           {snowTaskNumber && <span className="text-gray-600 font-mono">{snowTaskNumber}</span>}
-          {autoSysId && <span className="text-gray-600 font-mono text-[10px]">sysId: {autoSysId.slice(0, 8)}…</span>}
+          {autoSysId && <span className="text-gray-600 font-mono text-[10px]">sysId: {autoSysId}</span>}
         </p>
         <button onClick={analyze} disabled={running || !sysId || !!blockedReason}
           className="flex items-center gap-1.5 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-40
@@ -445,12 +445,12 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="bg-gray-800 rounded p-2 space-y-0.5">
               <p className="text-gray-500 font-medium">Analyzed</p>
-              {result.analyzed.map((f, i) => <p key={i} className="text-gray-300 font-mono truncate">{f}</p>)}
+              {result.analyzed.map((f, i) => <p key={i} className="text-gray-300 font-mono break-all">{f}</p>)}
               {!result.analyzed.length && <p className="text-gray-600">none</p>}
             </div>
             <div className="bg-gray-800 rounded p-2 space-y-0.5">
               <p className="text-gray-500 font-medium">Not analyzed</p>
-              {result.skipped.map((f, i) => <p key={i} className="text-yellow-500/70 font-mono truncate">{f}</p>)}
+              {result.skipped.map((f, i) => <p key={i} className="text-yellow-500/70 font-mono break-all">{f}</p>)}
               {!result.skipped.length && <p className="text-gray-600">none</p>}
             </div>
           </div>
@@ -462,19 +462,19 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
                 <ChevronDown size={11} className="group-open:rotate-180 transition-transform text-cyan-300" />
               </summary>
               <div className="mt-2 space-y-2 max-h-56 overflow-auto">
-                {result.spreadsheetSummaries.slice(0, 20).map((s, i) => (
+                {result.spreadsheetSummaries.map((s, i) => (
                   <div key={`${s.file}-${s.sheet}-${i}`} className="text-xs rounded border border-cyan-900/50 bg-black/20 p-2 space-y-1">
                     <p className="text-cyan-200 font-mono break-all">{s.file}#{s.sheet}</p>
                     <p className="text-gray-300">Rows: {s.rowCount} | Columns: {s.columnCount}</p>
                     {s.headers && s.headers.length > 0 && (
-                      <p className="text-gray-400">Headers: {s.headers.slice(0, 8).join(', ')}</p>
+                      <p className="text-gray-400">Headers: {s.headers.join(', ')}</p>
                     )}
                     {s.sampleRows && s.sampleRows.length > 0 && (
                       <p className="text-gray-500 font-mono break-all">Sample: {s.sampleRows[0]}</p>
                     )}
                     {s.findings && s.findings.length > 0 && (
                       <div className="space-y-0.5 pt-1 border-t border-cyan-900/50">
-                        {s.findings.slice(0, 4).map((f, idx) => (
+                        {s.findings.map((f, idx) => (
                           <p key={idx} className="text-gray-300">- {f}</p>
                         ))}
                       </div>
@@ -492,7 +492,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
                 <ChevronDown size={11} className="group-open:rotate-180 transition-transform text-emerald-300" />
               </summary>
               <div className="mt-2 space-y-2 max-h-56 overflow-auto">
-                {result.imageSummaries.slice(0, 20).map((image, i) => (
+                {result.imageSummaries.map((image, i) => (
                   <div key={`${image.file}-${i}`} className="text-xs rounded border border-emerald-900/50 bg-black/20 p-2 space-y-1">
                     <p className="text-emerald-200 font-mono break-all">{image.file}</p>
                     <p className="text-gray-300">OCR chars: {image.charCount} | Pattern hits: {image.hitCount}</p>
@@ -501,7 +501,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
                     )}
                     {image.findings && image.findings.length > 0 && (
                       <div className="space-y-0.5 pt-1 border-t border-emerald-900/50">
-                        {image.findings.slice(0, 4).map((finding, idx) => (
+                        {image.findings.map((finding, idx) => (
                           <p key={idx} className="text-gray-300">- {finding}</p>
                         ))}
                       </div>
@@ -541,11 +541,11 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
                   <div key={`${summary.file}-${i}`} className="text-xs rounded border border-sky-900/50 bg-black/20 p-2 space-y-1">
                     <p className="text-sky-200 font-mono break-all">{summary.file}</p>
                     <p className="text-gray-300">
-                      Rows parsed: {summary.rowsParsed} | Delay rows (&gt; {summary.thresholdSeconds}s): {summary.delayedCount} | Error rows: {summary.errorRows}
+                      Rows parsed: {summary.rowsParsed} | Delay rows ({'>'} {summary.thresholdSeconds}s): {summary.delayedCount} | Error rows: {summary.errorRows}
                     </p>
                     {summary.topDelayed.length > 0 && (
                       <div className="space-y-0.5 pt-1 border-t border-sky-900/50">
-                        {summary.topDelayed.slice(0, 4).map((row, idx) => (
+                        {summary.topDelayed.map((row, idx) => (
                           <p key={idx} className="text-gray-300">
                             {row.operation} at line {row.line}: {row.durationSeconds.toFixed(3)}s ({row.logs} log lines)
                           </p>
