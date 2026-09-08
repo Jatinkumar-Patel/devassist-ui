@@ -161,7 +161,7 @@ function makeHit(category, seed, line) {
         imageSummaries: [],
     });
     strict_1.default.match(authSummary.primaryFinding, /authentication|authorization/i);
-    strict_1.default.equal(authSummary.confidence, 'medium');
+    strict_1.default.equal(authSummary.confidence, 'high');
     const networkSummary = (0, log_analysis_1.buildDiagnosticSummary)({
         byCategory: {
             error: [makeHit('error', 'HttpRequestException', 14)],
