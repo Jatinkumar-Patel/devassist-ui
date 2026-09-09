@@ -14,14 +14,24 @@
     --card-border: rgba(122, 154, 219, 0.16);
   }
 
+  html {
+    font-size: 17px;
+  }
+
   body {
     @apply antialiased text-gray-100;
     font-family: 'Manrope', sans-serif;
+    font-size: 1.05rem;
+    line-height: 1.6;
     background:
       radial-gradient(1200px 500px at 0% 0%, rgba(47, 128, 237, 0.14), transparent 55%),
       radial-gradient(900px 420px at 100% 0%, rgba(38, 208, 206, 0.12), transparent 50%),
       linear-gradient(145deg, var(--bg-1), var(--bg-2));
     min-height: 100vh;
+  }
+
+  #root {
+    font-size: 1.05rem;
   }
 
   h1, h2, h3 {
@@ -62,5 +72,31 @@
 
   .analysis-scroll {
     overflow: auto;
+  }
+}
+
+@layer utilities {
+  /* Global readability bump: many screens rely on tiny utility classes. */
+  html, body, #root,
+  .text-xs,
+  .text-\[11px\],
+  .text-\[10px\],
+  .text-sm,
+  .text-base,
+  .text-lg,
+  .text-xl {
+    font-size-adjust: none;
+  }
+
+  .text-xs,
+  .text-\[11px\],
+  .text-\[10px\] {
+    font-size: 1rem !important;
+    line-height: 1.5rem !important;
+  }
+
+  .text-\[10px\] {
+    font-size: 0.9375rem !important;
+    line-height: 1.45rem !important;
   }
 }
