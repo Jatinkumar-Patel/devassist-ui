@@ -6,6 +6,7 @@ import { detectInput } from '../lib/input-detector';
 import { loadRegistry, routeByAreaPath } from '../lib/product-registry';
 import { fetchWorkItem, findWorkItemBySnowTask, findWorkItemByCase, fetchAreaItemsByPaths, fetchAreaVersionEvidenceByPaths, filterItemsByReleaseHints, matchesReleaseHints } from '../lib/ado-client';
 import { fetchSnowTask, fetchSnowWorkNotes, fetchSnowAttachments, fetchSnowCase, fetchSnowIncident, fetchSnowIncidentByCase, fetchSnowTasksByIncident, fetchSnowKbSearch, escalateSnowTask, snowVal } from '../lib/snow-client';
+import { combineSnowNotes } from '../lib/snow-notes';
 import { matchPattern, runCodeSearch, runDatabaseRepoSearch, buildSkillDrivenAssessment } from '../lib/analysis';
 import { fetchRelatedBugs, fetchTestCases } from '../lib/ado-client';
 import { searchCommits } from '../lib/github-client';
@@ -597,6 +598,24 @@ function BridgeOfflineBanner({ installCmds, bridgeUrl }: { installCmds: ReturnTy
   );
 }
 
+/** Task notes are often audit-only noise — the investigation narrative lives on the parent incident/case. */
+async function attachEscalatedWorkNotes(s: TriageSession): Promise<TriageSession> {
+  let next = s;
+  for (const key of ['snowIncident', 'snowCase'] as const) {
+    const record = next[key] as any;
+    if (!record || record._workNotes) continue;
+    const sysId = snowVal(record.sys_id);
+    if (!sysId) continue;
+    try {
+      const notesResp = await fetchSnowWorkNotes(sysId);
+      if (notesResp?.result) {
+        next = { ...next, [key]: { ...record, _workNotes: notesResp.result } };
+      }
+    } catch { /* non-fatal */ }
+  }
+  return next;
+}
+
 async function enrichSnowTaskArtifacts(s: TriageSession, taskRecord: any): Promise<TriageSession> {
   let next = { ...s, snowTask: taskRecord };
   const sysId = snowVal(taskRecord?.sys_id);
@@ -1073,6 +1092,12 @@ export default function TriagePage() {
         }
       }
 
+      // Pull work notes for escalated incident/case — task notes alone are usually audit noise
+      if ((s.snowIncident || s.snowCase) && !cancelledRef.current) {
+        s = await attachEscalatedWorkNotes(s);
+        upsert(s);
+      }
+
       // ── Phase 1: Clarity — derive gaps from missing required fields ──────────
       s = phase(s, 'clarity');
       upsert(s);
@@ -1290,11 +1315,7 @@ export default function TriagePage() {
             ? await runDatabaseRepoSearch(githubPat, s.product.databaseRepoPaths ?? [], dbTerms)
             : [];
 
-          const workNotes = s.snowTask
-            ? String((s.snowTask as any)._workNotes
-                ? JSON.stringify((s.snowTask as any)._workNotes)
-                : snowVal(s.snowTask.work_notes))
-            : undefined;
+          const workNotes = combineSnowNotes(s.snowTask, s.snowIncident, s.snowCase) || undefined;
           const logHits = (s.snowTask as any)?._logHits ?? [];
           const topSeeds = (s.snowTask as any)?._topSeeds ?? {};
           const spreadsheetSummaries = (s.snowTask as any)?._spreadsheetSummaries ?? [];

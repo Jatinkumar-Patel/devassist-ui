@@ -4,6 +4,7 @@ import type { TriageAnalysis, TriageSession } from '../types';
 import { matchPattern, runCodeSearch, runDatabaseRepoSearch, buildSkillDrivenAssessment } from '../lib/analysis';
 import { useSettingsStore } from '../store/settings';
 import { snowVal } from '../lib/snow-client';
+import { combineSnowNotes, formatSnowNotes, extractExceptionSignatures } from '../lib/snow-notes';
 import { getBridgeUrl } from '../lib/bridge-url';
 
 interface Props {
@@ -682,9 +683,8 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
 
       const databaseEvidence = await runDatabaseRepoSearch(githubPat ?? '', product.databaseRepoPaths ?? [], dbTerms);
 
-      const workNotes = snowTask?.['_workNotes']
-        ? JSON.stringify(snowTask['_workNotes'])
-        : snowVal(snowTask?.work_notes);
+      const workNotes = combineSnowNotes(snowTask, session.snowIncident, session.snowCase)
+        || snowVal(snowTask?.work_notes);
       const logHits: Array<{ seed: string; text: string; file: string }> = (snowTask as any)?._logHits ?? [];
       const topSeeds: Record<string, number> = (snowTask as any)?._topSeeds ?? {};
       // Use skill-driven analysis (reads analysis-playbook.md, reasoning-framework.md etc. from bridge)
@@ -1537,6 +1537,15 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
       }));
     const topSeeds: Record<string, number> = (session.snowTask as any)?._topSeeds ?? {};
 
+    const daDescription = String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '');
+    const taskNotes = formatSnowNotes((session.snowTask as any)?._workNotes, 3000)
+      || clampText(snowVal((session.snowTask as any)?.work_notes), 3000);
+    const incidentNotes = formatSnowNotes((session.snowIncident as any)?._workNotes, 4000);
+    const caseNotes = formatSnowNotes((session.snowCase as any)?._workNotes, 2000);
+    const exceptionSignatures = extractExceptionSignatures(
+      [daDescription, taskNotes, incidentNotes, ((session.snowTask as any)?._logHits ?? []).map((h: any) => h?.text).join('\n')].join('\n')
+    );
+
     return {
       openaiKey: openaiKey || undefined,
       githubPat: githubPat || undefined,
@@ -1556,14 +1565,27 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
         customer: String(f['Allscripts.Field.CustomerName'] ?? ''),
         release: String(f['Allscripts.Field.ReportedinRelease'] ?? f['Allscripts.Field.SupportVersion'] ?? ''),
         severity: String(f['Microsoft.VSTS.Common.Severity'] ?? ''),
-        description: clampText(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '', 1000),
+        description: clampText(daDescription, 4000),
       },
       snowTask: session.snowTask ? {
         number: String((session.snowTask as any).number?.display_value ?? (session.snowTask as any).number ?? ''),
         shortDescription: String((session.snowTask as any).short_description?.display_value ?? ''),
         state: String((session.snowTask as any).state?.display_value ?? ''),
-        workNotes: clampText(JSON.stringify((session.snowTask as any)._workNotes ?? ''), 1600),
+        workNotes: taskNotes,
       } : null,
+      snowIncident: session.snowIncident ? {
+        number: snowVal((session.snowIncident as any).number),
+        shortDescription: snowVal((session.snowIncident as any).short_description),
+        state: snowVal((session.snowIncident as any).state),
+        workNotes: incidentNotes,
+      } : null,
+      snowCase: session.snowCase ? {
+        number: snowVal((session.snowCase as any).number),
+        shortDescription: snowVal((session.snowCase as any).short_description),
+        state: snowVal((session.snowCase as any).state),
+        workNotes: caseNotes,
+      } : null,
+      exceptionSignatures,
       logHits,
       topSeeds,
       repos: session.product?.repos.map(r => `${r.owner}/${r.repo}`) ?? [],
