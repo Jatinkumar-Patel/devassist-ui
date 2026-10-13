@@ -589,7 +589,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
               </summary>
               <div className="mt-2 space-y-2 max-h-56 overflow-auto">
                 {result.spreadsheetSummaries.map((s, i) => (
-                  <div key={`${s.file}-${s.sheet}-${i}`} className="text-xs rounded border border-cyan-900/50 bg-black/20 p-2 space-y-1">
+                  <div key={`${s.file}-${s.sheet}-${i}`} className="text-xs rounded border border-cyan-900/50 bg-gray-900 p-2 space-y-1">
                     <p className="text-cyan-200 font-mono break-all">{s.file}#{s.sheet}</p>
                     <p className="text-gray-300">Rows: {s.rowCount} | Columns: {s.columnCount}</p>
                     {s.headers && s.headers.length > 0 && (
@@ -619,7 +619,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
               </summary>
               <div className="mt-2 space-y-2 max-h-56 overflow-auto">
                 {result.imageSummaries.map((image, i) => (
-                  <div key={`${image.file}-${i}`} className="text-xs rounded border border-emerald-900/50 bg-black/20 p-2 space-y-1">
+                  <div key={`${image.file}-${i}`} className="text-xs rounded border border-emerald-900/50 bg-gray-900 p-2 space-y-1">
                     <p className="text-emerald-200 font-mono break-all">{image.file}</p>
                     <p className="text-gray-300">OCR chars: {image.charCount} | Pattern hits: {image.hitCount}</p>
                     {image.textPreview && (
@@ -646,7 +646,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
               </summary>
               <div className="mt-2 space-y-2 max-h-56 overflow-auto">
                 {result.stackTraces.map((trace, i) => (
-                  <div key={`${trace.file}-${trace.firstLine}-${i}`} className="text-xs rounded border border-fuchsia-900/50 bg-black/20 p-2 space-y-1">
+                  <div key={`${trace.file}-${trace.firstLine}-${i}`} className="text-xs rounded border border-fuchsia-900/50 bg-gray-900 p-2 space-y-1">
                     <p className="text-fuchsia-200 font-mono break-all">{trace.file}:{trace.firstLine}</p>
                     <p className="text-fuchsia-100/90">{trace.exception}</p>
                     <p className="text-gray-400 font-mono break-all">{trace.preview}</p>
@@ -664,7 +664,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
               </summary>
               <div className="mt-2 space-y-2 max-h-56 overflow-auto">
                 {result.operationTimelineSummaries.map((summary, i) => (
-                  <div key={`${summary.file}-${i}`} className="text-xs rounded border border-sky-900/50 bg-black/20 p-2 space-y-1">
+                  <div key={`${summary.file}-${i}`} className="text-xs rounded border border-sky-900/50 bg-gray-900 p-2 space-y-1">
                     <p className="text-sky-200 font-mono break-all">{summary.file}</p>
                     <p className="text-gray-300">
                       Rows parsed: {summary.rowsParsed} | Delay rows ({'>'} {summary.thresholdSeconds}s): {summary.delayedCount} | Error rows: {summary.errorRows}
@@ -733,7 +733,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
                     </span>
                   </div>
                   <p className="text-xs opacity-80">{s.observation}</p>
-                  <div className="bg-black/20 rounded p-2 space-y-1">
+                  <div className="bg-gray-900 rounded p-2 space-y-1">
                     <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide">Code direction</p>
                     <p className="text-xs leading-relaxed">{s.codeDirection}</p>
                   </div>
@@ -744,7 +744,7 @@ export default function LogAnalysisPanel({ snowTask, snowIncident, snowCase, sno
                     </a>
                     <div className="flex gap-1 flex-wrap">
                       {s.searchTerms.map((t) => (
-                        <code key={t} className="text-[10px] bg-black/30 px-1 rounded">{t}</code>
+                        <code key={t} className="text-[10px] bg-gray-800 px-1 rounded">{t}</code>
                       ))}
                     </div>
                   </div>

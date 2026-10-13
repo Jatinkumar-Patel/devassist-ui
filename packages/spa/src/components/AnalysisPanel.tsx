@@ -4,6 +4,7 @@ import type { TriageAnalysis, TriageSession } from '../types';
 import { matchPattern, runCodeSearch, runDatabaseRepoSearch, buildSkillDrivenAssessment } from '../lib/analysis';
 import { useSettingsStore } from '../store/settings';
 import { snowVal } from '../lib/snow-client';
+import { combineSnowNotes, formatSnowNotes, extractExceptionSignatures } from '../lib/snow-notes';
 import { getBridgeUrl } from '../lib/bridge-url';
 
 interface Props {
@@ -682,9 +683,8 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
 
       const databaseEvidence = await runDatabaseRepoSearch(githubPat ?? '', product.databaseRepoPaths ?? [], dbTerms);
 
-      const workNotes = snowTask?.['_workNotes']
-        ? JSON.stringify(snowTask['_workNotes'])
-        : snowVal(snowTask?.work_notes);
+      const workNotes = combineSnowNotes(snowTask, session.snowIncident, session.snowCase)
+        || snowVal(snowTask?.work_notes);
       const logHits: Array<{ seed: string; text: string; file: string }> = (snowTask as any)?._logHits ?? [];
       const topSeeds: Record<string, number> = (snowTask as any)?._topSeeds ?? {};
       // Use skill-driven analysis (reads analysis-playbook.md, reasoning-framework.md etc. from bridge)
@@ -777,7 +777,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
   };
 
   const panelShell = expanded
-    ? 'fixed inset-3 z-50 overflow-auto rounded-2xl border border-gray-700 bg-gray-950 shadow-2xl shadow-black/60'
+    ? 'fixed inset-3 z-50 overflow-auto rounded-2xl border border-gray-700 bg-gray-950 shadow-2xl shadow-black/15'
     : 'space-y-2.5';
 
   return (
@@ -817,7 +817,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
-              className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-200 hover:border-cyan-400/50 hover:text-white"
+              className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-200 hover:border-cyan-400/50 hover:text-gray-100"
             >
               {expanded ? 'Collapse view' : 'Expand view'}
             </button>
@@ -827,7 +827,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
                 setSimpleView((prev) => !prev);
                 setShowSupplementary(false);
               }}
-              className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-200 hover:border-cyan-400/50 hover:text-white"
+              className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-200 hover:border-cyan-400/50 hover:text-gray-100"
             >
               {simpleView ? 'Switch to detailed view' : 'Switch to simple view'}
             </button>
@@ -1115,7 +1115,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
               {session.versionEvidence!.slice(0, 8).map(item => (
                 <div key={item.id} className="flex items-center justify-between text-sm py-0.5 border-b border-gray-800 last:border-0">
                   <a href={item.url} target="_blank" rel="noreferrer"
-                     className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{item.id}</a>
+                     className="text-altera-teal hover:text-gray-100 font-mono shrink-0 mr-2">#{item.id}</a>
                   <span className="text-gray-300 break-words flex-1">{item.title}</span>
                   <span className="text-gray-500 shrink-0 ml-2">{item.reportedRelease || item.supportVersion || '-'}</span>
                   <span className={`shrink-0 ml-2 px-1.5 py-0.5 rounded text-xs ${
@@ -1136,7 +1136,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
               {session.areaEvidence!.slice(0, 8).map(item => (
                 <div key={item.id} className="flex items-center justify-between text-sm py-0.5 border-b border-gray-800 last:border-0">
                   <a href={item.url} target="_blank" rel="noreferrer"
-                     className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{item.id}</a>
+                     className="text-altera-teal hover:text-gray-100 font-mono shrink-0 mr-2">#{item.id}</a>
                   <span className="text-gray-300 break-words flex-1">{item.title}</span>
                   <span className="text-gray-500 shrink-0 ml-2">{item.type}</span>
                   <span className="text-gray-600 shrink-0 ml-2">{item.reportedRelease || item.supportVersion || '-'}</span>
@@ -1156,7 +1156,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
               {session.relatedItems!.slice(0, 8).map(item => (
                 <div key={item.id} className="flex items-center justify-between text-sm py-0.5 border-b border-gray-800 last:border-0">
                   <a href={item.url} target="_blank" rel="noreferrer"
-                     className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{item.id}</a>
+                     className="text-altera-teal hover:text-gray-100 font-mono shrink-0 mr-2">#{item.id}</a>
                   <span className="text-gray-300 break-words flex-1">{item.title}</span>
                   <span className={`shrink-0 ml-2 px-1.5 py-0.5 rounded text-xs ${
                     item.state === 'Active'     ? 'bg-blue-950 text-blue-400' :
@@ -1191,7 +1191,7 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
               {session.testCases!.slice(0, 8).map(tc => (
                 <div key={tc.id} className="flex items-center justify-between text-sm py-0.5 border-b border-gray-800 last:border-0">
                   <a href={tc.url} target="_blank" rel="noreferrer"
-                     className="text-altera-teal hover:text-white font-mono shrink-0 mr-2">#{tc.id}</a>
+                     className="text-altera-teal hover:text-gray-100 font-mono shrink-0 mr-2">#{tc.id}</a>
                   <span className="text-gray-300 break-words flex-1">{tc.title}</span>
                   <span className="shrink-0 ml-2 px-1.5 py-0.5 rounded text-xs bg-gray-900 text-gray-300">{tc.state}</span>
                 </div>
@@ -1268,18 +1268,18 @@ export default function AnalysisPanel({ session, onAnalysisComplete }: Props) {
               <button
                 type="button"
                 onClick={() => setExpanded((v) => !v)}
-                className="flex items-center gap-1 text-xs text-gray-300 hover:text-white border border-gray-700 hover:border-gray-500 px-2 py-1 rounded"
+                className="flex items-center gap-1 text-xs text-gray-300 hover:text-gray-100 border border-gray-700 hover:border-gray-500 px-2 py-1 rounded"
               >
                 {expanded ? 'Collapse view' : 'Expand view'}
               </button>
               <a
                 href={emailHref}
-                className="flex items-center gap-1 text-xs text-gray-300 hover:text-white border border-gray-700 hover:border-gray-500 px-2 py-1 rounded"
+                className="flex items-center gap-1 text-xs text-gray-300 hover:text-gray-100 border border-gray-700 hover:border-gray-500 px-2 py-1 rounded"
               >
                 <Mail size={11} /> Share via Email
               </a>
               <button onClick={copyL2}
-                className="flex items-center gap-1 text-xs text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 px-2 py-1 rounded">
+                className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-100 border border-gray-700 hover:border-gray-500 px-2 py-1 rounded">
                 {copied ? <><CheckCircle2 size={11} className="text-gray-300" /> Copied</> : <><ClipboardCopy size={11} /> Copy</>}
               </button>
             </div>
@@ -1537,6 +1537,15 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
       }));
     const topSeeds: Record<string, number> = (session.snowTask as any)?._topSeeds ?? {};
 
+    const daDescription = String(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '');
+    const taskNotes = formatSnowNotes((session.snowTask as any)?._workNotes, 3000)
+      || clampText(snowVal((session.snowTask as any)?.work_notes), 3000);
+    const incidentNotes = formatSnowNotes((session.snowIncident as any)?._workNotes, 4000);
+    const caseNotes = formatSnowNotes((session.snowCase as any)?._workNotes, 2000);
+    const exceptionSignatures = extractExceptionSignatures(
+      [daDescription, taskNotes, incidentNotes, ((session.snowTask as any)?._logHits ?? []).map((h: any) => h?.text).join('\n')].join('\n')
+    );
+
     return {
       openaiKey: openaiKey || undefined,
       githubPat: githubPat || undefined,
@@ -1556,14 +1565,27 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
         customer: String(f['Allscripts.Field.CustomerName'] ?? ''),
         release: String(f['Allscripts.Field.ReportedinRelease'] ?? f['Allscripts.Field.SupportVersion'] ?? ''),
         severity: String(f['Microsoft.VSTS.Common.Severity'] ?? ''),
-        description: clampText(f['System.Description'] ?? f['Allscripts.Field.DevAssistDetail'] ?? '', 1000),
+        description: clampText(daDescription, 4000),
       },
       snowTask: session.snowTask ? {
         number: String((session.snowTask as any).number?.display_value ?? (session.snowTask as any).number ?? ''),
         shortDescription: String((session.snowTask as any).short_description?.display_value ?? ''),
         state: String((session.snowTask as any).state?.display_value ?? ''),
-        workNotes: clampText(JSON.stringify((session.snowTask as any)._workNotes ?? ''), 1600),
+        workNotes: taskNotes,
       } : null,
+      snowIncident: session.snowIncident ? {
+        number: snowVal((session.snowIncident as any).number),
+        shortDescription: snowVal((session.snowIncident as any).short_description),
+        state: snowVal((session.snowIncident as any).state),
+        workNotes: incidentNotes,
+      } : null,
+      snowCase: session.snowCase ? {
+        number: snowVal((session.snowCase as any).number),
+        shortDescription: snowVal((session.snowCase as any).short_description),
+        state: snowVal((session.snowCase as any).state),
+        workNotes: caseNotes,
+      } : null,
+      exceptionSignatures,
       logHits,
       topSeeds,
       repos: session.product?.repos.map(r => `${r.owner}/${r.repo}`) ?? [],
@@ -1715,7 +1737,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
         <div className="flex items-center gap-2 flex-wrap">
           {result && (
             <button onClick={copyResult}
-              className="flex items-center gap-1 text-sm text-gray-300 hover:text-white border border-gray-700 px-2 py-1 rounded">
+              className="flex items-center gap-1 text-sm text-gray-300 hover:text-gray-100 border border-gray-700 px-2 py-1 rounded">
               {copied ? <><CheckCircle2 size={11} className="text-emerald-400"/> Copied</> : <><ClipboardCopy size={11}/> Copy</>}
             </button>
           )}
@@ -1811,7 +1833,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
               key={template.label}
               type="button"
               onClick={() => applyFollowUpTemplate(template)}
-              className="text-xs px-2.5 py-1 rounded border border-gray-700 bg-gray-950/60 text-gray-300 hover:border-gray-500 hover:text-white"
+              className="text-xs px-2.5 py-1 rounded border border-gray-700 bg-gray-950/60 text-gray-300 hover:border-gray-500 hover:text-gray-100"
             >
               {template.label}
             </button>
@@ -1912,7 +1934,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
             <button
               type="button"
               onClick={() => setChatHistory([])}
-              className="text-xs text-gray-400 hover:text-white border border-gray-700 rounded px-2 py-1"
+              className="text-xs text-gray-400 hover:text-gray-100 border border-gray-700 rounded px-2 py-1"
             >
               Clear
             </button>

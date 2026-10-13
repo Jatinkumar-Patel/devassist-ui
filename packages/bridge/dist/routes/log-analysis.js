@@ -178,13 +178,46 @@ function readTail(filePath, maxLines) {
 }
 const TEXT_EXTENSIONS = ['.log', '.txt', '.csv', '.json', '.xml'];
 const SPREADSHEET_EXTENSIONS = ['.xlsx', '.xls'];
-const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff'];
-const SCANNABLE_EXTENSIONS = ['.log', '.txt', '.zip', '.csv', '.json', '.xml', '.xlsx', '.xls', '.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff'];
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.gif', '.webp'];
+const SCANNABLE_EXTENSIONS = ['.log', '.txt', '.zip', '.csv', '.json', '.xml', '.xlsx', '.xls', '.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.gif', '.webp'];
 const MAX_XLSX_BYTES = 30 * 1024 * 1024;
 function extensionOf(fileName) {
     const lower = fileName.toLowerCase();
     const idx = lower.lastIndexOf('.');
     return idx >= 0 ? lower.slice(idx) : '';
+}
+function extensionFromContentType(contentType) {
+    const lower = contentType.toLowerCase();
+    if (lower.includes('zip'))
+        return '.zip';
+    if (lower.includes('spreadsheetml') || lower.includes('officedocument.spreadsheetml'))
+        return '.xlsx';
+    if (lower.includes('excel') || lower.includes('ms-excel'))
+        return '.xls';
+    if (lower.includes('json'))
+        return '.json';
+    if (lower.includes('xml'))
+        return '.xml';
+    if (lower.includes('csv'))
+        return '.csv';
+    if (lower.includes('plain'))
+        return '.txt';
+    if (lower.includes('png'))
+        return '.png';
+    if (lower.includes('jpeg') || lower.includes('jpg'))
+        return '.jpg';
+    if (lower.includes('tiff'))
+        return '.tiff';
+    if (lower.includes('bmp'))
+        return '.bmp';
+    if (lower.includes('gif'))
+        return '.gif';
+    if (lower.includes('webp'))
+        return '.webp';
+    return '';
+}
+function resolveAttachmentExtension(fileName, contentType) {
+    return extensionOf(fileName) || extensionFromContentType(contentType);
 }
 function attachmentFingerprint(attachments) {
     const parts = attachments
@@ -254,10 +287,18 @@ async function getOcrWorker() {
     if (!ocrWorkerPromise) {
         ocrWorkerPromise = (async () => {
             const tesseract = await Promise.resolve().then(() => __importStar(require('tesseract.js')));
-            return tesseract.createWorker('eng', 1, {
+            const createWorker = tesseract.createWorker;
+            const options = {
                 logger: () => undefined,
                 cachePath: path_1.default.join(os_1.default.tmpdir(), 'devassist-tesseract-cache'),
-            });
+            };
+            // tesseract.js signatures vary by major version. Try modern and legacy forms.
+            try {
+                return await createWorker('eng', 1, options);
+            }
+            catch {
+                return await createWorker('eng', options);
+            }
         })();
     }
     return ocrWorkerPromise;
@@ -1152,7 +1193,7 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
         let suppressedNoiseCount = 0;
         for (const att of attachments) {
             const fileName = val(att.file_name) || '(unnamed attachment)';
-            const ext = extensionOf(fileName);
+            const ext = resolveAttachmentExtension(fileName, val(att.content_type));
             if (SCANNABLE_EXTENSIONS.includes(ext)) {
                 scannableFiles.push(att);
             }
@@ -1165,6 +1206,7 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
             const fileName = val(att.file_name);
             const sysId = val(att.sys_id);
             const contentType = val(att.content_type);
+            const resolvedExt = resolveAttachmentExtension(fileName, contentType);
             const sizeBytesStr = val(att.size_bytes);
             const sizeBytes = parseInt(sizeBytesStr, 10) || 0;
             // Skip very large files (> 500 MB) entirely
@@ -1178,7 +1220,7 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
                 await (0, powershell_1.execPowerShell)(`$ProgressPreference = 'SilentlyContinue'; ` +
                     `Invoke-WebRequest -Uri '${SNOW_BASE}/GetAttachment/?sysid=${sysId}' ` +
                     `-UseDefaultCredentials -UseBasicParsing -TimeoutSec 300 -OutFile '${outPath}'`);
-                if (contentType.includes('zip') || fileName.endsWith('.zip')) {
+                if (resolvedExt === '.zip') {
                     // Extract zip and parse each .log file inside
                     const extractDir = outPath + '_extracted';
                     fs_1.default.mkdirSync(extractDir, { recursive: true });
@@ -1240,7 +1282,7 @@ exports.logAnalysisRouter.get('/:recordSysId', async (req, res) => {
                 else {
                     let note = '';
                     const rawStat = fs_1.default.statSync(outPath);
-                    const ext = extensionOf(fileName);
+                    const ext = resolvedExt;
                     let hits = [];
                     if (SPREADSHEET_EXTENSIONS.includes(ext)) {
                         if (rawStat.size > MAX_XLSX_BYTES) {

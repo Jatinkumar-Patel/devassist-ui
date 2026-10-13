@@ -94,18 +94,22 @@ function buildUserPrompt(req) {
     const seedSummary = Object.entries(req.topSeeds)
         .map(([s, c]) => `  ${s}: ${c}×`)
         .join('\n');
+    const snowSection = (label, rec, notesMax = 3000) => {
+        if (!rec?.number && !rec?.workNotes)
+            return '';
+        return `\n## SNOW ${label}: ${rec?.number ?? 'not available'}\nState: ${rec?.state ?? '—'}\nShort description: ${rec?.shortDescription ?? '—'}\n${rec?.workNotes ? `Work notes:\n${rec.workNotes.slice(0, notesMax)}` : 'No narrative work notes found.'}`;
+    };
     return `## DA ${req.da.id} — ${req.da.title}
 
 Area: ${req.da.areaPath}
 Customer: ${req.da.customer}
 Release: ${req.da.release}
 Severity: ${req.da.severity}
-${req.da.description ? `\nDescription:\n${req.da.description.slice(0, 800)}` : ''}
+${req.da.description ? `\nDescription:\n${req.da.description.slice(0, 4000)}` : ''}
+${snowSection('Task', req.snowTask)}${snowSection('Incident (escalated parent — usually holds the real investigation)', req.snowIncident, 4000)}${snowSection('Case', req.snowCase, 2000)}
 
-## SNOW Task: ${req.snowTask?.number ?? 'not available'}
-State: ${req.snowTask?.state ?? '—'}
-Short description: ${req.snowTask?.shortDescription ?? '—'}
-${req.snowTask?.workNotes ? `\nWork notes (excerpt):\n${req.snowTask.workNotes.slice(0, 600)}` : ''}
+## Exception signatures (extracted from description/notes/logs)
+${(req.exceptionSignatures ?? []).map((s) => `  - ${s}`).join('\n') || '  - none extracted'}
 
 ## Mapped repos
 ${req.repos.join(', ')}
@@ -130,7 +134,7 @@ function buildFollowUpPrompt(req) {
         req.priorGap ? `Prior gap:\n${req.priorGap.slice(0, 1500)}` : '',
     ].filter(Boolean).join('\n\n');
     const history = (req.history ?? []).slice(-8).map((entry, idx) => `Previous turn ${idx + 1}:\nQ: ${entry.question}\nA: ${entry.answer.slice(0, 1200)}`).join('\n\n');
-    return `User follow-up question: ${req.question}\n\nUse the prior assessment and evidence as your starting point. Answer directly and stay anchored to the facts.\n\nPrior context:\n${prior || 'No prior assessment was supplied.'}\n\nConversation history:\n${history || 'No prior follow-up history exists yet.'}\n\n## DA ${req.da.id} — ${req.da.title}\nArea: ${req.da.areaPath}\nCustomer: ${req.da.customer}\nRelease: ${req.da.release}\nSeverity: ${req.da.severity}\n${req.da.description ? `Description:\n${req.da.description.slice(0, 800)}` : ''}\n\n## SNOW Task\n${req.snowTask?.number ?? 'not available'}\nState: ${req.snowTask?.state ?? '—'}\nShort description: ${req.snowTask?.shortDescription ?? '—'}\n${req.snowTask?.workNotes ? `Work notes excerpt:\n${req.snowTask.workNotes.slice(0, 600)}` : ''}\n\n## Key signals\n${Object.entries(req.topSeeds).map(([s, c]) => `- ${s}: ${c}x`).join('\n') || 'No signal summary available'}\n\n## Log evidence\n${req.logHits.slice(0, 20).map((h) => `[${h.file}:${h.line}] (${h.seed}) ${h.text}`).join('\n') || 'No log evidence available'}\n\nAnswer the user's question using the above context and be explicit about missing evidence if needed.`;
+    return `User follow-up question: ${req.question}\n\nUse the prior assessment and evidence as your starting point. Answer directly and stay anchored to the facts.\n\nPrior context:\n${prior || 'No prior assessment was supplied.'}\n\nConversation history:\n${history || 'No prior follow-up history exists yet.'}\n\n## DA ${req.da.id} — ${req.da.title}\nArea: ${req.da.areaPath}\nCustomer: ${req.da.customer}\nRelease: ${req.da.release}\nSeverity: ${req.da.severity}\n${req.da.description ? `Description:\n${req.da.description.slice(0, 2500)}` : ''}\n\n## SNOW Task\n${req.snowTask?.number ?? 'not available'}\nState: ${req.snowTask?.state ?? '—'}\nShort description: ${req.snowTask?.shortDescription ?? '—'}\n${req.snowTask?.workNotes ? `Work notes:\n${req.snowTask.workNotes.slice(0, 2000)}` : ''}\n${req.snowIncident?.workNotes ? `\n## SNOW Incident ${req.snowIncident.number}\nWork notes:\n${req.snowIncident.workNotes.slice(0, 3000)}` : ''}\n${(req.exceptionSignatures ?? []).length ? `\n## Exception signatures\n${(req.exceptionSignatures ?? []).map((s) => `- ${s}`).join('\n')}` : ''}\n\n## Key signals\n${Object.entries(req.topSeeds).map(([s, c]) => `- ${s}: ${c}x`).join('\n') || 'No signal summary available'}\n\n## Log evidence\n${req.logHits.slice(0, 20).map((h) => `[${h.file}:${h.line}] (${h.seed}) ${h.text}`).join('\n') || 'No log evidence available'}\n\nAnswer the user's question using the above context and be explicit about missing evidence if needed.`;
 }
 function normalizeAiProviderError(message) {
     const text = String(message ?? '').trim();
@@ -165,25 +169,36 @@ function buildHeuristicAssessment(req, fallbackReason) {
         .slice(0, 5)
         .map(([seed, count]) => `${seed} (${count}x)`);
     const evidence = req.logHits.slice(0, 5).map((hit) => `[${hit.file}:${hit.line}] (${hit.seed}) ${hit.text}`);
+    const snowShort = req.snowTask?.shortDescription || 'No SNOW short description provided.';
+    const snowState = req.snowTask?.state ? `Current state: ${req.snowTask.state}` : 'State not provided.';
+    const repoFocus = req.repos.length ? req.repos.join(', ') : 'No mapped repo focus found from product routing.';
+    const confidence = evidence.length || topSignals.length ? 'Medium' : 'Low';
+    const likelyCause = verdict === 'CONFIG / INSTALL'
+        ? 'Identity/token/config path'
+        : verdict === 'CODE BUG'
+            ? 'Runtime code-path or exception-handling path'
+            : 'Insufficient deterministic evidence';
     return [
         'Mode: Deterministic fallback (external LLM unavailable).',
         `Assessment: ${verdict}`,
+        `Likely cause family: ${likelyCause}`,
         `Client reported: ${req.da.title}`,
         '',
         'SNOW evidence:',
-        `  - ${req.snowTask?.shortDescription || 'No SNOW short description provided.'}`,
-        `  - ${req.snowTask?.state ? `Current state: ${req.snowTask.state}` : 'State not provided.'}`,
+        `  - ${snowShort}`,
+        `  - ${snowState}`,
         '',
         'Log analysis:',
         `  - Top signals: ${topSignals.length ? topSignals.join(', ') : 'none'}`,
         `  - Evidence lines: ${evidence.length ? 'captured' : 'none captured'}`,
+        ...(evidence.length ? evidence.slice(0, 3).map((line) => `  - ${line}`) : []),
         '',
         'Code analysis:',
-        `  - Direction: ${req.repos.length ? req.repos.join(', ') : 'Mapped repos unavailable'}`,
+        `  - Direction: ${repoFocus}`,
         '  - Observed vs expected: Use top signal and first failing call path to validate behavior against product contract.',
         '',
         `Gap: Deterministic triage used local evidence only; verify with additional incident-window logs to raise confidence.`,
-        `Confidence: ${evidence.length || topSignals.length ? 'Medium' : 'Low'} — based on deterministic seed and evidence extraction without external LLM synthesis.`,
+        `Confidence: ${confidence} — based on deterministic seed and evidence extraction without external LLM synthesis.`,
         '',
         'Blind spots / to raise confidence:',
         '  - Attach exact incident-window logs with timestamps and correlation IDs.',
@@ -198,20 +213,30 @@ function buildHeuristicFollowUp(req, fallbackReason) {
     const lower = question.toLowerCase();
     const signals = Object.entries(req.topSeeds ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 5);
     const dominantSignal = signals[0] ? `${signals[0][0]} (${signals[0][1]}x)` : 'No dominant signal yet';
+    const evidence = req.logHits.slice(0, 4).map((hit) => `[${hit.file}:${hit.line}] (${hit.seed}) ${hit.text}`);
+    const priorSummary = req.priorAssessment?.trim()
+        ? req.priorAssessment.trim().slice(0, 320)
+        : 'No prior AI summary available.';
+    const base = [
+        'Mode: Deterministic fallback (external LLM unavailable).',
+        `Question: ${question}`,
+        `Dominant signal: ${dominantSignal}`,
+        `Prior context: ${priorSummary}`,
+        evidence.length ? `Evidence sample: ${evidence[0]}` : 'Evidence sample: no parsed log lines available.',
+    ];
     if (/pat|token|credential|auth|github/.test(lower)) {
         return [
-            'Mode: Deterministic fallback (external LLM unavailable).',
+            ...base,
             'Credential route check:',
             '1) Ensure PAT has Work Items (Read) and Code (Read) scopes.',
             '2) Save PAT in Settings and re-run Bridge status check.',
             '3) If provider still fails, this is likely network/endpoint reachability, not PAT syntax.',
-            `Current deterministic signal: ${dominantSignal}.`,
             `Provider warning: ${fallbackReason}`,
         ].join('\n');
     }
     if (/^\d{5,}$/.test(lower)) {
         return [
-            'Mode: Deterministic fallback (external LLM unavailable).',
+            ...base,
             `Ticket check for ${question}:`,
             '1) Verify DA Reported in Release and SNOW incident/task release mention are aligned.',
             '2) Compare only same-release historical work items in Repo/MTM Comparison.',
@@ -221,7 +246,7 @@ function buildHeuristicFollowUp(req, fallbackReason) {
     }
     if (/next|what should i do|action|validate/.test(lower)) {
         return [
-            'Mode: Deterministic fallback (external LLM unavailable).',
+            ...base,
             `1) Validate top signal path first: ${dominantSignal}.`,
             '2) Use SQL metadata explorer to confirm object mapping (tables/views/SP) tied to failing workflow.',
             '3) Run a read-only SQL query for recent rows correlated to incident time window.',
@@ -231,15 +256,14 @@ function buildHeuristicFollowUp(req, fallbackReason) {
     }
     if (/why|root cause|reason/.test(lower)) {
         return [
-            'Mode: Deterministic fallback (external LLM unavailable).',
+            ...base,
             `Most likely direction is based on seeds: ${signals.map(([s, c]) => `${s} (${c}x)`).join(', ') || 'none'}.`,
             'This is evidence-weighted guidance, not a final root-cause confirmation. Confirm with incident-window logs and DB correlation.',
             `Provider warning: ${fallbackReason}`,
         ].join('\n');
     }
     return [
-        'Mode: Deterministic fallback (external LLM unavailable).',
-        `Question: ${question}`,
+        ...base,
         `Best deterministic direction: validate ${dominantSignal} against DA description, SNOW timeline, and latest attachment evidence.`,
         'Then ask a focused follow-up such as: "which log lines most support config issue vs code bug".',
         `Provider warning: ${fallbackReason}`,
@@ -449,10 +473,12 @@ exports.aiAnalysisRouter.get('/status', async (_req, res) => {
     });
 });
 function requestedProvider(value) {
-    const normalized = String(value ?? 'github-models').trim().toLowerCase();
+    const normalized = String(value ?? 'auto').trim().toLowerCase();
+    if (normalized === 'auto')
+        return 'auto';
     if (normalized === 'github-models' || normalized === 'openai' || normalized === 'ollama')
         return normalized;
-    return 'github-models';
+    return 'auto';
 }
 function providerAttemptOrder(selection) {
     if (selection === 'github-models')

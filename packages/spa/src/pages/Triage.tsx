@@ -6,6 +6,7 @@ import { detectInput } from '../lib/input-detector';
 import { loadRegistry, routeByAreaPath } from '../lib/product-registry';
 import { fetchWorkItem, findWorkItemBySnowTask, findWorkItemByCase, fetchAreaItemsByPaths, fetchAreaVersionEvidenceByPaths, filterItemsByReleaseHints, matchesReleaseHints } from '../lib/ado-client';
 import { fetchSnowTask, fetchSnowWorkNotes, fetchSnowAttachments, fetchSnowCase, fetchSnowIncident, fetchSnowIncidentByCase, fetchSnowTasksByIncident, fetchSnowKbSearch, escalateSnowTask, snowVal } from '../lib/snow-client';
+import { combineSnowNotes } from '../lib/snow-notes';
 import { matchPattern, runCodeSearch, runDatabaseRepoSearch, buildSkillDrivenAssessment } from '../lib/analysis';
 import { fetchRelatedBugs, fetchTestCases } from '../lib/ado-client';
 import { searchCommits } from '../lib/github-client';
@@ -509,8 +510,8 @@ function CopyableCommand({ label, value }: { label: string; value: string }) {
   };
 
   return (
-    <div className="rounded-lg border border-white/10 bg-gray-950 overflow-hidden">
-      <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-white/5 border-b border-white/10">
+    <div className="rounded-lg border border-gray-700 bg-gray-950 overflow-hidden">
+      <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-gray-900 border-b border-gray-700">
         <span className="text-[11px] text-gray-400 font-medium font-sans">{label}</span>
         <button
           type="button"
@@ -575,7 +576,7 @@ function BridgeOfflineBanner({ installCmds, bridgeUrl }: { installCmds: ReturnTy
         {showManual ? 'Hide' : 'Already installed? Just start it for today instead'}
       </button>
       {showManual && (
-        <div className="bg-gray-950/70 rounded-lg border border-white/10 p-3 space-y-2 text-xs font-mono">
+        <div className="bg-gray-950/70 rounded-lg border border-gray-700 p-3 space-y-2 text-xs font-mono">
           <CopyableCommand label="Start today — PowerShell" value={installCmds.powershellDaily} />
           <CopyableCommand label="Start today — cmd" value={installCmds.cmdDaily} />
         </div>
@@ -595,6 +596,24 @@ function BridgeOfflineBanner({ installCmds, bridgeUrl }: { installCmds: ReturnTy
       )}
     </div>
   );
+}
+
+/** Task notes are often audit-only noise — the investigation narrative lives on the parent incident/case. */
+async function attachEscalatedWorkNotes(s: TriageSession): Promise<TriageSession> {
+  let next = s;
+  for (const key of ['snowIncident', 'snowCase'] as const) {
+    const record = next[key] as any;
+    if (!record || record._workNotes) continue;
+    const sysId = snowVal(record.sys_id);
+    if (!sysId) continue;
+    try {
+      const notesResp = await fetchSnowWorkNotes(sysId);
+      if (notesResp?.result) {
+        next = { ...next, [key]: { ...record, _workNotes: notesResp.result } };
+      }
+    } catch { /* non-fatal */ }
+  }
+  return next;
 }
 
 async function enrichSnowTaskArtifacts(s: TriageSession, taskRecord: any): Promise<TriageSession> {
@@ -1073,6 +1092,12 @@ export default function TriagePage() {
         }
       }
 
+      // Pull work notes for escalated incident/case — task notes alone are usually audit noise
+      if ((s.snowIncident || s.snowCase) && !cancelledRef.current) {
+        s = await attachEscalatedWorkNotes(s);
+        upsert(s);
+      }
+
       // ── Phase 1: Clarity — derive gaps from missing required fields ──────────
       s = phase(s, 'clarity');
       upsert(s);
@@ -1290,11 +1315,7 @@ export default function TriagePage() {
             ? await runDatabaseRepoSearch(githubPat, s.product.databaseRepoPaths ?? [], dbTerms)
             : [];
 
-          const workNotes = s.snowTask
-            ? String((s.snowTask as any)._workNotes
-                ? JSON.stringify((s.snowTask as any)._workNotes)
-                : snowVal(s.snowTask.work_notes))
-            : undefined;
+          const workNotes = combineSnowNotes(s.snowTask, s.snowIncident, s.snowCase) || undefined;
           const logHits = (s.snowTask as any)?._logHits ?? [];
           const topSeeds = (s.snowTask as any)?._topSeeds ?? {};
           const spreadsheetSummaries = (s.snowTask as any)?._spreadsheetSummaries ?? [];
@@ -1365,7 +1386,7 @@ export default function TriagePage() {
       <aside className={`${leftPaneHidden ? 'hidden' : 'space-y-5 xl:h-full xl:overflow-y-auto xl:pr-1'}`}>
         <div className="glass-panel rounded-2xl p-3 sm:p-4 space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-white">Quick Start (End Users)</h3>
+            <h3 className="text-sm font-semibold text-gray-100">Quick Start (End Users)</h3>
             <button
               type="button"
               onClick={toggleQuickStart}
@@ -1380,7 +1401,7 @@ export default function TriagePage() {
               {isLocalBridgeUrl(bridgeUrl) ? (
                 <>
                   <p className="text-xs text-gray-300 font-medium">New machine? Do these two steps once:</p>
-                  <div className="bg-gray-950/70 border border-white/10 rounded-lg p-2 space-y-2 text-xs font-mono">
+                  <div className="bg-gray-950/70 border border-gray-700 rounded-lg p-2 space-y-2 text-xs font-mono">
                     <CopyableCommand label="Step 1 — Install (PowerShell)" value={installCmds.powershell} />
                     <CopyableCommand label="Step 2 — Register auto-start (PowerShell, after Step 1)" value={installCmds.autoStartPowershell} />
                   </div>
@@ -1417,7 +1438,7 @@ export default function TriagePage() {
                 className={`w-full text-left px-3 py-2.5 rounded-xl text-xs transition-colors border ${
                   s.id === active
                     ? 'bg-sky-600/20 border-sky-300/40 text-gray-100'
-                    : 'border-white/10 text-gray-300 hover:bg-white/5 hover:text-gray-100'
+                    : 'border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-gray-100'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -1452,7 +1473,7 @@ export default function TriagePage() {
           />
         ) : (
           <div className="glass-panel rounded-2xl p-8 sm:p-10 min-h-[340px] flex flex-col items-center justify-center text-center text-gray-300 space-y-3">
-            <h2 className="text-xl sm:text-2xl font-semibold text-white">Start Smart Triage</h2>
+            <h2 className="text-xl sm:text-2xl font-semibold text-gray-100">Start Smart Triage</h2>
             <p className="text-sm text-gray-300 max-w-xl">
               Select product scope on the left, enter a DA/SNOW/TFS identifier, then run Analyze to generate findings.
             </p>

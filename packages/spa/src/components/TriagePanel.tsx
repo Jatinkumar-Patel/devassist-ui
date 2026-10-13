@@ -236,7 +236,7 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
                     <>
                       {' · '}
                       <a href={snowTaskUrl(String(snowNum))} target="_blank" rel="noreferrer"
-                         className="text-altera-teal hover:text-white">{String(snowNum)}</a>
+                         className="text-altera-teal hover:text-gray-100">{String(snowNum)}</a>
                       {session.snowTaskTable && <span className="text-gray-600 ml-1">({session.snowTaskTable})</span>}
                     </>
                   )}
@@ -246,7 +246,7 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
                 </h2>
               </div>
               <a href={workItemUrl(adoItem.id)} target="_blank" rel="noreferrer"
-                 className="text-altera-teal hover:text-white shrink-0 mt-1">
+                 className="text-altera-teal hover:text-gray-100 shrink-0 mt-1">
                 <ExternalLink size={13} />
               </a>
             </div>
@@ -434,7 +434,7 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
                 {product.repos.map((r) => (
                   <a key={r.key} href={`https://github.com/${r.owner}/${r.repo}`}
                      target="_blank" rel="noreferrer"
-                     className="flex items-center gap-1 text-xs text-altera-teal hover:text-white">
+                     className="flex items-center gap-1 text-xs text-altera-teal hover:text-gray-100">
                     <GitBranch size={10} />{r.owner}/{r.repo}
                   </a>
                 ))}
@@ -453,7 +453,7 @@ export default function TriagePanel({ session, onAnalysisComplete }: Props) {
                   SNOW {snowVal(snowTask.number)} <span className="text-gray-600">({snowVal(snowTask.state)})</span>
                 </p>
                 <a href={snowTaskUrl(snowVal(snowTask.number))} target="_blank" rel="noreferrer"
-                   className="text-altera-teal hover:text-white"><ExternalLink size={11} /></a>
+                   className="text-altera-teal hover:text-gray-100"><ExternalLink size={11} /></a>
               </div>
               <p className="text-xs text-gray-300">{snowVal(snowTask.short_description)}</p>
               <div className="flex flex-wrap gap-1.5 text-xs">
@@ -593,7 +593,7 @@ function SnowRecord({ label, record, tableUrl }: { label: string; record: any; t
           {assignedTo && <span className="text-[11px] text-gray-500">{assignedTo}</span>}
           {openedAt   && <span className="text-[11px] text-gray-600">{openedAt}</span>}
         </div>
-        <a href={tableUrl} target="_blank" rel="noreferrer" className="text-altera-teal hover:text-white shrink-0">
+        <a href={tableUrl} target="_blank" rel="noreferrer" className="text-altera-teal hover:text-gray-100 shrink-0">
           <ExternalLink size={11} />
         </a>
       </div>

@@ -17,6 +17,13 @@ const MODEL_GH    = 'gpt-4o-mini';
 const MODEL_OAPI  = 'gpt-4o-mini';
 const MODEL_OLLAMA = 'llama3.2';  // change to any model you have pulled
 
+interface SnowRecordSummary {
+  number: string;
+  shortDescription: string;
+  state: string;
+  workNotes?: string;
+}
+
 interface AnalysisRequest {
   githubPat?: string;
   openaiKey?: string;   // user's personal OpenAI API key
@@ -32,12 +39,10 @@ interface AnalysisRequest {
     severity: string;
     description?: string;
   };
-  snowTask: {
-    number: string;
-    shortDescription: string;
-    state: string;
-    workNotes?: string;
-  } | null;
+  snowTask: SnowRecordSummary | null;
+  snowIncident?: SnowRecordSummary | null;
+  snowCase?: SnowRecordSummary | null;
+  exceptionSignatures?: string[];
   logHits: Array<{ file: string; line: number; seed: string; text: string }>;
   topSeeds: Record<string, number>;
   patternName?: string;
@@ -136,18 +141,22 @@ function buildUserPrompt(req: AnalysisRequest): string {
     .map(([s, c]) => `  ${s}: ${c}×`)
     .join('\n');
 
+  const snowSection = (label: string, rec?: SnowRecordSummary | null, notesMax = 3000): string => {
+    if (!rec?.number && !rec?.workNotes) return '';
+    return `\n## SNOW ${label}: ${rec?.number ?? 'not available'}\nState: ${rec?.state ?? '—'}\nShort description: ${rec?.shortDescription ?? '—'}\n${rec?.workNotes ? `Work notes:\n${rec.workNotes.slice(0, notesMax)}` : 'No narrative work notes found.'}`;
+  };
+
   return `## DA ${req.da.id} — ${req.da.title}
 
 Area: ${req.da.areaPath}
 Customer: ${req.da.customer}
 Release: ${req.da.release}
 Severity: ${req.da.severity}
-${req.da.description ? `\nDescription:\n${req.da.description.slice(0, 800)}` : ''}
+${req.da.description ? `\nDescription:\n${req.da.description.slice(0, 4000)}` : ''}
+${snowSection('Task', req.snowTask)}${snowSection('Incident (escalated parent — usually holds the real investigation)', req.snowIncident, 4000)}${snowSection('Case', req.snowCase, 2000)}
 
-## SNOW Task: ${req.snowTask?.number ?? 'not available'}
-State: ${req.snowTask?.state ?? '—'}
-Short description: ${req.snowTask?.shortDescription ?? '—'}
-${req.snowTask?.workNotes ? `\nWork notes (excerpt):\n${req.snowTask.workNotes.slice(0, 600)}` : ''}
+## Exception signatures (extracted from description/notes/logs)
+${(req.exceptionSignatures ?? []).map((s) => `  - ${s}`).join('\n') || '  - none extracted'}
 
 ## Mapped repos
 ${req.repos.join(', ')}
@@ -175,7 +184,7 @@ function buildFollowUpPrompt(req: FollowUpRequest): string {
 
   const history = (req.history ?? []).slice(-8).map((entry, idx) => `Previous turn ${idx + 1}:\nQ: ${entry.question}\nA: ${entry.answer.slice(0, 1200)}`).join('\n\n');
 
-  return `User follow-up question: ${req.question}\n\nUse the prior assessment and evidence as your starting point. Answer directly and stay anchored to the facts.\n\nPrior context:\n${prior || 'No prior assessment was supplied.'}\n\nConversation history:\n${history || 'No prior follow-up history exists yet.'}\n\n## DA ${req.da.id} — ${req.da.title}\nArea: ${req.da.areaPath}\nCustomer: ${req.da.customer}\nRelease: ${req.da.release}\nSeverity: ${req.da.severity}\n${req.da.description ? `Description:\n${req.da.description.slice(0, 800)}` : ''}\n\n## SNOW Task\n${req.snowTask?.number ?? 'not available'}\nState: ${req.snowTask?.state ?? '—'}\nShort description: ${req.snowTask?.shortDescription ?? '—'}\n${req.snowTask?.workNotes ? `Work notes excerpt:\n${req.snowTask.workNotes.slice(0, 600)}` : ''}\n\n## Key signals\n${Object.entries(req.topSeeds).map(([s,c]) => `- ${s}: ${c}x`).join('\n') || 'No signal summary available'}\n\n## Log evidence\n${req.logHits.slice(0, 20).map((h) => `[${h.file}:${h.line}] (${h.seed}) ${h.text}`).join('\n') || 'No log evidence available'}\n\nAnswer the user's question using the above context and be explicit about missing evidence if needed.`;
+  return `User follow-up question: ${req.question}\n\nUse the prior assessment and evidence as your starting point. Answer directly and stay anchored to the facts.\n\nPrior context:\n${prior || 'No prior assessment was supplied.'}\n\nConversation history:\n${history || 'No prior follow-up history exists yet.'}\n\n## DA ${req.da.id} — ${req.da.title}\nArea: ${req.da.areaPath}\nCustomer: ${req.da.customer}\nRelease: ${req.da.release}\nSeverity: ${req.da.severity}\n${req.da.description ? `Description:\n${req.da.description.slice(0, 2500)}` : ''}\n\n## SNOW Task\n${req.snowTask?.number ?? 'not available'}\nState: ${req.snowTask?.state ?? '—'}\nShort description: ${req.snowTask?.shortDescription ?? '—'}\n${req.snowTask?.workNotes ? `Work notes:\n${req.snowTask.workNotes.slice(0, 2000)}` : ''}\n${req.snowIncident?.workNotes ? `\n## SNOW Incident ${req.snowIncident.number}\nWork notes:\n${req.snowIncident.workNotes.slice(0, 3000)}` : ''}\n${(req.exceptionSignatures ?? []).length ? `\n## Exception signatures\n${(req.exceptionSignatures ?? []).map((s) => `- ${s}`).join('\n')}` : ''}\n\n## Key signals\n${Object.entries(req.topSeeds).map(([s,c]) => `- ${s}: ${c}x`).join('\n') || 'No signal summary available'}\n\n## Log evidence\n${req.logHits.slice(0, 20).map((h) => `[${h.file}:${h.line}] (${h.seed}) ${h.text}`).join('\n') || 'No log evidence available'}\n\nAnswer the user's question using the above context and be explicit about missing evidence if needed.`;
 }
 
 function normalizeAiProviderError(message: string): string {
