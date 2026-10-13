@@ -9,10 +9,13 @@ const https_1 = __importDefault(require("https"));
 const http_1 = __importDefault(require("http"));
 const mcp_secrets_1 = require("../utils/mcp-secrets");
 exports.aiAnalysisRouter = (0, express_1.Router)();
+// GitHub Models (models.github.ai / models.inference.ai.azure.com) was retired by GitHub on
+// 2026-07-30; the endpoints now return stub responses. Kept for reference only — never attempted.
+const GITHUB_MODELS_RETIRED_MSG = 'GitHub Models was retired by GitHub on July 30, 2026 — the inference API no longer exists, so a PAT cannot help. Use OpenAI (key in Settings), local Ollama (localhost:11434), or the DevAssist VS Code extension (Copilot models).';
 const MODELS_API_URLS = [
+    'https://models.github.ai/inference/chat/completions',
     'https://api.githubcopilot.com/chat/completions',
     'https://models.inference.ai.azure.com/chat/completions',
-    'https://models.github.ai/inference/chat/completions',
 ];
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 const OLLAMA_API_URL = 'http://localhost:11434/api/chat'; // local, no auth needed
@@ -140,8 +143,14 @@ function normalizeAiProviderError(message) {
     const text = String(message ?? '').trim();
     if (!text)
         return 'AI request failed. Use the VS Code/GitHub-managed model route or add a GitHub PAT in Settings. Local Ollama/OpenAI are fallback-only options.';
+    // Retirement notice is already the full truth — never rewrite it.
+    if (/retired/i.test(text))
+        return text;
     if (/ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|timed out|network|fetch failed|getaddrinfo/i.test(text)) {
         return 'The configured AI provider is unreachable from this environment. Use the VS Code/GitHub-managed model route or add a GitHub PAT in Settings. Local Ollama/OpenAI are fallback-only options.';
+    }
+    if (/error \((401|403)\)/i.test(text)) {
+        return 'GitHub Models rejected the PAT (401/403). Create a fine-grained PAT with the "Models: Read" account permission (https://github.com/settings/personal-access-tokens) and save it again in Settings.';
     }
     if (/GitHub Models/i.test(text)) {
         return 'GitHub Models is unavailable from this environment. Use the VS Code/GitHub-managed model route or add a GitHub PAT in Settings. Local Ollama/OpenAI are fallback-only options.';
@@ -275,9 +284,16 @@ function getGitHubModelToken(body, bridgeSecrets) {
 function getOpenAiKey(body) {
     return (body.openaiKey || process.env.OPENAI_API_KEY || '').trim();
 }
+/** models.github.ai requires publisher-prefixed model ids (openai/gpt-4o-mini); legacy endpoints want bare ids */
+function modelIdForEndpoint(endpoint, model) {
+    if (endpoint.includes('models.github.ai')) {
+        return model.includes('/') ? model : `openai/${model}`;
+    }
+    return model.includes('/') ? model.split('/').pop() : model;
+}
 /** Call GitHub Models API directly from Node.js — avoids brittle PowerShell parsing and noisy stderr output */
 function callGitHubModelsAtEndpoint(endpoint, pat, messages, model = MODEL_GH) {
-    const payload = JSON.stringify({ model, messages, temperature: 0.1, max_tokens: 1200 });
+    const payload = JSON.stringify({ model: modelIdForEndpoint(endpoint, model), messages, temperature: 0.1, max_tokens: 1200 });
     return new Promise((resolve, reject) => {
         const req = https_1.default.request(endpoint, {
             method: 'POST',
@@ -344,7 +360,9 @@ function callGitHubModelsAtEndpoint(endpoint, pat, messages, model = MODEL_GH) {
 function shouldTryAlternateGitHubEndpoint(errorMessage) {
     const text = String(errorMessage ?? '').toLowerCase();
     return (/enotfound|eai_again|econnrefused|econnreset|timed out|getaddrinfo|network/.test(text) ||
-        /error \(404\)|error \(408\)|error \(429\)|error \(500\)|error \(502\)|error \(503\)|error \(504\)/.test(text));
+        // 400/401/403 included: endpoints differ in accepted auth (PAT vs Copilot token), so an
+        // auth/validation rejection on one endpoint must not abort the remaining candidates.
+        /error \(400\)|error \(401\)|error \(403\)|error \(404\)|error \(408\)|error \(429\)|error \(500\)|error \(502\)|error \(503\)|error \(504\)/.test(text));
 }
 async function callGitHubModels(pat, messages, model = MODEL_GH) {
     const errors = [];
@@ -467,9 +485,10 @@ exports.aiAnalysisRouter.get('/status', async (_req, res) => {
             openai: MODEL_OAPI,
             ollama: MODEL_OLLAMA,
         },
-        githubReady,
+        githubReady: false,
+        githubRetired: true,
         openaiReady,
-        anyBackendReady: ollama || githubReady || openaiReady,
+        anyBackendReady: ollama || openaiReady,
     });
 });
 function requestedProvider(value) {
@@ -498,10 +517,10 @@ async function runAiProviderSelection(body, messages) {
     const desiredModel = (body.aiModel ?? '').trim();
     for (const candidate of providerAttemptOrder(provider)) {
         if (candidate === 'github-models') {
-            if (!githubToken)
-                continue;
-            const assessment = await callGitHubModels(githubToken, messages, desiredModel || MODEL_GH);
-            return { assessment, source: 'github-models' };
+            // Retired service — skip in auto mode, fail with the truth when explicitly selected.
+            if (provider === 'github-models')
+                throw new Error(GITHUB_MODELS_RETIRED_MSG);
+            continue;
         }
         if (candidate === 'openai') {
             if (!openaiKey)
@@ -519,7 +538,7 @@ async function runAiProviderSelection(body, messages) {
     if (provider !== 'auto') {
         throw new Error(`Selected provider '${provider}' is not available. Choose Auto or configure credentials/runtime for that provider.`);
     }
-    throw new Error('No AI backend is available. Configure one backend: GitHub PAT (Settings), OpenAI key (Settings), or local Ollama on localhost:11434.');
+    throw new Error('No AI backend is available. GitHub Models is retired — configure an OpenAI key (Settings) or run local Ollama on localhost:11434, or use the DevAssist VS Code extension.');
 }
 // POST /api/ai-analyze — auto-selects: Ollama (local) → OpenAI → GitHub Models
 exports.aiAnalysisRouter.post('/', async (req, res) => {

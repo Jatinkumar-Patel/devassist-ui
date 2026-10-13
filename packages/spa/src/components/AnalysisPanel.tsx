@@ -1483,7 +1483,7 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
   const canRun = Boolean(session.adoItem);
   const providerOptions: Array<{ value: AiProviderSelection; label: string; enabled: boolean }> = [
     { value: 'auto', label: 'Auto (best available)', enabled: true },
-    { value: 'github-models', label: 'GitHub Models', enabled: Boolean(githubPat || aiStatus?.githubReady) },
+    { value: 'github-models', label: 'GitHub Models (retired July 2026)', enabled: false },
     { value: 'openai', label: 'OpenAI', enabled: Boolean(openaiKey || aiStatus?.openaiReady) },
     { value: 'ollama', label: 'Ollama (local)', enabled: Boolean(aiStatus?.ollama) },
   ];
@@ -1728,6 +1728,9 @@ function AiAssessmentPanel({ session }: { session: TriageSession }) {
           )}
           {aiStatus?.githubReady && (
             <span className="text-xs text-emerald-300 border border-emerald-800 rounded px-1.5 py-0.5">GitHub model ready</span>
+          )}
+          {!aiStatus?.openaiReady && !openaiKey && ollamaOk === false && (
+            <span className="text-xs text-gray-400 border border-gray-700 rounded px-1.5 py-0.5" title="GitHub Models was retired by GitHub on July 30, 2026. Configure OpenAI, Ollama, or use the DevAssist VS Code extension.">GitHub Models retired</span>
           )}
           {aiStatus?.openaiReady && (
             <span className="text-xs text-cyan-300 border border-cyan-800 rounded px-1.5 py-0.5">OpenAI env ready</span>
