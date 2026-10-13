@@ -1,6 +1,6 @@
 ﻿import { NavLink } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
-import { Bug, Database, Settings, RefreshCw } from 'lucide-react';
+import { Bug, Database, Settings, RefreshCw, Zap } from 'lucide-react';
 import BridgeStatus from './BridgeStatus';
 
 const AUTO_UPDATE_KEY = 'devassist-auto-update-state';
@@ -99,15 +99,18 @@ export default function NavBar({ showSettings = true, deploymentMode = 'Local' }
   };
 
   return (
-    <header className="sticky top-0 z-30 px-3 sm:px-4 py-3 border-b border-gray-700 bg-slate-950/70 backdrop-blur-md">
+    <header className="sticky top-0 z-30 px-3 sm:px-4 py-3 border-b border-gray-700 bg-white/85 backdrop-blur-md shadow-sm">
       <div className="w-full flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center justify-between sm:justify-start gap-4 sm:gap-6 min-w-0">
-          <div className="flex items-center gap-2 min-w-0 shrink">
-            <span className="font-extrabold text-base sm:text-lg tracking-tight shrink-0 bg-gradient-to-r from-cyan-300 via-sky-300 to-blue-400 bg-clip-text text-transparent">
+          <div className="flex items-center gap-2.5 min-w-0 shrink">
+            <span className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-br from-[#0054A6] to-[#0d9488] shadow-md shrink-0">
+              <Zap size={16} className="text-white" />
+            </span>
+            <span className="font-extrabold text-base sm:text-lg tracking-tight shrink-0 text-gray-100">
               DevAssist
             </span>
             <span
-              className="inline-flex max-w-[220px] sm:max-w-[280px] truncate rounded-full border border-cyan-400/25 bg-cyan-500/8 px-2 py-0.5 text-[10px] text-cyan-100/85"
+              className="inline-flex max-w-[220px] sm:max-w-[280px] truncate rounded-full border border-gray-700 bg-gray-900 px-2 py-0.5 text-[10px] text-gray-400"
               title={buildLabel}
             >
               {buildLabel}
@@ -119,9 +122,9 @@ export default function NavBar({ showSettings = true, deploymentMode = 'Local' }
                 key={to}
                 to={to}
                 className={({ isActive }) =>
-                  `flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm whitespace-nowrap transition-colors ${
+                  `flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-all ${
                     isActive
-                      ? 'bg-altera-blue text-white shadow-md'
+                      ? 'bg-altera-blue text-white shadow-md shadow-altera-blue/25'
                       : 'text-gray-300 hover:text-gray-100 hover:bg-gray-800'
                   }`
                 }

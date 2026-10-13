@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { ChevronDown, PanelLeftClose, PanelLeftOpen, ExternalLink } from 'lucide-react';
+import { ChevronDown, PanelLeftClose, PanelLeftOpen, ExternalLink, Sparkles } from 'lucide-react';
 import TriageInput from '../components/TriageInput';
 import TriagePanel from '../components/TriagePanel';
 import { detectInput } from '../lib/input-detector';
@@ -1472,12 +1472,23 @@ export default function TriagePage() {
             }
           />
         ) : (
-          <div className="glass-panel rounded-2xl p-8 sm:p-10 min-h-[340px] flex flex-col items-center justify-center text-center text-gray-300 space-y-3">
-            <h2 className="text-xl sm:text-2xl font-semibold text-gray-100">Start Smart Triage</h2>
-            <p className="text-sm text-gray-300 max-w-xl">
-              Select product scope on the left, enter a DA/SNOW/TFS identifier, then run Analyze to generate findings.
-            </p>
-            <p className="text-xs text-gray-400">Supports: DA 9358329 · INC1234567 · TASK0001234 · CS7654321 · 9358329</p>
+          <div className="glass-panel rounded-2xl p-8 sm:p-12 min-h-[340px] flex flex-col items-center justify-center text-center text-gray-300 space-y-4">
+            <span className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-[#0054A6] to-[#0d9488] shadow-lg shadow-altera-blue/20">
+              <Sparkles size={28} className="text-white" />
+            </span>
+            <div className="space-y-1.5">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-100">Start Smart Triage</h2>
+              <p className="text-sm text-gray-300 max-w-xl">
+                Select product scope on the left, enter a DA/SNOW/TFS identifier, then run Analyze to generate findings.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+              {['DA 9358329', 'INC1234567', 'TASK0001234', 'CS7654321', '9358329'].map((ex) => (
+                <span key={ex} className="font-mono text-xs px-2.5 py-1 rounded-lg border border-gray-700 bg-gray-900 text-gray-300">
+                  {ex}
+                </span>
+              ))}
+            </div>
           </div>
         )}
       </section>

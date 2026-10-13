@@ -245,7 +245,10 @@ export default function TriageInput({ onSubmit, onStop, loading }: Props) {
       {registry && (
         <div className="glass-panel rounded-2xl p-3 sm:p-4 space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-gray-100">Product Scope</p>
+            <p className="card-label flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-altera-blue inline-block" />
+              Product Scope
+            </p>
             <button
               type="button"
               onClick={toggleScopeOpen}
@@ -425,7 +428,10 @@ export default function TriageInput({ onSubmit, onStop, loading }: Props) {
 
       <div className="glass-panel rounded-2xl p-3 sm:p-4 space-y-3">
         <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-gray-100">Analysis Input</p>
+            <p className="card-label flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-altera-teal inline-block" />
+              Analysis Input
+            </p>
           <button
             type="button"
             onClick={toggleInputOpen}
