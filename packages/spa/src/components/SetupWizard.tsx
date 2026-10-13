@@ -34,8 +34,8 @@ function CopyableCommand({ label, value }: { label: string; value: string }) {
   };
 
   return (
-    <div className="rounded-lg border border-white/10 bg-gray-950 overflow-hidden">
-      <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-white/5 border-b border-white/10">
+    <div className="rounded-lg border border-gray-700 bg-gray-950 overflow-hidden">
+      <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-gray-900 border-b border-gray-700">
         <span className="text-[11px] text-gray-400 font-medium">{label}</span>
         <button
           type="button"
@@ -195,7 +195,7 @@ export default function SetupWizard({ onDone }: Props) {
               {/* ── Phase A: First-time install ───────────────────── */}
               <div className="rounded-lg border border-blue-700/50 bg-blue-950/30 p-4 space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] font-bold shrink-0">1</span>
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#2563eb] text-white text-[10px] font-bold shrink-0">1</span>
                   <p className="text-xs font-semibold text-blue-300">Install Secure Connector once (new machine)</p>
                 </div>
                 <p className="text-[11px] text-gray-400 ml-7">Open a terminal, paste one command and press Enter. Safe from any folder including System32.</p>
@@ -213,7 +213,7 @@ export default function SetupWizard({ onDone }: Props) {
               {/* ── Phase B: Register auto-start ───────────────────── */}
               <div className="rounded-lg border border-emerald-700/50 bg-emerald-950/30 p-4 space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-bold shrink-0">2</span>
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#059669] text-white text-[10px] font-bold shrink-0">2</span>
                   <p className="text-xs font-semibold text-emerald-300">Turn on auto-start — run once after Step 1</p>
                 </div>
                 <p className="text-[11px] text-gray-400 ml-7">
@@ -232,7 +232,7 @@ export default function SetupWizard({ onDone }: Props) {
               {/* ── Phase C: Bookmark URL ───────────────────── */}
               <div className="rounded-lg border border-cyan-700/50 bg-cyan-950/30 p-4 space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-cyan-600 text-white text-[10px] font-bold shrink-0">3</span>
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#0891b2] text-white text-[10px] font-bold shrink-0">3</span>
                   <p className="text-xs font-semibold text-cyan-300">Bookmark this URL — share with your team</p>
                 </div>
                 <p className="text-[11px] text-gray-400 ml-7">This is the only URL everyone needs. Open it in any browser after the bridge is running.</p>
@@ -297,7 +297,7 @@ export default function SetupWizard({ onDone }: Props) {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => { setStep('github-pat'); }}
-                      className="bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded text-xs font-medium shrink-0"
+                      className="bg-[#047857] hover:bg-[#059669] text-white px-3 py-1.5 rounded text-xs font-medium shrink-0"
                     >
                       Continue ✓
                     </button>
@@ -397,7 +397,7 @@ export default function SetupWizard({ onDone }: Props) {
                         localStorage.setItem('devassist-setup-done', '1');
                         setStep('done');
                       }}
-                      className="bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded text-xs font-medium shrink-0"
+                      className="bg-[#047857] hover:bg-[#059669] text-white px-3 py-1.5 rounded text-xs font-medium shrink-0"
                     >
                       Continue ✓
                     </button>

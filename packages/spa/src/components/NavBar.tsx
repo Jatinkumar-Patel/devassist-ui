@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+﻿import { NavLink } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
 import { Bug, Database, Settings, RefreshCw } from 'lucide-react';
 import BridgeStatus from './BridgeStatus';
@@ -99,7 +99,7 @@ export default function NavBar({ showSettings = true, deploymentMode = 'Local' }
   };
 
   return (
-    <header className="sticky top-0 z-30 px-3 sm:px-4 py-3 border-b border-white/10 bg-slate-950/70 backdrop-blur-md">
+    <header className="sticky top-0 z-30 px-3 sm:px-4 py-3 border-b border-gray-700 bg-slate-950/70 backdrop-blur-md">
       <div className="w-full flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center justify-between sm:justify-start gap-4 sm:gap-6 min-w-0">
           <div className="flex items-center gap-2 min-w-0 shrink">
@@ -121,8 +121,8 @@ export default function NavBar({ showSettings = true, deploymentMode = 'Local' }
                 className={({ isActive }) =>
                   `flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm whitespace-nowrap transition-colors ${
                     isActive
-                      ? 'bg-gradient-to-r from-sky-600 to-blue-700 text-white shadow-md shadow-sky-900/40'
-                      : 'text-gray-300 hover:text-white hover:bg-white/10'
+                      ? 'bg-altera-blue text-white shadow-md'
+                      : 'text-gray-300 hover:text-gray-100 hover:bg-gray-800'
                   }`
                 }
               >

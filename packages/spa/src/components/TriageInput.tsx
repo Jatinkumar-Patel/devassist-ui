@@ -245,7 +245,7 @@ export default function TriageInput({ onSubmit, onStop, loading }: Props) {
       {registry && (
         <div className="glass-panel rounded-2xl p-3 sm:p-4 space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-white">Product Scope</p>
+            <p className="text-sm font-semibold text-gray-100">Product Scope</p>
             <button
               type="button"
               onClick={toggleScopeOpen}
@@ -264,7 +264,7 @@ export default function TriageInput({ onSubmit, onStop, loading }: Props) {
                   <select
                     value={selectedGroupId}
                     onChange={(e) => setGroup(e.target.value)}
-                    className="bg-slate-950/70 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-gray-100 w-full"
+                    className="bg-slate-950/70 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-100 w-full"
                   >
                     {groupOptions.map((g) => (
                       <option key={g.id} value={g.id}>{g.name}</option>
@@ -284,14 +284,14 @@ export default function TriageInput({ onSubmit, onStop, loading }: Props) {
                     </button>
 
                     {productsOpen && (
-                      <div className="mt-2 w-full rounded-xl border border-gray-700 bg-gray-950/95 shadow-2xl shadow-black/40 max-h-64 overflow-auto p-2 space-y-1">
+                      <div className="mt-2 w-full rounded-xl border border-gray-700 bg-gray-950/95 shadow-2xl shadow-black/10 max-h-64 overflow-auto p-2 space-y-1">
                         {availableProducts.map((p) => {
                           const checked = selectedProductIds.includes(p.id);
                           return (
                             <label
                               key={p.id}
                               className={`flex items-center gap-2 rounded-lg px-2 py-2 cursor-pointer ${
-                                checked ? 'bg-gray-800' : 'hover:bg-white/5'
+                                checked ? 'bg-gray-800' : 'hover:bg-gray-800'
                               }`}
                             >
                               <input
@@ -322,14 +322,14 @@ export default function TriageInput({ onSubmit, onStop, loading }: Props) {
                     </button>
 
                     {releasesOpen && (
-                      <div className="mt-2 w-full rounded-xl border border-gray-700 bg-gray-950/95 shadow-2xl shadow-black/40 max-h-56 overflow-auto p-2 space-y-1">
+                      <div className="mt-2 w-full rounded-xl border border-gray-700 bg-gray-950/95 shadow-2xl shadow-black/10 max-h-56 overflow-auto p-2 space-y-1">
                         {releaseOptions.map((release) => {
                           const checked = selectedReportedReleases.includes(release);
                           return (
                             <label
                               key={release}
                               className={`flex items-center gap-2 rounded-lg px-2 py-2 cursor-pointer ${
-                                checked ? 'bg-gray-800' : 'hover:bg-white/5'
+                                checked ? 'bg-gray-800' : 'hover:bg-gray-800'
                               }`}
                             >
                               <input
@@ -425,7 +425,7 @@ export default function TriageInput({ onSubmit, onStop, loading }: Props) {
 
       <div className="glass-panel rounded-2xl p-3 sm:p-4 space-y-3">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold text-white">Analysis Input</p>
+            <p className="text-sm font-semibold text-gray-100">Analysis Input</p>
           <button
             type="button"
             onClick={toggleInputOpen}
@@ -445,7 +445,7 @@ export default function TriageInput({ onSubmit, onStop, loading }: Props) {
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
                   placeholder={`Paste a work item ID, e.g. ${placeholderExample}`}
-                  className="w-full bg-slate-950/70 border border-white/15 rounded-2xl px-4 py-4 pr-28
+                  className="w-full bg-slate-950/70 border border-gray-700 rounded-2xl px-4 py-4 pr-28
                              text-gray-100 placeholder-gray-500 focus:outline-none focus:border-cyan-400
                              focus:ring-1 focus:ring-cyan-400 text-base"
                 />
@@ -475,7 +475,7 @@ export default function TriageInput({ onSubmit, onStop, loading }: Props) {
                 <button
                   type="submit"
                   disabled={loading || !value.trim()}
-                  className="flex items-center gap-2 bg-gradient-to-r from-sky-600 to-blue-700 hover:from-sky-500 hover:to-blue-600
+                  className="flex items-center gap-2 bg-altera-blue hover:bg-altera-blue/90
                              disabled:opacity-40 disabled:cursor-not-allowed text-white
                              px-5 py-3 rounded-xl text-sm font-semibold transition-colors justify-center"
                 >
@@ -486,7 +486,7 @@ export default function TriageInput({ onSubmit, onStop, loading }: Props) {
                   <button
                     type="button"
                     onClick={onStop}
-                    className="flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white px-5 py-3 rounded-xl text-sm font-semibold transition-colors justify-center"
+                    className="flex items-center gap-2 bg-[#dc2626] hover:bg-[#b91c1c] text-white px-5 py-3 rounded-xl text-sm font-semibold transition-colors justify-center"
                   >
                     <StopCircle size={16} />
                     Stop
